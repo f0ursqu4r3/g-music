@@ -1,0 +1,521 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --canvas: oklch(0.16 0.012 265);
+  --surface: oklch(0.21 0.018 265 / 0.98);
+  --surface-raised: oklch(0.26 0.024 265);
+  --border-color: oklch(0.39 0.025 265 / 0.72);
+  --text: oklch(0.94 0.01 265);
+  --muted-text: oklch(0.71 0.024 265);
+  --accent: oklch(0.74 0.11 266);
+  --artwork-a: oklch(0.63 0.13 266);
+  --artwork-b: oklch(0.48 0.1 291);
+  --background: var(--canvas);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: oklch(0.18 0.02 266);
+  --secondary: oklch(0.29 0.026 265);
+  --secondary-foreground: var(--text);
+  --muted: oklch(0.29 0.02 265);
+  --muted-foreground: var(--muted-text);
+  --accent-foreground: var(--text);
+  --destructive: oklch(0.67 0.18 26);
+  --input: var(--border-color);
+  --ring: var(--accent);
+  --border: var(--border-color);
+  --radius: 0.8rem;
+  color: var(--text);
+  background: transparent;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="plum"] {
+  --canvas: oklch(0.17 0.02 320);
+  --surface: oklch(0.22 0.03 320 / 0.98);
+  --surface-raised: oklch(0.28 0.045 320);
+  --border-color: oklch(0.41 0.055 320 / 0.68);
+  --accent: oklch(0.76 0.12 325);
+  --artwork-a: oklch(0.61 0.16 329);
+  --artwork-b: oklch(0.5 0.14 290);
+}
+
+:root[data-theme="ember"] {
+  --canvas: oklch(0.17 0.014 45);
+  --surface: oklch(0.22 0.026 45 / 0.98);
+  --surface-raised: oklch(0.28 0.043 45);
+  --border-color: oklch(0.4 0.052 45 / 0.7);
+  --accent: oklch(0.79 0.13 62);
+  --artwork-a: oklch(0.69 0.16 55);
+  --artwork-b: oklch(0.48 0.12 25);
+}
+
+@theme inline {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background: transparent;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+}
+
+#app {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.app-shell {
+  width: 100%;
+  min-height: 174px;
+}
+
+.player-frame,
+.loading-player {
+  position: relative;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 18px;
+}
+
+.mini-player-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 174px minmax(0, 1fr);
+  min-height: 174px;
+}
+
+.window-grab {
+  position: absolute;
+  top: 0;
+  right: 42px;
+  left: 174px;
+  height: 12px;
+}
+
+.album-art,
+.loading-artwork {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  background:
+    linear-gradient(
+      140deg,
+      transparent 44%,
+      oklch(0.9 0.02 80 / 0.12) 44% 52%,
+      transparent 52%
+    ),
+    radial-gradient(
+      circle at 68% 28%,
+      oklch(0.9 0.03 80 / 0.32) 0 4%,
+      transparent 4.5%
+    ),
+    linear-gradient(130deg, var(--artwork-a), var(--artwork-b));
+}
+
+.album-disc {
+  width: 58%;
+  aspect-ratio: 1;
+  background: radial-gradient(
+    circle,
+    var(--surface) 0 13%,
+    transparent 14% 24%,
+    oklch(0.12 0.018 265 / 0.38) 25%
+  );
+  border: 2px solid oklch(0.12 0.018 265 / 0.36);
+  border-radius: 50%;
+}
+
+.album-art span {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  color: oklch(0.16 0.02 265 / 0.72);
+  font-size: 2rem;
+  font-weight: 820;
+  letter-spacing: -0.12em;
+}
+
+.player-main {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  padding: 22px 46px 14px 18px;
+}
+
+.track-header {
+  min-width: 0;
+}
+
+.track-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 5px;
+  color: var(--muted-text);
+  font-size: 0.63rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.playback-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--muted-text);
+  border-radius: 999px;
+}
+
+.playback-dot[data-playing="true"] {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+.track-title,
+.track-artist,
+.queue-title,
+.queue-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.track-artist {
+  margin: 3px 0 0;
+  color: var(--muted-text);
+  font-size: 0.78rem;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.transport-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transport-button {
+  color: var(--muted-text);
+}
+
+.transport-button:hover {
+  color: var(--text);
+}
+
+.play-button {
+  color: var(--primary-foreground);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.play-button:hover {
+  color: var(--primary-foreground);
+  background: color-mix(in oklch, var(--accent) 88%, white);
+}
+
+.volume-control {
+  display: flex;
+  width: 76px;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-text);
+}
+
+.volume-control svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+input[type="range"]:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.progress-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 34px;
+  gap: 7px;
+  align-items: center;
+  color: var(--muted-text);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-row span:last-child {
+  text-align: right;
+}
+
+.window-actions {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  gap: 2px;
+}
+
+.window-actions button {
+  color: var(--muted-text);
+}
+
+.window-actions button:hover {
+  color: var(--text);
+}
+
+.player-status {
+  position: absolute;
+  right: 46px;
+  bottom: 3px;
+  max-width: 160px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: 0.56rem;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-menu {
+  position: relative;
+}
+
+.theme-menu-content {
+  position: absolute;
+  top: 0;
+  right: 31px;
+  display: grid;
+  gap: 2px;
+  min-width: 146px;
+  padding: 5px;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 12px 24px oklch(0.08 0.01 265 / 0.42);
+}
+
+.theme-menu-label {
+  margin: 0;
+  padding: 4px 6px 3px;
+  color: var(--muted-text);
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.theme-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.theme-swatch {
+  width: 9px;
+  height: 9px;
+  background: oklch(0.74 0.11 266);
+  border-radius: 999px;
+}
+
+.theme-swatch[data-theme="plum"] {
+  background: oklch(0.76 0.12 325);
+}
+
+.theme-swatch[data-theme="ember"] {
+  background: oklch(0.79 0.13 62);
+}
+
+.queue-drawer {
+  padding: 13px 15px 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.queue-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.queue-heading p,
+.queue-heading h2 {
+  margin: 0;
+}
+
+.queue-heading p {
+  color: var(--muted-text);
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.queue-heading h2 {
+  margin-top: 2px;
+  font-size: 0.86rem;
+  letter-spacing: -0.01em;
+}
+
+.queue-heading > span {
+  color: var(--muted-text);
+  font-size: 0.68rem;
+}
+
+.queue-list {
+  display: grid;
+  gap: 3px;
+  padding: 9px 0 0;
+  margin: 0;
+  list-style: none;
+}
+
+.queue-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 36px 54px;
+  gap: 7px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 8px;
+}
+
+.queue-item[data-current="true"] {
+  background: color-mix(in oklch, var(--accent) 13%, transparent);
+}
+
+.queue-index {
+  display: grid;
+  place-items: center;
+  color: var(--muted-text);
+  font-size: 0.65rem;
+}
+
+.queue-index svg {
+  width: 14px;
+  height: 14px;
+}
+
+.queue-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.queue-artist,
+.queue-duration {
+  margin: 2px 0 0;
+  color: var(--muted-text);
+  font-size: 0.68rem;
+}
+
+.queue-duration {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1px;
+}
+
+.loading-player {
+  display: grid;
+  grid-template-columns: 174px 1fr;
+  min-height: 174px;
+}
+
+.loading-artwork {
+  opacity: 0.58;
+}
+
+.loading-copy {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  padding: 24px;
+}
+
+.loading-copy span {
+  display: block;
+  height: 9px;
+  background: var(--surface-raised);
+  border-radius: 999px;
+}
+
+.loading-copy span:nth-child(2) {
+  width: 68%;
+}
+
+.loading-copy span:nth-child(3) {
+  width: 86%;
+}
