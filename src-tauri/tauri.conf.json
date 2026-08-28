@@ -15,13 +15,20 @@
     "windows": [
       {
         "title": "G Music",
-        "width": 520,
-        "height": 174,
-        "minWidth": 420,
-        "minHeight": 174,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true
+        "width": 1040,
+        "height": 660,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "decorations": true,
+        "transparent": true,
+        "theme": "Dark",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 18
+        }
       }
     ],
     "security": {

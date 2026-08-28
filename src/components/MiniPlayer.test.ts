@@ -27,6 +27,9 @@ describe("MiniPlayer", () => {
     expect(wrapper.text()).toContain("Aerials");
     expect(wrapper.text()).toContain("System of a Down");
     expect(wrapper.get('button[aria-label="Play"]')).toBeDefined();
+    expect(wrapper.get(".mini-drag-handle").attributes()).toHaveProperty(
+      "data-tauri-drag-region",
+    );
 
     await wrapper.get('button[aria-label="Play"]').trigger("click");
     await wrapper.get('button[aria-label="Next track"]').trigger("click");

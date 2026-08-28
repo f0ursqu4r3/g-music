@@ -26,7 +26,7 @@ describe("QueueDrawer", () => {
       props: { queue, currentItemId: "track-1", isUpdating: false },
     });
 
-    expect(wrapper.text()).toContain("2 tracks");
+    expect(wrapper.text()).toContain("2 items");
     expect(wrapper.get('[data-current="true"]').text()).toContain("Aerials");
 
     await wrapper.get('button[aria-label="Move Toxicity up"]').trigger("click");

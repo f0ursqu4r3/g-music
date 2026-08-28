@@ -1,28 +1,24 @@
 <script setup lang="ts">
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { ChevronDown, ChevronUp, Palette, X } from "lucide-vue-next";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
-import MiniPlayer from "@/components/MiniPlayer.vue";
-import QueueDrawer from "@/components/QueueDrawer.vue";
-import { Button } from "@/components/ui/button";
-
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { usePlayback } from "@/composables/usePlayback";
+import type { ThemeName } from "@/lib/theme";
+import { readTheme, themes } from "@/lib/theme";
+import { resolveMockWindowView } from "@/lib/window-view";
 import { playerDimensions } from "@/presentation";
-import { readTheme, themes, type ThemeName } from "@/lib/theme";
+
+import ArtworkWindow from "@/components/ArtworkWindow.vue";
+import LibraryWindow from "@/components/LibraryWindow.vue";
+import MiniWindow from "@/components/MiniWindow.vue";
+import QueueWindow from "@/components/QueueWindow.vue";
+import { usePlayback } from "@/composables/usePlayback";
 
 const playback = usePlayback();
+const view = resolveMockWindowView(window.location.search);
 const queueExpanded = ref(false);
 const theme = ref<ThemeName>(
   readTheme(window.localStorage.getItem("gmusic-theme")),
 );
-const themeMenuOpen = ref(false);
 const windowError = ref("");
 
 const statusMessage = computed(
@@ -39,21 +35,22 @@ watch(
   { immediate: true },
 );
 
-function selectTheme(nextTheme: ThemeName): void {
-  theme.value = nextTheme;
-  themeMenuOpen.value = false;
+function cycleTheme(): void {
+  const currentIndex = themes.indexOf(theme.value);
+  theme.value = themes[(currentIndex + 1) % themes.length];
 }
 
 async function toggleQueue(): Promise<void> {
   queueExpanded.value = !queueExpanded.value;
-  themeMenuOpen.value = false;
   windowError.value = "";
 
   const size = playerDimensions(queueExpanded.value);
   const currentWindow = getCurrentWindow();
+  let unlocked = false;
 
   try {
     await currentWindow.setResizable(true);
+    unlocked = true;
     await currentWindow.setSize(new LogicalSize(size.width, size.height));
   } catch (error) {
     windowError.value =
@@ -61,12 +58,26 @@ async function toggleQueue(): Promise<void> {
         ? error.message
         : "Could not resize the mini player.";
   } finally {
-    await currentWindow.setResizable(false);
+    if (unlocked) {
+      try {
+        await currentWindow.setResizable(false);
+      } catch (error) {
+        windowError.value =
+          error instanceof Error
+            ? error.message
+            : "Could not lock the mini player size.";
+      }
+    }
   }
+}
+
+function closeMiniPlayer(): void {
+  void getCurrentWindow().close();
 }
 
 function handleKeyboard(event: KeyboardEvent): void {
   if (
+    view !== "mini" ||
     event.target instanceof HTMLInputElement ||
     event.metaKey ||
     event.ctrlKey ||
@@ -98,118 +109,67 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <TooltipProvider :delay-duration="250">
-    <main class="app-shell" :data-queue-expanded="queueExpanded">
-      <section
-        v-if="!playback.snapshot.value"
-        class="loading-player"
-        aria-label="Loading player"
-      >
-        <div class="loading-artwork" />
-        <div class="loading-copy">
-          <span />
-          <span />
-          <span />
-        </div>
-      </section>
+  <main
+    class="relative min-h-screen w-full"
+    :data-view="view"
+    :data-queue-expanded="queueExpanded"
+  >
+    <section
+      v-if="!playback.snapshot.value"
+      class="grid min-h-screen content-center gap-3.5 bg-(--glass-window) p-12"
+      aria-label="Loading music window"
+    >
+      <span class="block h-3 w-[18%] rounded-full bg-(--surface-muted)" />
+      <span class="block h-3 w-[48%] rounded-full bg-(--surface-muted)" />
+      <span class="block h-3 w-[32%] rounded-full bg-(--surface-muted)" />
+    </section>
 
-      <section v-else class="player-frame">
-        <MiniPlayer
-          :snapshot="playback.snapshot.value"
-          :is-updating="playback.isUpdating.value"
-          @toggle="playback.toggle"
-          @previous="playback.previous"
-          @next="playback.next"
-          @seek="playback.seek"
-          @set-volume="playback.setVolume"
-        />
+    <LibraryWindow
+      v-else-if="view === 'library'"
+      :snapshot="playback.snapshot.value"
+      :is-updating="playback.isUpdating.value"
+      @toggle="playback.toggle"
+      @previous="playback.previous"
+      @next="playback.next"
+    />
 
-        <QueueDrawer
-          v-if="queueExpanded"
-          :queue="playback.snapshot.value.queue"
-          :current-item-id="playback.snapshot.value.currentItem?.id"
-          :is-updating="playback.isUpdating.value"
-          @move="playback.moveQueueItem"
-        />
+    <ArtworkWindow
+      v-else-if="view === 'artwork'"
+      :snapshot="playback.snapshot.value"
+      :is-updating="playback.isUpdating.value"
+      @toggle="playback.toggle"
+      @previous="playback.previous"
+      @next="playback.next"
+    />
 
-        <p class="player-status">{{ statusMessage }}</p>
+    <QueueWindow
+      v-else-if="view === 'queue'"
+      :queue="playback.snapshot.value.queue"
+      :current-item-id="playback.snapshot.value.currentItem?.id"
+    />
 
-        <nav class="window-actions" aria-label="Player options">
-          <div class="theme-menu">
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <Button
-                  aria-label="Choose theme"
-                  :aria-expanded="themeMenuOpen"
-                  size="icon-xs"
-                  variant="ghost"
-                  @click="themeMenuOpen = !themeMenuOpen"
-                >
-                  <Palette aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">Choose theme</TooltipContent>
-            </Tooltip>
-            <div
-              v-if="themeMenuOpen"
-              class="theme-menu-content"
-              role="menu"
-              aria-label="Appearance"
-            >
-              <p class="theme-menu-label">Appearance</p>
-              <Button
-                v-for="themeOption in themes"
-                :key="themeOption"
-                :aria-current="themeOption === theme ? 'true' : undefined"
-                class="theme-menu-item"
-                role="menuitemradio"
-                size="sm"
-                variant="ghost"
-                @click="selectTheme(themeOption)"
-              >
-                <span class="theme-swatch" :data-theme="themeOption" />
-                <span class="capitalize">{{ themeOption }}</span>
-                <span
-                  v-if="themeOption === theme"
-                  class="ml-auto text-[0.65rem]"
-                  >Current</span
-                >
-              </Button>
-            </div>
-          </div>
+    <MiniWindow
+      v-else
+      :snapshot="playback.snapshot.value"
+      :is-updating="playback.isUpdating.value"
+      :queue-expanded="queueExpanded"
+      :theme="theme"
+      @toggle="playback.toggle"
+      @previous="playback.previous"
+      @next="playback.next"
+      @seek="playback.seek"
+      @set-volume="playback.setVolume"
+      @move="playback.moveQueueItem"
+      @toggle-queue="toggleQueue"
+      @toggle-theme="cycleTheme"
+      @close="closeMiniPlayer"
+    />
 
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                :aria-label="queueExpanded ? 'Hide queue' : 'Show queue'"
-                size="icon-xs"
-                variant="ghost"
-                @click="toggleQueue"
-              >
-                <ChevronUp v-if="queueExpanded" aria-hidden="true" />
-                <ChevronDown v-else aria-hidden="true" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">{{
-              queueExpanded ? "Hide queue" : "Show queue"
-            }}</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                aria-label="Close player"
-                size="icon-xs"
-                variant="ghost"
-                @click="getCurrentWindow().close()"
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">Close player</TooltipContent>
-          </Tooltip>
-        </nav>
-      </section>
-    </main>
-  </TooltipProvider>
+    <p
+      v-if="view === 'mini'"
+      class="absolute right-11.5 bottom-0.5 m-0 max-w-43 overflow-hidden text-right text-[0.53rem] font-semibold tracking-[0.06em] text-ellipsis whitespace-nowrap text-(--subtle-text) uppercase"
+    >
+      {{ statusMessage }}
+    </p>
+  </main>
 </template>
