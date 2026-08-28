@@ -29,6 +29,17 @@ describe("desktop window capabilities", () => {
     );
   });
 
+  it("allows only draggable surfaces to start native window dragging", () => {
+    const draggingCapability = readCapability(
+      "src-tauri/capabilities/window-dragging.json",
+    );
+
+    expect(draggingCapability.windows).toEqual(["main", "mini-player"]);
+    expect(draggingCapability.permissions).toContain(
+      "core:window:allow-start-dragging",
+    );
+  });
+
   it("scopes the mutation permissions to the compact mini player", () => {
     expect(
       readCapability("src-tauri/capabilities/mini-player.json").windows,

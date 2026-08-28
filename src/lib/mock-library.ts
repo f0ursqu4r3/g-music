@@ -76,6 +76,14 @@ export const mockTracks: MockTrack[] = [
     duration: "3:36",
     cover: "coral",
   },
+  {
+    id: "low-tide",
+    title: "Low Tide",
+    artist: "Glass Harbor",
+    album: "Quiet Geometry",
+    duration: "3:42",
+    cover: "cyan",
+  },
 ];
 
 export const mockAlbums: MockAlbum[] = [

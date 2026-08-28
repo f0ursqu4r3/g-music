@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MediaItem } from "@/api";
 
-import QueueDrawer from "./QueueDrawer.vue";
+import QueueDrawer from "../QueueDrawer.vue";
 
 const queue: MediaItem[] = [
   {

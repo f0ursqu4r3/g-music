@@ -15,9 +15,9 @@
     "windows": [
       {
         "title": "G Music",
-        "width": 1040,
-        "height": 660,
-        "minWidth": 720,
+        "width": 1180,
+        "height": 640,
+        "minWidth": 780,
         "minHeight": 480,
         "resizable": true,
         "decorations": true,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readTheme } from "./theme";
+import { readTheme } from "../theme";
 
 describe("readTheme", () => {
   it("uses the saved supported theme", () => {

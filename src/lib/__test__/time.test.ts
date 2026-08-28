@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDuration } from "./time";
+import { formatDuration } from "../time";
 
 describe("formatDuration", () => {
   it("formats minutes and zero-padded seconds", () => {

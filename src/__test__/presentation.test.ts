@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { playerDimensions } from "./presentation";
+import { playerDimensions } from "../presentation";
 
 describe("playerDimensions", () => {
   it("allocates space for the queue when the mini player is expanded", () => {

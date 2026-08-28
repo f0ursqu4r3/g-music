@@ -109,7 +109,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main
+  <div
     class="relative min-h-screen w-full"
     :data-view="view"
     :data-queue-expanded="queueExpanded"
@@ -131,6 +131,7 @@ onUnmounted(() => {
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
+      @set-volume="playback.setVolume"
     />
 
     <ArtworkWindow
@@ -171,5 +172,5 @@ onUnmounted(() => {
     >
       {{ statusMessage }}
     </p>
-  </main>
+  </div>
 </template>

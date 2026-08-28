@@ -22,7 +22,7 @@ function mainWindow(): MainWindowConfiguration {
 }
 
 describe("main window chrome", () => {
-  it("uses a dark overlay title bar for a seamless application header", () => {
+  it("uses a dark overlay title bar for a seamless glass surface", () => {
     expect(mainWindow()).toMatchObject({
       hiddenTitle: true,
       theme: "Dark",

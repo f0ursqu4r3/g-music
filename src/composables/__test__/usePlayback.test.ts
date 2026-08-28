@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { PlaybackSnapshot } from "@/api";
 
-import { usePlayback } from "./usePlayback";
+import { usePlayback } from "../usePlayback";
 
 const paused: PlaybackSnapshot = {
   status: "paused",

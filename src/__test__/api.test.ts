@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { playbackApi, type PlaybackSnapshot } from "./api";
+import { playbackApi, type PlaybackSnapshot } from "../api";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),

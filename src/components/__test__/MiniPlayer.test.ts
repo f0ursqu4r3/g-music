@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PlaybackSnapshot } from "@/api";
 
-import MiniPlayer from "./MiniPlayer.vue";
+import MiniPlayer from "../MiniPlayer.vue";
 
 const snapshot: PlaybackSnapshot = {
   status: "paused",

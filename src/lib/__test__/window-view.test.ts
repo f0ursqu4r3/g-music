@@ -4,7 +4,7 @@ import {
   mockWindowViews,
   resolveMockWindowView,
   type MockWindowView,
-} from "./window-view";
+} from "../window-view";
 
 describe("mock window routes", () => {
   it("resolves each supported desktop surface", () => {
