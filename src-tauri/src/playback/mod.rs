@@ -1,15 +1,19 @@
 mod fake;
+mod youtube;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use fake::{FakePlaybackProvider, PlaybackError};
+pub use youtube::{YouTubePlaybackError, YouTubePlaybackProvider};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaItem {
     pub id: String,
     pub title: String,
     pub artist: String,
+    #[serde(default)]
+    pub album: Option<String>,
     pub duration_ms: u64,
 }
 

@@ -8,11 +8,18 @@ import {
 
 describe("mock window routes", () => {
   it("resolves each supported desktop surface", () => {
-    const expected: MockWindowView[] = ["library", "artwork", "queue", "mini"];
+    const expected: MockWindowView[] = [
+      "library",
+      "artwork",
+      "queue",
+      "mini",
+      "settings",
+    ];
 
     expect(mockWindowViews).toEqual(expected);
     expect(resolveMockWindowView("?view=artwork")).toBe("artwork");
     expect(resolveMockWindowView("?view=mini")).toBe("mini");
+    expect(resolveMockWindowView("?view=settings")).toBe("settings");
     expect(resolveMockWindowView("?view=albums")).toBe("library");
     expect(resolveMockWindowView("?view=artists")).toBe("library");
   });

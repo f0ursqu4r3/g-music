@@ -11,6 +11,7 @@ import ArtworkWindow from "@/components/ArtworkWindow.vue";
 import LibraryWindow from "@/components/LibraryWindow.vue";
 import MiniWindow from "@/components/MiniWindow.vue";
 import QueueWindow from "@/components/QueueWindow.vue";
+import SettingsWindow from "@/components/SettingsWindow.vue";
 import { usePlayback } from "@/composables/usePlayback";
 
 const playback = usePlayback();
@@ -20,10 +21,16 @@ const theme = ref<ThemeName>(
   readTheme(window.localStorage.getItem("gmusic-theme")),
 );
 const windowError = ref("");
+const isWindowFocused = ref(true);
+let isMounted = false;
+let unlistenWindowFocus: (() => void) | undefined;
+let playbackSyncInterval: number | undefined;
 
 const statusMessage = computed(
   () =>
-    windowError.value || playback.errorMessage.value || "Local fake provider",
+    windowError.value ||
+    playback.errorMessage.value ||
+    "Local YouTube via yt-dlp + mpv",
 );
 
 watch(
@@ -98,12 +105,46 @@ function handleKeyboard(event: KeyboardEvent): void {
   }
 }
 
+async function trackArtworkWindowFocus(): Promise<void> {
+  const currentWindow = getCurrentWindow();
+
+  try {
+    isWindowFocused.value = await currentWindow.isFocused();
+    const unlisten = await currentWindow.onFocusChanged(({ payload }) => {
+      isWindowFocused.value = payload;
+    });
+
+    if (isMounted) {
+      unlistenWindowFocus = unlisten;
+    } else {
+      unlisten();
+    }
+  } catch {
+    isWindowFocused.value = true;
+  }
+}
+
 onMounted(() => {
+  isMounted = true;
   window.addEventListener("keydown", handleKeyboard);
   void playback.refresh();
+  if (view !== "settings") {
+    playbackSyncInterval = window.setInterval(() => {
+      void playback.sync();
+    }, 500);
+  }
+
+  if (view === "artwork") {
+    void trackArtworkWindowFocus();
+  }
 });
 
 onUnmounted(() => {
+  isMounted = false;
+  unlistenWindowFocus?.();
+  if (playbackSyncInterval !== undefined) {
+    window.clearInterval(playbackSyncInterval);
+  }
   window.removeEventListener("keydown", handleKeyboard);
 });
 </script>
@@ -114,8 +155,10 @@ onUnmounted(() => {
     :data-view="view"
     :data-queue-expanded="queueExpanded"
   >
+    <SettingsWindow v-if="view === 'settings'" />
+
     <section
-      v-if="!playback.snapshot.value"
+      v-else-if="!playback.snapshot.value"
       class="grid min-h-screen content-center gap-3.5 bg-(--glass-window) p-12"
       aria-label="Loading music window"
     >
@@ -128,16 +171,20 @@ onUnmounted(() => {
       v-else-if="view === 'library'"
       :snapshot="playback.snapshot.value"
       :is-updating="playback.isUpdating.value"
+      :error-message="playback.errorMessage.value"
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
+      @play-track="playback.playTrack"
       @set-volume="playback.setVolume"
+      @import-youtube-url="playback.importYouTubeUrl"
     />
 
     <ArtworkWindow
       v-else-if="view === 'artwork'"
       :snapshot="playback.snapshot.value"
       :is-updating="playback.isUpdating.value"
+      :is-window-focused="isWindowFocused"
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"

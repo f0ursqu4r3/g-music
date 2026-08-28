@@ -1,23 +1,50 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { PlaybackSnapshot } from "@/api";
+import type { MediaItem, PlaybackSnapshot } from "@/api";
+import { Slider } from "@/components/ui/slider";
 import LibraryWindow from "../LibraryWindow.vue";
+
+const importedTracks: MediaItem[] = [
+  {
+    album: "API Sessions",
+    artist: "Google for Developers",
+    durationMs: 238_000,
+    id: "M7lc1UVf-VE",
+    title: "YouTube Developers Live",
+  },
+  {
+    album: "Creator Music",
+    artist: "YouTube Creators",
+    durationMs: 207_000,
+    id: "BaW_jenozKc",
+    title: "Creator Studio Session",
+  },
+];
 
 const snapshot: PlaybackSnapshot = {
   status: "paused",
-  currentItem: {
-    artist: "Chromatic Skies",
-    durationMs: 238_000,
-    id: "night-drive",
-    title: "Night Drive",
-  },
+  currentItem: importedTracks[0],
   positionMs: 0,
-  queue: [],
+  queue: importedTracks,
   volumePercent: 64,
 };
 
 describe("LibraryWindow", () => {
+  it("shows playback command errors in the library window", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        errorMessage: "the audio player failed",
+        isUpdating: false,
+        snapshot,
+      },
+    });
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      "the audio player failed",
+    );
+  });
+
   it("keeps tracks, albums, and artists in the library window", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -25,11 +52,13 @@ describe("LibraryWindow", () => {
 
     await wrapper.get('[data-collection="albums"]').trigger("click");
     expect(wrapper.get("h1").text()).toBe("Albums");
-    expect(wrapper.findAll(".album-tile")).not.toHaveLength(0);
+    expect(wrapper.findAll(".album-tile")).toHaveLength(2);
+    expect(wrapper.text()).toContain("API Sessions");
 
     await wrapper.get('[data-collection="artists"]').trigger("click");
     expect(wrapper.get("h1").text()).toBe("Artists");
-    expect(wrapper.findAll(".artist-tile")).not.toHaveLength(0);
+    expect(wrapper.findAll(".artist-tile")).toHaveLength(2);
+    expect(wrapper.text()).toContain("Google for Developers");
   });
 
   it("provides a native drag strip without a visible application header", () => {
@@ -73,10 +102,76 @@ describe("LibraryWindow", () => {
       wrapper.findAll('[aria-label="Library view options"] button'),
     ).toHaveLength(3);
     expect(wrapper.findAll("thead th")).toHaveLength(5);
-    expect(wrapper.findAll("tbody tr")).toHaveLength(8);
+    expect(wrapper.findAll("tbody tr")).toHaveLength(2);
     expect(wrapper.findAll(".track-row-artwork")).toHaveLength(0);
     expect(wrapper.get(".track-playing-indicator")).toBeDefined();
-    expect(wrapper.findAll('[aria-label^="Favorite "]')).toHaveLength(8);
+    expect(wrapper.findAll('[aria-label^="Favorite "]')).toHaveLength(2);
+    expect(wrapper.text()).toContain("YouTube Developers Live");
+    expect(wrapper.text()).toContain("Google for Developers");
+    expect(wrapper.text()).toContain("API Sessions");
+    expect(wrapper.text()).toContain("3:58");
+    expect(wrapper.text()).not.toContain("Night Drive over the City");
+  });
+
+  it("truncates track metadata within a fixed-layout table", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    expect(wrapper.get("table").classes()).toContain("table-fixed");
+    for (const selector of [".track-title", ".track-artist", ".track-album"]) {
+      const cellText = wrapper.get(selector);
+      expect(cellText.classes()).toContain("overflow-hidden");
+      expect(cellText.classes()).toContain("text-ellipsis");
+      expect(cellText.classes()).toContain("whitespace-nowrap");
+    }
+  });
+
+  it("provides keyboard-resizable track columns", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const titleColumn = wrapper.get('col[data-column="title"]');
+    const initialWidth = titleColumn.attributes("style");
+    const titleResizeHandle = wrapper.get(
+      '[role="separator"][aria-label="Resize Title column"]',
+    );
+    expect(wrapper.findAll('[role="separator"]')).toHaveLength(4);
+
+    await titleResizeHandle.trigger("keydown", { key: "ArrowRight" });
+
+    expect(titleColumn.attributes("style")).not.toBe(initialWidth);
+  });
+
+  it("resizes track columns by dragging a header boundary", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const table = wrapper.get("table");
+    vi.spyOn(table.element, "getBoundingClientRect").mockReturnValue({
+      width: 1_000,
+    } as DOMRect);
+    const titleColumn = wrapper.get('col[data-column="title"]');
+    const initialWidth = titleColumn.attributes("style");
+
+    await wrapper
+      .get('[aria-label="Resize Title column"]')
+      .trigger("mousedown", { button: 0, clientX: 300 });
+    window.dispatchEvent(new MouseEvent("mousemove", { clientX: 350 }));
+    window.dispatchEvent(new MouseEvent("mouseup"));
+    await wrapper.vm.$nextTick();
+
+    expect(titleColumn.attributes("style")).not.toBe(initialWidth);
+  });
+
+  it("selects a track for playback from its table row", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+
+    expect(wrapper.emitted("playTrack")).toEqual([["BaW_jenozKc"]]);
   });
 
   it("provides the complete reference-style playback strip", async () => {
@@ -94,9 +189,15 @@ describe("LibraryWindow", () => {
       expect(wrapper.get(`button[aria-label="${label}"]`)).toBeDefined();
     }
 
-    expect(wrapper.get('input[aria-label="Track progress"]')).toBeDefined();
-    const volume = wrapper.get('input[aria-label="Volume"]');
-    await volume.setValue("72");
+    expect(wrapper.findAll('input[type="range"]')).toHaveLength(0);
+    expect(
+      wrapper.get('[data-slot="slider"][aria-label="Track progress"]'),
+    ).toBeDefined();
+    const volume = wrapper
+      .findAllComponents(Slider)
+      .find((slider) => slider.attributes("aria-label") === "Volume");
+    expect(volume).toBeDefined();
+    volume!.vm.$emit("valueCommit", [72]);
     expect(wrapper.emitted("setVolume")).toEqual([[72]]);
   });
 
@@ -105,7 +206,9 @@ describe("LibraryWindow", () => {
       props: { isUpdating: false, snapshot },
     });
 
-    const favorite = wrapper.get('button[aria-label="Favorite The Current"]');
+    const favorite = wrapper.get(
+      'button[aria-label="Favorite Creator Studio Session"]',
+    );
     expect(favorite.attributes("aria-pressed")).toBe("false");
 
     await favorite.trigger("click");
@@ -122,5 +225,23 @@ describe("LibraryWindow", () => {
       "Playlists",
     );
     expect(wrapper.findAll('nav[aria-label="Playlists"] a')).toHaveLength(5);
+  });
+
+  it("submits a pasted YouTube video or playlist URL for import", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const input = wrapper.get('input[aria-label="YouTube URL"]');
+
+    await input.setValue("https://youtube.com/playlist?list=PL-example");
+    await wrapper
+      .get('form[aria-label="Import from YouTube"]')
+      .trigger("submit");
+
+    expect(wrapper.emitted("importYoutubeUrl")).toEqual([
+      ["https://youtube.com/playlist?list=PL-example"],
+    ]);
+    expect(input.attributes("placeholder")).toBe("Paste video or playlist URL");
+    expect((input.element as HTMLInputElement).value).toBe("");
   });
 });

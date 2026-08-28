@@ -31,14 +31,19 @@ PlaybackProvider
   |---- Fake provider for development and tests
 ```
 
-Do not treat YouTube stream extraction as a dependency. Do not use undocumented
-endpoints, cookie scraping, `yt-dlp`, or DRM bypasses.
+The current local-only provider uses `yt-dlp` to resolve YouTube track metadata
+and temporary media URLs, then uses headless `mpv` for audio playback. Optional
+session cookies stay local to the application. It does not save media files,
+collect credentials, or bypass DRM.
 
-## Initial implementation assumption
+## Current implementation
 
-The first vertical slice uses a deterministic fake provider. It has no account
-flow, network traffic, or audio output. This validates the shell, queue, and
-typed command boundary before a permitted real provider is selected.
+The app keeps the deterministic fake provider for domain tests. Runtime playback
+accepts YouTube video or playlist URLs, imports title, artist, album, duration,
+video ID, and source URL data, and streams audio through `mpv` over its local
+JSON IPC socket. The imported tracks populate the application queue and library
+views. Imported metadata persists in the application data directory and is
+restored at launch.
 
 ## MVP
 
@@ -55,11 +60,8 @@ or multiple windows.
 
 ## Open decisions
 
-Before implementing a real provider, select one permitted playback mode:
-
-- Official embedded or web playback.
-- Native playback backed by a permitted audio source.
-- A different music service with a documented playback API.
+- Decide whether to bundle playback sidecars or keep Homebrew prerequisites.
+- Decide whether to add a different service with a documented playback API.
 
 Authentication must remain in the provider's official web flow or use an
 approved OAuth flow. The application must not collect or inspect passwords.

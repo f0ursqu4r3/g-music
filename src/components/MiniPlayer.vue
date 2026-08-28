@@ -4,7 +4,9 @@ import { computed } from "vue";
 
 import type { PlaybackSnapshot } from "@/api";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { formatDuration } from "@/lib/time";
+import YouTubeArtwork from "./YouTubeArtwork.vue";
 
 interface Props {
   snapshot: PlaybackSnapshot;
@@ -34,22 +36,16 @@ const remainingMs = computed(() =>
   Math.max(durationMs.value - props.snapshot.positionMs, 0),
 );
 
-function inputValue(event: Event): number | null {
-  const value = Number((event.target as HTMLInputElement).value);
-
-  return Number.isFinite(value) ? value : null;
-}
-
-function emitSeek(event: Event): void {
-  const value = inputValue(event);
-  if (value !== null) {
+function emitSeek(values: number[]): void {
+  const value = values[0];
+  if (Number.isFinite(value)) {
     emit("seek", value);
   }
 }
 
-function emitVolume(event: Event): void {
-  const value = inputValue(event);
-  if (value !== null) {
+function emitVolume(values: number[]): void {
+  const value = values[0];
+  if (Number.isFinite(value)) {
     emit("setVolume", value);
   }
 }
@@ -73,6 +69,10 @@ function emitVolume(event: Event): void {
       class="album-art relative grid place-items-center overflow-hidden"
       aria-hidden="true"
     >
+      <YouTubeArtwork
+        class="absolute inset-0 size-full object-cover"
+        :video-id="currentItem?.id"
+      />
       <span
         class="absolute top-6.75 left-5.25 aspect-square w-24 rounded-full border-17 border-[oklch(0.98_0.01_90/0.17)]"
       />
@@ -160,14 +160,14 @@ function emitVolume(event: Event): void {
         >
           <Volume2 class="size-3.5" aria-hidden="true" />
           <span class="sr-only">Volume</span>
-          <input
+          <Slider
             aria-label="Volume"
-            type="range"
-            min="0"
-            max="100"
-            :value="snapshot.volumePercent"
+            :min="0"
+            :max="100"
+            :step="1"
+            :model-value="[snapshot.volumePercent]"
             :disabled="isUpdating"
-            @change="emitVolume"
+            @value-commit="emitVolume"
           />
           <span
             class="text-right text-[0.6rem] text-(--subtle-text) tabular-nums max-[390px]:hidden"
@@ -181,14 +181,14 @@ function emitVolume(event: Event): void {
         class="grid grid-cols-[30px_minmax(0,1fr)_34px] items-center gap-2 text-[0.62rem] text-(--subtle-text) tabular-nums [&>span:last-child]:text-right"
       >
         <span>{{ formatDuration(snapshot.positionMs) }}</span>
-        <input
+        <Slider
           aria-label="Track progress"
-          type="range"
-          min="0"
+          :min="0"
           :max="durationMs"
-          :value="snapshot.positionMs"
+          :step="1000"
+          :model-value="[snapshot.positionMs]"
           :disabled="isUpdating || durationMs === 0"
-          @change="emitSeek"
+          @value-commit="emitSeek"
         />
         <span>-{{ formatDuration(remainingMs) }}</span>
       </div>

@@ -4,6 +4,7 @@ export interface MediaItem {
   id: string;
   title: string;
   artist: string;
+  album?: string | null;
   durationMs: number;
 }
 
@@ -22,11 +23,19 @@ export interface CommandError {
   message: string;
 }
 
+export interface YouTubeAuthStatus {
+  connected: boolean;
+}
+
 export const playbackApi = {
   inspect: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("inspect_playback"),
+  importYouTubeUrl: (url: string): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("import_youtube_url", { url }),
   play: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("play"),
   pause: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("pause"),
+  playTrack: (id: string): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("play_track", { id }),
   previous: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("previous"),
   next: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("next"),
@@ -36,4 +45,15 @@ export const playbackApi = {
     invoke<PlaybackSnapshot>("set_volume", { volumePercent }),
   moveQueueItem: (from: number, to: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("move_queue_item", { from, to }),
+};
+
+export const youtubeAuthApi = {
+  inspect: (): Promise<YouTubeAuthStatus> =>
+    invoke<YouTubeAuthStatus>("inspect_youtube_auth"),
+  openLogin: (): Promise<YouTubeAuthStatus> =>
+    invoke<YouTubeAuthStatus>("open_youtube_login"),
+  saveSession: (): Promise<YouTubeAuthStatus> =>
+    invoke<YouTubeAuthStatus>("save_youtube_session"),
+  disconnect: (): Promise<YouTubeAuthStatus> =>
+    invoke<YouTubeAuthStatus>("disconnect_youtube"),
 };

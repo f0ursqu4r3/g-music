@@ -14,7 +14,13 @@ describe("desktop window capabilities", () => {
   it("grants shared playback commands to every native window", () => {
     expect(
       readCapability("src-tauri/capabilities/default.json").windows,
-    ).toEqual(["main", "artwork", "queue", "mini-player"]);
+    ).toEqual(["main", "artwork", "queue", "mini-player", "settings"]);
+  });
+
+  it("does not grant application capabilities to the remote login window", () => {
+    expect(
+      readCapability("src-tauri/capabilities/default.json").windows,
+    ).not.toContain("youtube-auth");
   });
 
   it("allows the player to resize its native window", () => {
@@ -34,7 +40,11 @@ describe("desktop window capabilities", () => {
       "src-tauri/capabilities/window-dragging.json",
     );
 
-    expect(draggingCapability.windows).toEqual(["main", "mini-player"]);
+    expect(draggingCapability.windows).toEqual([
+      "main",
+      "artwork",
+      "mini-player",
+    ]);
     expect(draggingCapability.permissions).toContain(
       "core:window:allow-start-dragging",
     );

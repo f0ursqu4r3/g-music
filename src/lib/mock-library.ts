@@ -1,3 +1,6 @@
+import trackCatalog from "./mock-tracks.json";
+import { formatDuration } from "./time";
+
 export interface MockTrack {
   id: string;
   title: string;
@@ -19,72 +22,12 @@ export interface MockArtist {
   cover: string;
 }
 
-export const mockTracks: MockTrack[] = [
-  {
-    id: "night-drive",
-    title: "Night Drive",
-    artist: "Chromatic Skies",
-    album: "Afterimage",
-    duration: "3:58",
-    cover: "violet",
-  },
-  {
-    id: "the-current",
-    title: "The Current",
-    artist: "Distant Signals",
-    album: "Drift Pattern",
-    duration: "3:27",
-    cover: "cyan",
-  },
-  {
-    id: "soft-focus",
-    title: "Soft Focus",
-    artist: "Northbound",
-    album: "Slow Motion",
-    duration: "3:11",
-    cover: "amber",
-  },
-  {
-    id: "first-light",
-    title: "First Light",
-    artist: "Hollow Coast",
-    album: "Weather System",
-    duration: "4:06",
-    cover: "rose",
-  },
-  {
-    id: "granite",
-    title: "Granite",
-    artist: "Low Season",
-    album: "Thin Air",
-    duration: "3:44",
-    cover: "lime",
-  },
-  {
-    id: "holding-pattern",
-    title: "Holding Pattern",
-    artist: "Open Circuit",
-    album: "Signal Field",
-    duration: "4:18",
-    cover: "cobalt",
-  },
-  {
-    id: "blue-hour",
-    title: "Blue Hour",
-    artist: "Ember Lane",
-    album: "Stillness",
-    duration: "3:36",
-    cover: "coral",
-  },
-  {
-    id: "low-tide",
-    title: "Low Tide",
-    artist: "Glass Harbor",
-    album: "Quiet Geometry",
-    duration: "3:42",
-    cover: "cyan",
-  },
-];
+export const mockTracks: MockTrack[] = trackCatalog.map(
+  ({ durationMs, ...track }) => ({
+    ...track,
+    duration: formatDuration(durationMs),
+  }),
+);
 
 export const mockAlbums: MockAlbum[] = [
   { title: "Afterimage", artist: "Chromatic Skies", cover: "violet" },

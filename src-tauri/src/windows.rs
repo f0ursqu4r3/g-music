@@ -9,6 +9,7 @@ pub enum WindowSurface {
     Artwork,
     Queue,
     Mini,
+    Settings,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +23,8 @@ struct WindowSpec {
     decorations: bool,
     transparent: bool,
     resizable: bool,
+    overlay_titlebar: bool,
+    hidden_title: bool,
 }
 
 const SURFACES: &[WindowSpec] = &[
@@ -35,17 +38,21 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        overlay_titlebar: true,
+        hidden_title: true,
     },
     WindowSpec {
         kind: WindowSurface::Artwork,
         label: "artwork",
         title: "Artwork",
         route: "?view=artwork",
-        width: 480.0,
-        height: 650.0,
+        width: 320.0,
+        height: 320.0,
         decorations: true,
         transparent: true,
         resizable: true,
+        overlay_titlebar: true,
+        hidden_title: true,
     },
     WindowSpec {
         kind: WindowSurface::Queue,
@@ -57,6 +64,8 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        overlay_titlebar: false,
+        hidden_title: false,
     },
     WindowSpec {
         kind: WindowSurface::Mini,
@@ -68,6 +77,21 @@ const SURFACES: &[WindowSpec] = &[
         decorations: false,
         transparent: true,
         resizable: false,
+        overlay_titlebar: false,
+        hidden_title: false,
+    },
+    WindowSpec {
+        kind: WindowSurface::Settings,
+        label: "settings",
+        title: "Settings",
+        route: "?view=settings",
+        width: 720.0,
+        height: 480.0,
+        decorations: true,
+        transparent: true,
+        resizable: true,
+        overlay_titlebar: false,
+        hidden_title: false,
     },
 ];
 
@@ -81,6 +105,8 @@ fn all_surfaces() -> &'static [WindowSpec] {
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let application = SubmenuBuilder::new(app, MENU_TITLES[0])
         .about(None)
+        .separator()
+        .text("window.settings", "Settings…")
         .separator()
         .services()
         .separator()
@@ -135,11 +161,12 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
         "window.artwork" => show_surface(app, WindowSurface::Artwork),
         "window.queue" => show_surface(app, WindowSurface::Queue),
         "window.mini" => show_surface(app, WindowSurface::Mini),
+        "window.settings" => show_surface(app, WindowSurface::Settings),
         _ => return,
     };
 
     if let Err(error) = result {
-        eprintln!("failed to handle native menu item {item_id}: {error}");
+        tracing::error!(item_id, %error, "failed to handle native menu item");
     }
 }
 
@@ -155,10 +182,7 @@ pub fn apply_native_glass<R: Runtime>(window: &WebviewWindow<R>) {
             Some(NSVisualEffectState::FollowsWindowActiveState),
             radius,
         ) {
-            eprintln!(
-                "failed to apply native vibrancy to window {}: {error}",
-                window.label()
-            );
+            tracing::error!(window = window.label(), %error, "failed to apply native vibrancy");
         }
     }
 }
@@ -175,7 +199,7 @@ fn show_surface<R: Runtime>(app: &AppHandle<R>, surface: WindowSurface) -> tauri
         return Ok(());
     }
 
-    let window = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         spec.label,
         WebviewUrl::App(format!("index.html{}", spec.route).into()),
@@ -185,17 +209,64 @@ fn show_surface<R: Runtime>(app: &AppHandle<R>, surface: WindowSurface) -> tauri
     .min_inner_size(spec.width.min(520.0), spec.height.min(360.0))
     .decorations(spec.decorations)
     .transparent(spec.transparent)
-    .resizable(spec.resizable)
-    .build()?;
+    .resizable(spec.resizable);
+
+    #[cfg(target_os = "macos")]
+    let builder = if spec.overlay_titlebar {
+        builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(spec.hidden_title)
+    } else {
+        builder
+    };
+
+    let window = builder.build()?;
 
     apply_native_glass(&window);
 
     Ok(())
 }
 
+pub fn show_youtube_login<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("youtube-auth") {
+        window.show()?;
+        window.unminimize()?;
+        window.set_focus()?;
+        return Ok(());
+    }
+
+    let login_url = url::Url::parse(
+        "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F",
+    )
+    .map_err(tauri::Error::InvalidUrl)?;
+    WebviewWindowBuilder::new(app, "youtube-auth", WebviewUrl::External(login_url))
+        .title("Sign in to YouTube")
+        .inner_size(960.0, 720.0)
+        .min_inner_size(640.0, 520.0)
+        .resizable(true)
+        .incognito(true)
+        .on_navigation(is_youtube_auth_navigation)
+        .build()?;
+
+    Ok(())
+}
+
+fn is_youtube_auth_navigation(url: &url::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+
+    url.host_str().is_some_and(|host| {
+        ["google.com", "youtube.com"]
+            .iter()
+            .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{MENU_TITLES, WindowSurface, all_surfaces};
+    use super::{MENU_TITLES, WindowSurface, all_surfaces, is_youtube_auth_navigation};
+    use url::Url;
 
     #[test]
     fn native_menu_uses_standard_macos_sections() {
@@ -209,7 +280,7 @@ mod tests {
     fn desktop_surfaces_use_distinct_window_labels_and_routes() {
         let surfaces = all_surfaces();
 
-        assert_eq!(surfaces.len(), 4);
+        assert_eq!(surfaces.len(), 5);
         assert!(
             surfaces
                 .iter()
@@ -225,8 +296,43 @@ mod tests {
                 .iter()
                 .any(|surface| surface.label == "mini-player")
         );
+        assert!(
+            surfaces
+                .iter()
+                .any(|surface| surface.route == "?view=settings")
+        );
         assert!(surfaces.iter().all(|surface| surface.label != "albums"));
         assert!(surfaces.iter().all(|surface| surface.label != "artists"));
         assert!(surfaces.iter().all(|surface| surface.transparent));
+    }
+
+    #[test]
+    fn artwork_uses_a_hidden_overlay_titlebar() {
+        let artwork = all_surfaces()
+            .iter()
+            .find(|surface| surface.kind == WindowSurface::Artwork)
+            .expect("artwork surface");
+
+        assert!(artwork.overlay_titlebar);
+        assert!(artwork.hidden_title);
+        assert!(artwork.decorations);
+    }
+
+    #[test]
+    fn youtube_login_navigation_stays_on_google_and_youtube() {
+        for url in [
+            "https://accounts.google.com/ServiceLogin",
+            "https://myaccount.google.com/",
+            "https://www.youtube.com/",
+            "https://music.youtube.com/",
+        ] {
+            assert!(is_youtube_auth_navigation(&Url::parse(url).unwrap()));
+        }
+        assert!(!is_youtube_auth_navigation(
+            &Url::parse("https://example.com/").unwrap()
+        ));
+        assert!(!is_youtube_auth_navigation(
+            &Url::parse("http://accounts.google.com/").unwrap()
+        ));
     }
 }

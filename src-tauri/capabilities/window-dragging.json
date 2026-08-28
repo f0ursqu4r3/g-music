@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "window-dragging",
   "description": "Native dragging capability for draggable G Music surfaces",
-  "windows": ["main", "mini-player"],
+  "windows": ["main", "artwork", "mini-player"],
   "permissions": ["core:window:allow-start-dragging"]
 }

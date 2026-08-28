@@ -5,10 +5,10 @@ G Music is a focused desktop music-player shell built with Tauri 2, Rust, Vue
 
 ## Current mode
 
-The first slice uses a deterministic local fake playback provider. It has no
-account flow, network traffic, audio output, cookies, or extracted media URLs.
-This keeps the UI and command contracts testable while a permitted real provider
-is selected.
+G Music imports YouTube video and playlist URLs, resolves track metadata with
+local `yt-dlp`, and streams audio through `mpv`. Optional sign-in stores a
+restricted local YouTube session for URLs that require account access. It does
+not save media files or collect Google credentials.
 
 ## Features
 
@@ -22,10 +22,30 @@ is selected.
 
 ## Development
 
+Install the local playback tools:
+
+```sh
+brew install mpv
+```
+
+The Homebrew `mpv` formula installs `yt-dlp` as a dependency. Then run the app:
+
 ```sh
 bun install
 bun run tauri dev
 ```
+
+Rust logs are written to the terminal running Tauri. Development builds use
+`DEBUG` by default. Set `RUST_LOG` to change the level:
+
+```sh
+RUST_LOG=gmusic_lib=info bun run tauri dev
+RUST_LOG=gmusic_lib=trace bun run tauri dev
+```
+
+Logs include Tauri commands, YouTube metadata resolution, queue persistence,
+`mpv` process startup, and IPC command names. They do not include cookie values,
+cookie paths, raw stream URLs, or IPC payload bodies.
 
 ## Verification
 
@@ -42,6 +62,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Product boundary
 
-G Music does not extract YouTube stream URLs or use undocumented endpoints,
-cookie scraping, browser-token theft, DRM bypasses, or `yt-dlp`. Any real
-provider must use a permitted, documented playback and authentication flow.
+The YouTube provider is a local-only experiment. It uses `yt-dlp` to resolve
+track metadata and temporary media URLs, then uses `mpv` for audio playback.
+Imported videos and playlist entries populate the library and queue. Track
+metadata persists in the application data directory between launches.
+It does not download or keep media files, collect credentials, or bypass DRM.
+Optional session cookies stay in the application data directory. This
+integration depends on YouTube's current site behavior and can break without
+notice.

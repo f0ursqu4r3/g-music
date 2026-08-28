@@ -4,10 +4,28 @@ import { playbackApi, type PlaybackSnapshot } from "@/api";
 
 export type PlaybackClient = typeof playbackApi;
 
+function readErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
+  return "The playback command failed.";
+}
+
 export function usePlayback(client: PlaybackClient = playbackApi) {
   const snapshot = ref<PlaybackSnapshot | null>(null);
   const errorMessage = ref("");
   const isUpdating = ref(false);
+  let isSyncing = false;
 
   async function execute(
     action: () => Promise<PlaybackSnapshot>,
@@ -22,8 +40,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     try {
       snapshot.value = await action();
     } catch (error) {
-      errorMessage.value =
-        error instanceof Error ? error.message : "The playback command failed.";
+      errorMessage.value = readErrorMessage(error);
     } finally {
       isUpdating.value = false;
     }
@@ -31,6 +48,25 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   async function refresh(): Promise<void> {
     await execute(client.inspect);
+  }
+
+  async function sync(): Promise<void> {
+    if (isSyncing || isUpdating.value) {
+      return;
+    }
+
+    isSyncing = true;
+    try {
+      snapshot.value = await client.inspect();
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  async function importYouTubeUrl(url: string): Promise<void> {
+    await execute(() => client.importYouTubeUrl(url));
   }
 
   async function toggle(): Promise<void> {
@@ -45,6 +81,10 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   async function next(): Promise<void> {
     await execute(client.next);
+  }
+
+  async function playTrack(id: string): Promise<void> {
+    await execute(() => client.playTrack(id));
   }
 
   async function seek(positionMs: number): Promise<void> {
@@ -62,13 +102,16 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   return {
     errorMessage,
     isUpdating,
+    importYouTubeUrl,
     moveQueueItem,
     next,
+    playTrack,
     previous,
     refresh,
     seek,
     setVolume,
     snapshot,
+    sync,
     toggle,
   };
 }

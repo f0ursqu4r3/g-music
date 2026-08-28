@@ -16,26 +16,10 @@ pub struct FakePlaybackProvider {
 
 impl FakePlaybackProvider {
     pub fn new() -> Self {
-        let queue = vec![
-            MediaItem {
-                id: "night-drive".into(),
-                title: "Night Drive".into(),
-                artist: "Chromatic Skies".into(),
-                duration_ms: 238_000,
-            },
-            MediaItem {
-                id: "the-current".into(),
-                title: "The Current".into(),
-                artist: "Distant Signals".into(),
-                duration_ms: 207_000,
-            },
-            MediaItem {
-                id: "soft-focus".into(),
-                title: "Soft Focus".into(),
-                artist: "Northbound".into(),
-                duration_ms: 191_000,
-            },
-        ];
+        let mut queue: Vec<MediaItem> =
+            serde_json::from_str(include_str!("../../../src/lib/mock-tracks.json"))
+                .expect("the shared track fixture is valid JSON");
+        queue.truncate(3);
         let current_item = queue.first().cloned();
 
         Self {
@@ -237,5 +221,25 @@ mod tests {
         provider.set_volume(45).expect("45 is an allowed volume");
 
         assert_eq!(provider.snapshot().volume_percent, 45);
+    }
+
+    #[test]
+    fn playback_metadata_matches_the_shared_library_catalog() {
+        let catalog: serde_json::Value =
+            serde_json::from_str(include_str!("../../../src/lib/mock-tracks.json"))
+                .expect("the shared track fixture is valid JSON");
+        let expected = &catalog[0];
+        let snapshot = FakePlaybackProvider::new().snapshot();
+        let current_item = snapshot
+            .current_item
+            .expect("the shared fixture provides a current track");
+
+        assert_eq!(current_item.id, expected["id"].as_str().unwrap());
+        assert_eq!(current_item.title, expected["title"].as_str().unwrap());
+        assert_eq!(current_item.artist, expected["artist"].as_str().unwrap());
+        assert_eq!(
+            current_item.duration_ms,
+            expected["durationMs"].as_u64().unwrap()
+        );
     }
 }

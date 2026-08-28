@@ -32,3 +32,12 @@ describe("main window chrome", () => {
     });
   });
 });
+
+describe("YouTube login window", () => {
+  it("uses a non-persistent WebView data store", () => {
+    const windowsSource = readFileSync("src-tauri/src/windows.rs", "utf8");
+
+    expect(windowsSource).toContain(".incognito(true)");
+    expect(windowsSource).not.toContain("data_store_identifier");
+  });
+});

@@ -1,4 +1,10 @@
-export const mockWindowViews = ["library", "artwork", "queue", "mini"] as const;
+export const mockWindowViews = [
+  "library",
+  "artwork",
+  "queue",
+  "mini",
+  "settings",
+] as const;
 
 export type MockWindowView = (typeof mockWindowViews)[number];
 

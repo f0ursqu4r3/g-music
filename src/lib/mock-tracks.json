@@ -1,0 +1,66 @@
+[
+  {
+    "id": "night-drive",
+    "title": "Night Drive over the City and Through the Fog",
+    "artist": "Chromatic Skies under the Moonlight",
+    "album": "Afterimage",
+    "durationMs": 238000,
+    "cover": "violet"
+  },
+  {
+    "id": "the-current",
+    "title": "The Current",
+    "artist": "Distant Signals",
+    "album": "Drift Pattern",
+    "durationMs": 207000,
+    "cover": "cyan"
+  },
+  {
+    "id": "soft-focus",
+    "title": "Soft Focus",
+    "artist": "Northbound",
+    "album": "Slow Motion",
+    "durationMs": 191000,
+    "cover": "amber"
+  },
+  {
+    "id": "first-light",
+    "title": "First Light",
+    "artist": "Hollow Coast",
+    "album": "Weather System",
+    "durationMs": 246000,
+    "cover": "rose"
+  },
+  {
+    "id": "granite",
+    "title": "Granite",
+    "artist": "Low Season",
+    "album": "Thin Air",
+    "durationMs": 224000,
+    "cover": "lime"
+  },
+  {
+    "id": "holding-pattern",
+    "title": "Holding Pattern",
+    "artist": "Open Circuit",
+    "album": "Signal Field",
+    "durationMs": 258000,
+    "cover": "cobalt"
+  },
+  {
+    "id": "blue-hour",
+    "title": "Blue Hour",
+    "artist": "Ember Lane",
+    "album": "Stillness",
+    "durationMs": 216000,
+    "cover": "coral"
+  },
+  {
+    "id": "low-tide",
+    "title": "Low Tide",
+    "artist": "Glass Harbor",
+    "album": "Quiet Geometry",
+    "durationMs": 222000,
+    "cover": "cyan"
+  }
+]
