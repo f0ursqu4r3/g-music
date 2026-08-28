@@ -41,3 +41,14 @@ describe("YouTube login window", () => {
     expect(windowsSource).not.toContain("data_store_identifier");
   });
 });
+
+describe("Import Music window", () => {
+  it("is available from the native File menu", () => {
+    const windowsSource = readFileSync("src-tauri/src/windows.rs", "utf8");
+
+    expect(windowsSource).toContain('.text("window.import", "Import Music…")');
+    expect(windowsSource).toContain(
+      '"window.import" => show_surface(app, WindowSurface::Import)',
+    );
+  });
+});

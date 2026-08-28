@@ -10,6 +10,7 @@ pub enum WindowSurface {
     Queue,
     Mini,
     Settings,
+    Import,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -93,6 +94,19 @@ const SURFACES: &[WindowSpec] = &[
         overlay_titlebar: false,
         hidden_title: false,
     },
+    WindowSpec {
+        kind: WindowSurface::Import,
+        label: "import",
+        title: "Import Music",
+        route: "?view=import",
+        width: 680.0,
+        height: 620.0,
+        decorations: true,
+        transparent: true,
+        resizable: true,
+        overlay_titlebar: false,
+        hidden_title: false,
+    },
 ];
 
 const MENU_TITLES: [&str; 6] = ["G Music", "File", "Edit", "View", "Window", "Help"];
@@ -117,6 +131,8 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .quit()
         .build()?;
     let file = SubmenuBuilder::new(app, MENU_TITLES[1])
+        .text("window.import", "Import Music…")
+        .separator()
         .close_window()
         .build()?;
     let edit = SubmenuBuilder::new(app, MENU_TITLES[2])
@@ -162,6 +178,7 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
         "window.queue" => show_surface(app, WindowSurface::Queue),
         "window.mini" => show_surface(app, WindowSurface::Mini),
         "window.settings" => show_surface(app, WindowSurface::Settings),
+        "window.import" => show_surface(app, WindowSurface::Import),
         _ => return,
     };
 
@@ -227,6 +244,10 @@ fn show_surface<R: Runtime>(app: &AppHandle<R>, surface: WindowSurface) -> tauri
     Ok(())
 }
 
+pub fn show_import<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    show_surface(app, WindowSurface::Import)
+}
+
 pub fn show_youtube_login<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("youtube-auth") {
         window.show()?;
@@ -280,7 +301,7 @@ mod tests {
     fn desktop_surfaces_use_distinct_window_labels_and_routes() {
         let surfaces = all_surfaces();
 
-        assert_eq!(surfaces.len(), 5);
+        assert_eq!(surfaces.len(), 6);
         assert!(
             surfaces
                 .iter()
@@ -301,6 +322,11 @@ mod tests {
                 .iter()
                 .any(|surface| surface.route == "?view=settings")
         );
+        assert!(surfaces.iter().any(|surface| {
+            surface.kind == WindowSurface::Import
+                && surface.label == "import"
+                && surface.route == "?view=import"
+        }));
         assert!(surfaces.iter().all(|surface| surface.label != "albums"));
         assert!(surfaces.iter().all(|surface| surface.label != "artists"));
         assert!(surfaces.iter().all(|surface| surface.transparent));

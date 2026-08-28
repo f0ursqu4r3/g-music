@@ -26,7 +26,7 @@ describe("usePlayback", () => {
       setVolume: vi.fn(),
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
-      importYouTubeUrl: vi.fn().mockResolvedValue(playing),
+      importYouTubeUrls: vi.fn().mockResolvedValue(playing),
     };
     const playback = usePlayback(client);
 
@@ -50,7 +50,7 @@ describe("usePlayback", () => {
       setVolume: vi.fn(),
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
-      importYouTubeUrl: vi.fn(),
+      importYouTubeUrls: vi.fn(),
     };
     const playback = usePlayback(client);
 
@@ -61,7 +61,7 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value?.positionMs).toBe(2_000);
   });
 
-  it("imports a pasted YouTube video or playlist URL", async () => {
+  it("imports many YouTube source URLs", async () => {
     const client = {
       inspect: vi.fn(),
       play: vi.fn(),
@@ -72,17 +72,17 @@ describe("usePlayback", () => {
       setVolume: vi.fn(),
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
-      importYouTubeUrl: vi.fn().mockResolvedValue(playing),
+      importYouTubeUrls: vi.fn().mockResolvedValue(playing),
     };
     const playback = usePlayback(client);
-
-    await playback.importYouTubeUrl(
+    const urls = [
       "https://www.youtube.com/playlist?list=PL-example",
-    );
+      "https://www.youtube.com/@artist/videos",
+    ];
 
-    expect(client.importYouTubeUrl).toHaveBeenCalledWith(
-      "https://www.youtube.com/playlist?list=PL-example",
-    );
+    await playback.importYouTubeUrls(urls);
+
+    expect(client.importYouTubeUrls).toHaveBeenCalledWith(urls);
     expect(playback.snapshot.value).toEqual(playing);
   });
 
@@ -106,7 +106,7 @@ describe("usePlayback", () => {
       setVolume: vi.fn(),
       moveQueueItem: vi.fn(),
       playTrack: vi.fn().mockResolvedValue(selected),
-      importYouTubeUrl: vi.fn(),
+      importYouTubeUrls: vi.fn(),
     };
     const playback = usePlayback(client);
 
@@ -127,14 +127,14 @@ describe("usePlayback", () => {
       setVolume: vi.fn(),
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
-      importYouTubeUrl: vi.fn().mockRejectedValue({
+      importYouTubeUrls: vi.fn().mockRejectedValue({
         code: "youtube_metadata_failed",
         message: "could not resolve YouTube metadata",
       }),
     };
     const playback = usePlayback(client);
 
-    await playback.importYouTubeUrl("https://youtu.be/wEsuJoBKAvA");
+    await playback.importYouTubeUrls(["https://youtu.be/wEsuJoBKAvA"]);
 
     expect(playback.errorMessage.value).toBe(
       "could not resolve YouTube metadata",

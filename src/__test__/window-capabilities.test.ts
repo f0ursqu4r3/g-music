@@ -14,7 +14,14 @@ describe("desktop window capabilities", () => {
   it("grants shared playback commands to every native window", () => {
     expect(
       readCapability("src-tauri/capabilities/default.json").windows,
-    ).toEqual(["main", "artwork", "queue", "mini-player", "settings"]);
+    ).toEqual([
+      "main",
+      "artwork",
+      "queue",
+      "mini-player",
+      "settings",
+      "import",
+    ]);
   });
 
   it("does not grant application capabilities to the remote login window", () => {

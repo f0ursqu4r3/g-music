@@ -4,6 +4,7 @@ export const mockWindowViews = [
   "queue",
   "mini",
   "settings",
+  "import",
 ] as const;
 
 export type MockWindowView = (typeof mockWindowViews)[number];

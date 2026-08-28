@@ -1,7 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { playbackApi, type PlaybackSnapshot, youtubeAuthApi } from "../api";
+import {
+  playbackApi,
+  type PlaybackSnapshot,
+  windowApi,
+  youtubeAuthApi,
+} from "../api";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -28,18 +33,18 @@ describe("playbackApi", () => {
     expect(invoke).toHaveBeenCalledWith("inspect_playback");
   });
 
-  it("imports a YouTube video or playlist through the playback service", async () => {
+  it("imports many YouTube sources through the playback service", async () => {
     vi.mocked(invoke).mockResolvedValue(snapshot);
+    const urls = [
+      "https://www.youtube.com/playlist?list=PL-example",
+      "https://www.youtube.com/@artist/videos",
+    ];
 
-    await expect(
-      playbackApi.importYouTubeUrl(
-        "https://www.youtube.com/playlist?list=PL-example",
-      ),
-    ).resolves.toEqual(snapshot);
+    await expect(playbackApi.importYouTubeUrls(urls)).resolves.toEqual(
+      snapshot,
+    );
 
-    expect(invoke).toHaveBeenCalledWith("import_youtube_url", {
-      url: "https://www.youtube.com/playlist?list=PL-example",
-    });
+    expect(invoke).toHaveBeenCalledWith("import_youtube_urls", { urls });
   });
 
   it("plays a selected library track through the playback service", async () => {
@@ -74,5 +79,15 @@ describe("youtubeAuthApi", () => {
       ["save_youtube_session"],
       ["disconnect_youtube"],
     ]);
+  });
+});
+
+describe("windowApi", () => {
+  it("opens the dedicated Import Music window", async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+
+    await expect(windowApi.showImport()).resolves.toBeUndefined();
+
+    expect(invoke).toHaveBeenCalledWith("show_import_window");
   });
 });

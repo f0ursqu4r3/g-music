@@ -227,21 +227,16 @@ describe("LibraryWindow", () => {
     expect(wrapper.findAll('nav[aria-label="Playlists"] a')).toHaveLength(5);
   });
 
-  it("submits a pasted YouTube video or playlist URL for import", async () => {
+  it("opens Import Music from the plus button beside Library", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
-    const input = wrapper.get('input[aria-label="YouTube URL"]');
 
-    await input.setValue("https://youtube.com/playlist?list=PL-example");
-    await wrapper
-      .get('form[aria-label="Import from YouTube"]')
-      .trigger("submit");
+    const heading = wrapper.get('[data-library-heading="library"]');
+    const button = heading.get('button[aria-label="Import music"]');
 
-    expect(wrapper.emitted("importYoutubeUrl")).toEqual([
-      ["https://youtube.com/playlist?list=PL-example"],
-    ]);
-    expect(input.attributes("placeholder")).toBe("Paste video or playlist URL");
-    expect((input.element as HTMLInputElement).value).toBe("");
+    expect(heading.text()).toContain("Library");
+    await button.trigger("click");
+    expect(wrapper.emitted("openImport")).toEqual([[]]);
   });
 });

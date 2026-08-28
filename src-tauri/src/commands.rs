@@ -95,20 +95,29 @@ pub fn inspect_playback(state: State<'_, AppState>) -> Result<PlaybackSnapshot, 
 }
 
 #[tauri::command]
-pub fn import_youtube_url(
+pub fn import_youtube_urls(
     app: AppHandle,
     state: State<'_, AppState>,
-    url: String,
+    urls: Vec<String>,
 ) -> Result<PlaybackSnapshot, CommandError> {
     let cookie_path = auth::session_cookie_path(&app).map_err(CommandError::from)?;
     let cookie_path = auth::session_exists(&cookie_path).then_some(cookie_path);
     tracing::info!(
         authenticated = cookie_path.is_some(),
-        "YouTube import requested"
+        sources = urls.len(),
+        "YouTube batch import requested"
     );
-    with_playback(&state, "import_youtube_url", |playback| {
+    with_playback(&state, "import_youtube_urls", |playback| {
         playback.set_session_cookie_path(cookie_path);
-        playback.import_youtube_url(&url)
+        playback.import_youtube_urls(&urls)
+    })
+}
+
+#[tauri::command]
+pub fn show_import_window(app: AppHandle) -> Result<(), CommandError> {
+    windows::show_import(&app).map_err(|error| CommandError {
+        code: "import_window_failed",
+        message: error.to_string(),
     })
 }
 

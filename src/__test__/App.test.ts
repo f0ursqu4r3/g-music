@@ -6,15 +6,27 @@ import { nextTick } from "vue";
 import App from "../App.vue";
 
 const playbackMocks = vi.hoisted(() => ({
-  importYouTubeUrl: vi.fn(),
+  importYouTubeUrls: vi.fn(),
   playTrack: vi.fn(),
   sync: vi.fn(),
+}));
+const windowMocks = vi.hoisted(() => ({
+  showImport: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: vi.fn(),
   LogicalSize: vi.fn(),
 }));
+
+vi.mock("@/api", async (importOriginal) => {
+  const api = await importOriginal<typeof import("@/api")>();
+
+  return {
+    ...api,
+    windowApi: windowMocks,
+  };
+});
 
 vi.mock("@/composables/usePlayback", () => ({
   usePlayback: () => ({
@@ -50,15 +62,16 @@ vi.mock("@/composables/usePlayback", () => ({
     setVolume: vi.fn(),
     moveQueueItem: vi.fn(),
     playTrack: playbackMocks.playTrack,
-    importYouTubeUrl: playbackMocks.importYouTubeUrl,
+    importYouTubeUrls: playbackMocks.importYouTubeUrls,
   }),
 }));
 
 describe("application landmarks", () => {
   beforeEach(() => {
-    playbackMocks.importYouTubeUrl.mockReset();
+    playbackMocks.importYouTubeUrls.mockReset();
     playbackMocks.playTrack.mockReset();
     playbackMocks.sync.mockReset();
+    windowMocks.showImport.mockReset();
     window.history.replaceState({}, "", "/?view=library");
     window.localStorage.clear();
   });
@@ -76,17 +89,32 @@ describe("application landmarks", () => {
     expect(wrapper.get("main").attributes("aria-label")).toBe("Music library");
   });
 
-  it("routes a Library YouTube import to the playback composable", async () => {
+  it("opens Import Music from the Library plus button", async () => {
     const wrapper = mount(App);
     await flushPromises();
-    const form = wrapper.get('form[aria-label="Import from YouTube"]');
 
-    await form.get("input").setValue("https://youtu.be/wEsuJoBKAvA");
+    await wrapper.get('button[aria-label="Import music"]').trigger("click");
+
+    expect(windowMocks.showImport).toHaveBeenCalledOnce();
+  });
+
+  it("routes a multi-source Import window submission to playback", async () => {
+    window.history.replaceState({}, "", "/?view=import");
+    const wrapper = mount(App);
+    await flushPromises();
+    const form = wrapper.get('form[aria-label="Import music from YouTube"]');
+
+    await form
+      .get("textarea")
+      .setValue(
+        "https://youtu.be/wEsuJoBKAvA\nhttps://youtube.com/@artist/videos",
+      );
     await form.trigger("submit");
 
-    expect(playbackMocks.importYouTubeUrl).toHaveBeenCalledWith(
+    expect(playbackMocks.importYouTubeUrls).toHaveBeenCalledWith([
       "https://youtu.be/wEsuJoBKAvA",
-    );
+      "https://youtube.com/@artist/videos",
+    ]);
   });
 
   it("routes a selected Library track to the playback composable", async () => {

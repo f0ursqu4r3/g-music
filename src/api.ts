@@ -30,8 +30,8 @@ export interface YouTubeAuthStatus {
 export const playbackApi = {
   inspect: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("inspect_playback"),
-  importYouTubeUrl: (url: string): Promise<PlaybackSnapshot> =>
-    invoke<PlaybackSnapshot>("import_youtube_url", { url }),
+  importYouTubeUrls: (urls: string[]): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("import_youtube_urls", { urls }),
   play: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("play"),
   pause: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("pause"),
   playTrack: (id: string): Promise<PlaybackSnapshot> =>
@@ -45,6 +45,10 @@ export const playbackApi = {
     invoke<PlaybackSnapshot>("set_volume", { volumePercent }),
   moveQueueItem: (from: number, to: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("move_queue_item", { from, to }),
+};
+
+export const windowApi = {
+  showImport: (): Promise<void> => invoke<void>("show_import_window"),
 };
 
 export const youtubeAuthApi = {

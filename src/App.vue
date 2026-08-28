@@ -2,12 +2,14 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
+import { windowApi } from "@/api";
 import type { ThemeName } from "@/lib/theme";
 import { readTheme, themes } from "@/lib/theme";
 import { resolveMockWindowView } from "@/lib/window-view";
 import { playerDimensions } from "@/presentation";
 
 import ArtworkWindow from "@/components/ArtworkWindow.vue";
+import ImportWindow from "@/components/ImportWindow.vue";
 import LibraryWindow from "@/components/LibraryWindow.vue";
 import MiniWindow from "@/components/MiniWindow.vue";
 import QueueWindow from "@/components/QueueWindow.vue";
@@ -80,6 +82,19 @@ async function toggleQueue(): Promise<void> {
 
 function closeMiniPlayer(): void {
   void getCurrentWindow().close();
+}
+
+async function openImportWindow(): Promise<void> {
+  windowError.value = "";
+
+  try {
+    await windowApi.showImport();
+  } catch (error) {
+    windowError.value =
+      error instanceof Error
+        ? error.message
+        : "Could not open the Import Music window.";
+  }
 }
 
 function handleKeyboard(event: KeyboardEvent): void {
@@ -171,13 +186,20 @@ onUnmounted(() => {
       v-else-if="view === 'library'"
       :snapshot="playback.snapshot.value"
       :is-updating="playback.isUpdating.value"
-      :error-message="playback.errorMessage.value"
+      :error-message="windowError || playback.errorMessage.value"
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
       @play-track="playback.playTrack"
       @set-volume="playback.setVolume"
-      @import-youtube-url="playback.importYouTubeUrl"
+      @open-import="openImportWindow"
+    />
+
+    <ImportWindow
+      v-else-if="view === 'import'"
+      :is-updating="playback.isUpdating.value"
+      :error-message="playback.errorMessage.value"
+      @import-youtube-urls="playback.importYouTubeUrls"
     />
 
     <ArtworkWindow

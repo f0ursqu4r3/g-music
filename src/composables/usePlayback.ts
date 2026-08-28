@@ -65,8 +65,8 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     }
   }
 
-  async function importYouTubeUrl(url: string): Promise<void> {
-    await execute(() => client.importYouTubeUrl(url));
+  async function importYouTubeUrls(urls: string[]): Promise<void> {
+    await execute(() => client.importYouTubeUrls(urls));
   }
 
   async function toggle(): Promise<void> {
@@ -102,7 +102,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   return {
     errorMessage,
     isUpdating,
-    importYouTubeUrl,
+    importYouTubeUrls,
     moveQueueItem,
     next,
     playTrack,

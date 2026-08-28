@@ -16,7 +16,6 @@ import {
   Play,
   Plus,
   Repeat2,
-  Search,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -58,7 +57,7 @@ const emit = defineEmits<{
   previous: [];
   next: [];
   setVolume: [percent: number];
-  importYoutubeUrl: [url: string];
+  openImport: [];
   playTrack: [id: string];
 }>();
 
@@ -71,7 +70,6 @@ const playlists = [
 ] as const;
 
 const activeCollection = ref<LibraryCollection>("tracks");
-const youtubeUrl = ref("");
 const favoriteTrackIds = ref(new Set<string>());
 const columnWidths = ref([35, 25, 25, 9, 6]);
 const minimumColumnWidths = [18, 12, 12, 7, 5] as const;
@@ -245,16 +243,6 @@ function playTrack(id: string): void {
   }
 }
 
-function submitYouTubeUrl(): void {
-  const url = youtubeUrl.value.trim();
-  if (!url) {
-    return;
-  }
-
-  emit("importYoutubeUrl", url);
-  youtubeUrl.value = "";
-}
-
 onBeforeUnmount(() => stopColumnResize?.());
 </script>
 
@@ -272,34 +260,25 @@ onBeforeUnmount(() => stopColumnResize?.());
     <aside
       class="col-start-1 row-start-1 flex min-h-0 flex-col border-r border-(--line) px-6 pt-14 pb-4 max-[760px]:hidden"
     >
-      <form
-        class="flex min-h-9.5 items-center gap-2.5 rounded-lg bg-(--glass-control) px-3 text-(--subtle-text) ring-1 ring-[oklch(0.75_0.025_260/0.07)] transition-colors focus-within:ring-(--focus-ring) [&>svg]:size-4"
-        aria-label="Import from YouTube"
-        @submit.prevent="submitYouTubeUrl"
-      >
-        <Search aria-hidden="true" />
-        <input
-          v-model="youtubeUrl"
-          aria-label="YouTube URL"
-          class="min-w-0 flex-1 border-0 bg-transparent text-[0.8rem] text-(--text) outline-0 placeholder:text-(--subtle-text)"
-          placeholder="Paste video or playlist URL"
-          type="url"
-        />
-        <button
-          aria-label="Import YouTube URL"
-          class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--muted-text) hover:text-(--text) [&>svg]:size-3.5"
-          type="submit"
+      <nav class="grid gap-0.5" aria-label="Library navigation">
+        <div
+          class="mb-1 flex items-center justify-between px-2.5"
+          data-library-heading="library"
         >
-          <Plus aria-hidden="true" />
-        </button>
-      </form>
-
-      <nav class="mt-6 grid gap-0.5" aria-label="Library navigation">
-        <p
-          class="mb-1 px-2.5 text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)"
-        >
-          Library
-        </p>
+          <p
+            class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)"
+          >
+            Library
+          </p>
+          <button
+            aria-label="Import music"
+            class="grid size-6 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) [&>svg]:size-4"
+            type="button"
+            @click="emit('openImport')"
+          >
+            <Plus aria-hidden="true" />
+          </button>
+        </div>
         <button
           :aria-current="activeCollection === 'tracks' ? 'page' : undefined"
           class="flex min-h-8.5 w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left text-[0.82rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
