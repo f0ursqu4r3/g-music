@@ -62,6 +62,110 @@ describe("LibraryWindow", () => {
     expect(wrapper.text()).toContain("Google for Developers");
   });
 
+  it("keeps the selected collection when switching between list and grid", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+
+    expect(wrapper.get("h1").text()).toBe("Tracks");
+    expect(
+      wrapper.get('button[aria-label="Grid view"]').attributes("aria-pressed"),
+    ).toBe("true");
+    expect(wrapper.find(".track-grid").exists()).toBe(true);
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    expect(wrapper.get("h1").text()).toBe("Albums");
+    expect(wrapper.find(".album-tile").exists()).toBe(true);
+    expect(
+      wrapper.get('button[aria-label="Grid view"]').attributes("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("sorts tracks in both list and grid views", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper
+      .get('button[aria-label="More library options"]')
+      .trigger("click");
+    await wrapper.get('[data-sort="title-desc"]').trigger("click");
+    expect(
+      wrapper.get('[data-track-id="M7lc1UVf-VE"] .track-title').text(),
+    ).toBe("YouTube Developers Live");
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    expect(wrapper.get(".track-grid .track-tile").text()).toContain(
+      "YouTube Developers Live",
+    );
+  });
+
+  it("groups grid items without changing the list view", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper
+      .get('button[aria-label="More library options"]')
+      .trigger("click");
+    await wrapper.get('[data-group="artist"]').trigger("click");
+    expect(wrapper.findAll(".library-group")).toHaveLength(0);
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    expect(wrapper.findAll(".library-group")).toHaveLength(2);
+  });
+
+  it("filters tracks after double-clicking an album or artist", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    await wrapper.get(".album-tile").trigger("dblclick");
+    expect(wrapper.get("h1").text()).toBe("Tracks");
+    expect(wrapper.get("[data-library-filter]").text()).toContain(
+      "API Sessions",
+    );
+    expect(wrapper.findAll("[data-track-id]")).toHaveLength(1);
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    await wrapper.get(".artist-tile").trigger("dblclick");
+    expect(wrapper.get("h1").text()).toBe("Tracks");
+    expect(wrapper.get("[data-library-filter]").text()).toContain(
+      "Google for Developers",
+    );
+    expect(wrapper.findAll("[data-track-id]")).toHaveLength(1);
+  });
+
+  it("shows metadata for the selected track, album, or artist", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+    expect(wrapper.get('[data-library-info="track"]').text()).toContain(
+      "Creator Studio Session",
+    );
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    await wrapper.get(".album-tile").trigger("click");
+    expect(wrapper.get('[data-library-info="album"]').text()).toContain(
+      "API Sessions",
+    );
+  });
+
+  it("exposes a grid item size slider in grid view", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    expect(wrapper.find('[aria-label="Grid item size"]').exists()).toBe(false);
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    expect(wrapper.get('[aria-label="Grid item size"]')).toBeDefined();
+  });
+
   it("provides a native drag strip without a visible application header", () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -200,7 +304,9 @@ describe("LibraryWindow", () => {
       "shrink-0",
     );
     expect(wrapper.get("thead").classes()).not.toContain("sticky");
-    expect(wrapper.find("[data-library-track-header-fade]").exists()).toBe(false);
+    expect(wrapper.find("[data-library-track-header-fade]").exists()).toBe(
+      false,
+    );
     expect(trackList.classes()).toContain("library-track-scroll");
     expect(wrapper.findAll("tbody [data-track-id]").length).toBeLessThan(
       tracks.length,
