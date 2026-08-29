@@ -19,6 +19,10 @@ not save media files or collect Google credentials.
 - Keyboard controls: Space toggles play, J selects the previous track, K
   selects the next track, and Q toggles the queue.
 - Typed Tauri IPC client and serializable Rust payloads.
+- Durable editable track metadata: title, artist, album, label, and genres.
+- Durable playlists that preserve ordered stable track IDs.
+- Per-track play counts, last-played times, and a bounded play-time history.
+- A private local agent socket and an MCP bridge for Hermes-driven organization.
 
 ## Development
 
@@ -46,6 +50,51 @@ RUST_LOG=gmusic_lib=trace bun run tauri dev
 Logs include Tauri commands, YouTube metadata resolution, queue persistence,
 `mpv` process startup, and IPC command names. They do not include cookie values,
 cookie paths, raw stream URLs, or IPC payload bodies.
+
+## Hermes library control
+
+When G Music starts, it opens a local Unix socket at:
+
+```text
+~/Library/Application Support/com.kyle.gmusic/agent.sock
+```
+
+The socket has owner-only permissions. It keeps all writes inside G Music so the
+live library, playback state, and durable `library.json` stay consistent. Do not
+edit `library.json` directly.
+
+The MCP bridge is `scripts/gmusic-mcp.ts`. It exposes these tools after Hermes
+starts it:
+
+- `inspect_library`
+- `update_track_metadata`
+- `upsert_playlist`
+- `delete_playlist`
+- `move_library_track`
+
+All write tools require `confirmed=true`. An agent must first show the proposed
+metadata, playlist, or order change and get the user's current explicit
+approval.
+
+Add this to `~/.hermes/config.yaml`, then restart Hermes:
+
+```yaml
+mcp_servers:
+  gmusic:
+    command: bun
+    args:
+      - run
+      - /Users/la.kyle.dougan/git/personal/gmusic/scripts/gmusic-mcp.ts
+    timeout: 30
+    connect_timeout: 30
+```
+
+Start G Music before asking Hermes to inspect or organize the library. You can
+also run the bridge directly for protocol debugging:
+
+```sh
+bun run mcp
+```
 
 ## Verification
 

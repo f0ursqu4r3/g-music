@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import AutoScrollText from "../AutoScrollText.vue";
 import ArtworkWindow from "../ArtworkWindow.vue";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
+import { dragSlider } from "./slider-interaction";
 
 const snapshot: PlaybackSnapshot = {
   status: "paused",
@@ -58,7 +59,7 @@ describe("ArtworkWindow", () => {
     expect(wrapper.findAll('input[type="range"]')).toHaveLength(0);
     const progress = wrapper.getComponent(Slider);
     expect(progress.attributes("aria-label")).toBe("Track progress");
-    expect(progress.props("disabled")).toBe(true);
+    expect(progress.props("disabled")).toBe(false);
     expect(wrapper.text()).not.toContain("G MUSIC");
   });
 
@@ -74,6 +75,19 @@ describe("ArtworkWindow", () => {
     expect(wrapper.emitted("previous")).toHaveLength(1);
     expect(wrapper.emitted("toggle")).toHaveLength(1);
     expect(wrapper.emitted("next")).toHaveLength(1);
+  });
+
+  it("commits pointer drags from the progress scrubber", async () => {
+    const wrapper = mount(ArtworkWindow, {
+      props: { snapshot, isUpdating: false },
+    });
+    const progress = wrapper.get(
+      '[data-slot="slider"][aria-label="Track progress"]',
+    );
+
+    await dragSlider(progress, 50);
+
+    expect(wrapper.emitted("seek")).toEqual([[119_000]]);
   });
 
   it("slides controls out of view when the native window loses focus", async () => {

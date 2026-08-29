@@ -5,10 +5,10 @@ import {
   SliderRoot,
   SliderThumb,
   SliderTrack,
-  useForwardPropsEmits,
+  useForwardProps,
 } from "reka-ui";
 import type { SliderRootEmits, SliderRootProps } from "reka-ui";
-import { computed, useAttrs } from "vue";
+import { computed, ref, useAttrs, watch } from "vue";
 import type { HTMLAttributes } from "vue";
 
 import { cn } from "@/lib/utils";
@@ -17,25 +17,62 @@ const props = defineProps<
   SliderRootProps & { class?: HTMLAttributes["class"] }
 >();
 const emits = defineEmits<SliderRootEmits>();
-const delegatedProps = reactiveOmit(props, "class");
-const forwarded = useForwardPropsEmits(delegatedProps, emits);
+const delegatedProps = reactiveOmit(
+  props,
+  "class",
+  "defaultValue",
+  "modelValue",
+);
+const forwardedProps = useForwardProps(delegatedProps);
 const attrs = useAttrs();
+const isInteracting = ref(false);
+const internalModelValue = ref([
+  ...(props.modelValue ?? props.defaultValue ?? [0]),
+]);
 const thumbLabel = computed(() => {
   const label = attrs["aria-label"];
   return typeof label === "string" ? label : undefined;
 });
+
+watch(
+  () => props.modelValue,
+  (modelValue) => {
+    if (!isInteracting.value && modelValue) {
+      internalModelValue.value = [...modelValue];
+    }
+  },
+);
+
+function updateModelValue(modelValue: number[] | undefined): void {
+  if (!modelValue) {
+    return;
+  }
+
+  internalModelValue.value = [...modelValue];
+  emits("update:modelValue", modelValue);
+}
+
+function stopInteraction(): void {
+  isInteracting.value = false;
+}
 </script>
 
 <template>
   <SliderRoot
     data-slot="slider"
-    v-bind="forwarded"
+    v-bind="forwardedProps"
+    :model-value="internalModelValue"
     :class="
       cn(
         'group/slider relative flex w-full touch-none items-center select-none data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col',
         props.class,
       )
     "
+    @pointerdown.capture="isInteracting = true"
+    @pointercancel="stopInteraction"
+    @pointerup="stopInteraction"
+    @update:model-value="updateModelValue"
+    @value-commit="emits('valueCommit', $event)"
   >
     <SliderTrack
       data-slot="slider-track"
@@ -47,7 +84,7 @@ const thumbLabel = computed(() => {
       />
     </SliderTrack>
     <SliderThumb
-      v-for="(_, index) in modelValue ?? defaultValue ?? [0]"
+      v-for="(_, index) in internalModelValue"
       :key="index"
       data-slot="slider-thumb"
       :aria-label="thumbLabel"

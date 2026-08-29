@@ -27,10 +27,22 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   isWindowFocused: true,
 });
-const emit = defineEmits<{ toggle: []; previous: []; next: [] }>();
+const emit = defineEmits<{
+  toggle: [];
+  previous: [];
+  next: [];
+  seek: [positionMs: number];
+}>();
 
 const isPlaying = computed(() => props.snapshot.status === "playing");
 const currentItem = computed(() => props.snapshot.currentItem);
+
+function emitSeek(values: number[]): void {
+  const value = values[0];
+  if (Number.isFinite(value)) {
+    emit("seek", value);
+  }
+}
 </script>
 
 <template>
@@ -169,13 +181,13 @@ const currentItem = computed(() => props.snapshot.currentItem);
         >
           <span>{{ formatDuration(snapshot.positionMs) }}</span>
           <Slider
-            class="pointer-events-none"
             aria-label="Track progress"
             :min="0"
             :max="currentItem?.durationMs ?? 0"
             :step="1000"
             :model-value="[snapshot.positionMs]"
-            :disabled="true"
+            :disabled="isUpdating || !currentItem"
+            @value-commit="emitSeek"
           />
           <span class="text-right">{{
             formatDuration(currentItem?.durationMs ?? 0)

@@ -1,15 +1,16 @@
 use std::{
     collections::HashSet,
     env, fs,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     os::unix::{
         fs::{OpenOptionsExt, PermissionsExt},
         net::UnixStream,
     },
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::mpsc::{self, RecvTimeoutError},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -17,10 +18,26 @@ use serde_json::{Value, json};
 use thiserror::Error;
 use url::Url;
 
-use super::{MediaItem, PlaybackSnapshot, PlaybackStatus};
+use super::{
+    EditableTrackMetadata, LibrarySnapshot, MediaItem, PlaybackSnapshot, PlaybackStatus, Playlist,
+};
 
 const IPC_TIMEOUT: Duration = Duration::from_secs(3);
-const LIBRARY_VERSION: u32 = 1;
+const LIBRARY_VERSION: u32 = 2;
+const MAX_PLAY_HISTORY: usize = 500;
+const METADATA_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const PARENT_EXIT_WATCHDOG: &str = r#"
+parent_pid="$1"
+player_pid="$2"
+
+while kill -0 "$parent_pid" 2>/dev/null; do
+    sleep 1
+done
+
+kill -TERM "$player_pid" 2>/dev/null || exit 0
+sleep 1
+kill -KILL "$player_pid" 2>/dev/null || true
+"#;
 
 #[derive(Debug, Error)]
 pub enum YouTubePlaybackError {
@@ -45,6 +62,12 @@ pub enum YouTubePlaybackError {
     #[error("volume must be between 0 and 100")]
     InvalidVolume,
 
+    #[error("track metadata is invalid: {0}")]
+    InvalidTrackMetadata(String),
+
+    #[error("playlist is invalid: {0}")]
+    InvalidPlaylist(String),
+
     #[error("could not access the imported library: {0}")]
     Library(String),
 }
@@ -55,10 +78,45 @@ struct QueueEntry {
     source_url: String,
 }
 
+pub(crate) struct ResolvedYouTubeImport {
+    entries: Vec<QueueEntry>,
+    skipped_member_only: usize,
+    skipped_member_only_ids: HashSet<String>,
+    timed_out_sources: usize,
+}
+
+impl ResolvedYouTubeImport {
+    pub(crate) fn track_count(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(crate) fn skipped_member_only_count(&self) -> usize {
+        self.skipped_member_only
+    }
+
+    pub(crate) fn timed_out_source_count(&self) -> usize {
+        self.timed_out_sources
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct DirtyTrack {
+    pub(crate) id: String,
+    pub(crate) title: String,
+}
+
+struct MetadataResolution {
+    entries: Vec<QueueEntry>,
+    skipped_member_only: usize,
+    skipped_member_only_ids: HashSet<String>,
+    timed_out: bool,
+}
+
 pub struct YouTubePlaybackProvider {
     entries: Vec<QueueEntry>,
     library_path: Option<PathBuf>,
     player: MpvPlayer,
+    playlists: Vec<Playlist>,
     session_cookie_path: Option<PathBuf>,
     snapshot: PlaybackSnapshot,
 }
@@ -69,17 +127,34 @@ impl YouTubePlaybackProvider {
     }
 
     pub fn from_library_path(path: PathBuf) -> Result<Self, YouTubePlaybackError> {
-        let entries = load_library(&path)?;
-        tracing::info!(tracks = entries.len(), "imported library loaded");
-        Ok(Self::with_entries(entries, Some(path)))
+        let library = load_library(&path)?;
+        tracing::info!(
+            tracks = library.entries.len(),
+            playlists = library.playlists.len(),
+            "imported library loaded"
+        );
+        Ok(Self::with_library(
+            library.entries,
+            library.playlists,
+            Some(path),
+        ))
     }
 
     fn with_entries(entries: Vec<QueueEntry>, library_path: Option<PathBuf>) -> Self {
+        Self::with_library(entries, Vec::new(), library_path)
+    }
+
+    fn with_library(
+        entries: Vec<QueueEntry>,
+        playlists: Vec<Playlist>,
+        library_path: Option<PathBuf>,
+    ) -> Self {
         let queue = entries.iter().map(|entry| entry.item.clone()).collect();
         Self {
             entries,
             library_path,
             player: MpvPlayer::new(),
+            playlists,
             session_cookie_path: None,
             snapshot: PlaybackSnapshot {
                 status: PlaybackStatus::Paused,
@@ -95,44 +170,24 @@ impl YouTubePlaybackProvider {
         &mut self,
         source_urls: &[String],
     ) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
-        if source_urls.is_empty() {
-            return Err(YouTubePlaybackError::Metadata(
-                "at least one YouTube URL is required".into(),
-            ));
-        }
+        let imported = resolve_youtube_imports(
+            source_urls,
+            self.session_cookie_path.as_deref(),
+            |_, _, _, _, _| {},
+        )?;
 
-        let parsed_urls = source_urls
-            .iter()
-            .map(|source_url| validate_youtube_url(source_url))
-            .collect::<Result<Vec<_>, _>>()?;
-        tracing::info!(
-            sources = parsed_urls.len(),
-            authenticated = self.session_cookie_path.is_some(),
-            "YouTube batch import started"
-        );
+        self.commit_youtube_import(imported)
+    }
 
-        let started = Instant::now();
-        let mut imported = Vec::new();
-        for (source_index, parsed) in parsed_urls.into_iter().enumerate() {
-            let source_host = parsed.host_str().unwrap_or("unknown").to_owned();
-            tracing::debug!(source_index, source_host, "resolving YouTube import source");
-            let resolved = resolve_metadata(parsed.as_str(), self.session_cookie_path.as_deref())?;
-            merge_queue_entries(&mut imported, resolved);
-        }
-        tracing::info!(
-            tracks = imported.len(),
-            elapsed_ms = started.elapsed().as_millis(),
-            "YouTube batch metadata resolved"
-        );
-        if imported.is_empty() {
-            return Err(YouTubePlaybackError::Metadata(
-                "no playable tracks found".into(),
-            ));
-        }
-
+    pub(crate) fn commit_youtube_import(
+        &mut self,
+        imported: ResolvedYouTubeImport,
+    ) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
         let previous_queue_size = self.entries.len();
-        let imported_count = imported.len();
-        merge_queue_entries(&mut self.entries, imported);
+        let imported_count = imported.track_count();
+        self.entries
+            .retain(|entry| !imported.skipped_member_only_ids.contains(&entry.item.id));
+        merge_queue_entries(&mut self.entries, imported.entries);
         let inserted_count = self.entries.len().saturating_sub(previous_queue_size);
         tracing::debug!(
             imported = imported_count,
@@ -156,6 +211,162 @@ impl YouTubePlaybackProvider {
     pub fn set_session_cookie_path(&mut self, path: Option<PathBuf>) {
         tracing::debug!(authenticated = path.is_some(), "playback session updated");
         self.session_cookie_path = path;
+    }
+
+    pub fn shutdown(&mut self) {
+        self.player.stop();
+    }
+
+    pub(crate) fn dirty_tracks(&self) -> Vec<DirtyTrack> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.item.metadata_dirty)
+            .map(|entry| DirtyTrack {
+                id: entry.item.id.clone(),
+                title: entry.item.title.clone(),
+            })
+            .collect()
+    }
+
+    pub(crate) fn dirty_track_source(&self, id: &str) -> Option<String> {
+        self.entries
+            .iter()
+            .find(|entry| entry.item.id == id && entry.item.metadata_dirty)
+            .map(|entry| entry.source_url.clone())
+    }
+
+    pub fn library_snapshot(&self) -> LibrarySnapshot {
+        LibrarySnapshot {
+            playlists: self.playlists.clone(),
+            total_plays: self.entries.iter().map(|entry| entry.item.play_count).sum(),
+            tracks: self
+                .entries
+                .iter()
+                .map(|entry| entry.item.clone())
+                .collect(),
+        }
+    }
+
+    pub fn update_track_metadata(
+        &mut self,
+        id: &str,
+        metadata: EditableTrackMetadata,
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let title = required_metadata_value(metadata.title, "title")?;
+        let artist = required_metadata_value(metadata.artist, "artist")?;
+        let album = optional_metadata_value(metadata.album);
+        let label = optional_metadata_value(metadata.label);
+        let genres = normalize_genres(metadata.genres);
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.item.id == id)
+            .ok_or_else(|| YouTubePlaybackError::TrackNotFound { id: id.into() })?;
+
+        entry.item.title = title;
+        entry.item.artist = artist;
+        entry.item.album = album;
+        entry.item.label = label;
+        entry.item.genres = genres;
+        self.sync_queue();
+        if self
+            .snapshot
+            .current_item
+            .as_ref()
+            .is_some_and(|item| item.id == id)
+        {
+            self.snapshot.current_item = self
+                .entries
+                .iter()
+                .find(|entry| entry.item.id == id)
+                .map(|entry| entry.item.clone());
+        }
+        self.persist_library()?;
+        Ok(self.library_snapshot())
+    }
+
+    pub fn upsert_playlist(
+        &mut self,
+        playlist: Playlist,
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let id = required_metadata_value(playlist.id, "playlist ID")?;
+        let name = required_metadata_value(playlist.name, "playlist name")?;
+        let mut track_ids = Vec::new();
+        for track_id in playlist.track_ids {
+            if !self.entries.iter().any(|entry| entry.item.id == track_id) {
+                return Err(YouTubePlaybackError::InvalidPlaylist(format!(
+                    "track {track_id} is not in the library"
+                )));
+            }
+            if !track_ids.contains(&track_id) {
+                track_ids.push(track_id);
+            }
+        }
+        let playlist = Playlist {
+            id,
+            name,
+            track_ids,
+        };
+        if let Some(existing) = self
+            .playlists
+            .iter_mut()
+            .find(|existing| existing.id == playlist.id)
+        {
+            *existing = playlist;
+        } else {
+            self.playlists.push(playlist);
+        }
+        self.persist_library()?;
+        Ok(self.library_snapshot())
+    }
+
+    pub fn delete_playlist(&mut self, id: &str) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let old_len = self.playlists.len();
+        self.playlists.retain(|playlist| playlist.id != id);
+        if self.playlists.len() == old_len {
+            return Err(YouTubePlaybackError::InvalidPlaylist(format!(
+                "playlist {id} does not exist"
+            )));
+        }
+        self.persist_library()?;
+        Ok(self.library_snapshot())
+    }
+
+    pub fn record_playback_start(
+        &mut self,
+        id: &str,
+        played_at_ms: u64,
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let updated_item = {
+            let entry = self
+                .entries
+                .iter_mut()
+                .find(|entry| entry.item.id == id)
+                .ok_or_else(|| YouTubePlaybackError::TrackNotFound { id: id.into() })?;
+            entry.item.play_count = entry.item.play_count.saturating_add(1);
+            entry.item.last_played_at_ms = Some(played_at_ms);
+            entry.item.play_history_ms.push(played_at_ms);
+            let excess = entry
+                .item
+                .play_history_ms
+                .len()
+                .saturating_sub(MAX_PLAY_HISTORY);
+            if excess > 0 {
+                entry.item.play_history_ms.drain(..excess);
+            }
+            entry.item.clone()
+        };
+        self.sync_queue();
+        if self
+            .snapshot
+            .current_item
+            .as_ref()
+            .is_some_and(|item| item.id == id)
+        {
+            self.snapshot.current_item = Some(updated_item);
+        }
+        self.persist_library()?;
+        Ok(self.library_snapshot())
     }
 
     pub fn snapshot(&mut self) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
@@ -236,6 +447,7 @@ impl YouTubePlaybackProvider {
         self.select_queue_index(index)?;
         self.player.set_paused(false)?;
         self.snapshot.status = PlaybackStatus::Playing;
+        self.record_playback_start(id, now_epoch_ms()?)?;
         tracing::info!(video_id = id, index, "library track playback started");
         Ok(())
     }
@@ -293,6 +505,15 @@ impl YouTubePlaybackProvider {
         }
         self.snapshot.current_item = Some(entry.item);
         self.snapshot.position_ms = 0;
+        if was_playing {
+            let current_id = self
+                .snapshot
+                .current_item
+                .as_ref()
+                .map(|item| item.id.clone())
+                .expect("selected queue entries always have an item");
+            self.record_playback_start(&current_id, now_epoch_ms()?)?;
+        }
         if let Some(item) = self.snapshot.current_item.as_ref() {
             tracing::info!(
                 video_id = item.id,
@@ -316,8 +537,12 @@ impl YouTubePlaybackProvider {
         let Some(path) = self.library_path.as_ref() else {
             return Ok(());
         };
-        write_library(path, &self.entries)?;
-        tracing::info!(tracks = self.entries.len(), "imported library persisted");
+        write_library(path, &self.entries, &self.playlists)?;
+        tracing::info!(
+            tracks = self.entries.len(),
+            playlists = self.playlists.len(),
+            "imported library persisted"
+        );
         Ok(())
     }
 }
@@ -362,6 +587,43 @@ fn nonempty(value: Option<String>) -> Option<String> {
     value.filter(|value| !value.trim().is_empty())
 }
 
+fn required_metadata_value(value: String, field: &str) -> Result<String, YouTubePlaybackError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(YouTubePlaybackError::InvalidTrackMetadata(format!(
+            "{field} must not be empty"
+        )));
+    }
+    Ok(value.into())
+}
+
+fn optional_metadata_value(value: Option<String>) -> Option<String> {
+    value.and_then(|value| nonempty(Some(value.trim().into())))
+}
+
+fn normalize_genres(genres: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for genre in genres {
+        let genre = genre.trim();
+        if genre.is_empty()
+            || normalized
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(genre))
+        {
+            continue;
+        }
+        normalized.push(genre.into());
+    }
+    normalized
+}
+
+fn now_epoch_ms() -> Result<u64, YouTubePlaybackError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().try_into().unwrap_or(u64::MAX))
+        .map_err(|error| YouTubePlaybackError::Library(error.to_string()))
+}
+
 fn is_youtube_video_id(value: &str) -> bool {
     value.len() == 11
         && value
@@ -369,7 +631,7 @@ fn is_youtube_video_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-fn metadata_entry(metadata: YtDlpMetadata) -> Option<QueueEntry> {
+fn metadata_entry(metadata: YtDlpMetadata, metadata_dirty: bool) -> Option<QueueEntry> {
     let id = nonempty(metadata.id).filter(|id| is_youtube_video_id(id))?;
     let title = nonempty(metadata.track).or_else(|| nonempty(metadata.title))?;
     let artist = nonempty(metadata.artist)
@@ -392,7 +654,13 @@ fn metadata_entry(metadata: YtDlpMetadata) -> Option<QueueEntry> {
             title,
             artist,
             album: nonempty(metadata.album),
+            label: None,
+            genres: Vec::new(),
             duration_ms,
+            metadata_dirty,
+            play_count: 0,
+            last_played_at_ms: None,
+            play_history_ms: Vec::new(),
         },
         source_url,
     })
@@ -412,7 +680,10 @@ fn flatten_metadata(metadata: YtDlpMetadata, candidates: &mut Vec<YtDlpMetadata>
     }
 }
 
-fn parse_import_metadata(output: &str) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
+fn parse_import_metadata_with_dirty_state(
+    output: &str,
+    metadata_dirty: bool,
+) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
     let metadata: YtDlpMetadata = serde_json::from_str(output)
         .map_err(|error| YouTubePlaybackError::Metadata(error.to_string()))?;
     let mut candidates = Vec::new();
@@ -420,7 +691,7 @@ fn parse_import_metadata(output: &str) -> Result<Vec<QueueEntry>, YouTubePlaybac
     let mut seen = HashSet::new();
     let tracks = candidates
         .into_iter()
-        .filter_map(metadata_entry)
+        .filter_map(|metadata| metadata_entry(metadata, metadata_dirty))
         .filter(|entry| seen.insert(entry.item.id.clone()))
         .collect::<Vec<_>>();
 
@@ -433,12 +704,22 @@ fn parse_import_metadata(output: &str) -> Result<Vec<QueueEntry>, YouTubePlaybac
     Ok(tracks)
 }
 
+#[cfg(test)]
+fn parse_import_metadata(output: &str) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
+    parse_import_metadata_with_dirty_state(output, false)
+}
+
 fn merge_queue_entries(entries: &mut Vec<QueueEntry>, imported: Vec<QueueEntry>) {
-    for entry in imported {
+    for mut entry in imported {
         if let Some(existing) = entries
             .iter_mut()
             .find(|existing| existing.item.id == entry.item.id)
         {
+            entry.item.label = existing.item.label.clone();
+            entry.item.genres = existing.item.genres.clone();
+            entry.item.play_count = existing.item.play_count;
+            entry.item.last_played_at_ms = existing.item.last_played_at_ms;
+            entry.item.play_history_ms = existing.item.play_history_ms.clone();
             *existing = entry;
         } else {
             entries.push(entry);
@@ -450,18 +731,24 @@ fn merge_queue_entries(entries: &mut Vec<QueueEntry>, imported: Vec<QueueEntry>)
 struct StoredLibrary {
     version: u32,
     entries: Vec<QueueEntry>,
+    #[serde(default)]
+    playlists: Vec<Playlist>,
 }
 
-fn load_library(path: &Path) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
+fn load_library(path: &Path) -> Result<StoredLibrary, YouTubePlaybackError> {
     if !path.is_file() {
-        return Ok(Vec::new());
+        return Ok(StoredLibrary {
+            version: LIBRARY_VERSION,
+            entries: Vec::new(),
+            playlists: Vec::new(),
+        });
     }
 
     let contents = fs::read_to_string(path)
         .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
     let library: StoredLibrary = serde_json::from_str(&contents)
         .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-    if library.version != LIBRARY_VERSION {
+    if !(1..=LIBRARY_VERSION).contains(&library.version) {
         return Err(YouTubePlaybackError::Library(format!(
             "unsupported library version {}",
             library.version
@@ -476,10 +763,42 @@ fn load_library(path: &Path) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
         }
     }
 
-    Ok(library.entries)
+    validate_stored_playlists(&library.entries, &library.playlists)?;
+    Ok(library)
 }
 
-fn write_library(path: &Path, entries: &[QueueEntry]) -> Result<(), YouTubePlaybackError> {
+fn validate_stored_playlists(
+    entries: &[QueueEntry],
+    playlists: &[Playlist],
+) -> Result<(), YouTubePlaybackError> {
+    let mut playlist_ids = HashSet::new();
+    for playlist in playlists {
+        if playlist.id.trim().is_empty() || playlist.name.trim().is_empty() {
+            return Err(YouTubePlaybackError::Library(
+                "the library contains an invalid playlist".into(),
+            ));
+        }
+        if !playlist_ids.insert(&playlist.id) {
+            return Err(YouTubePlaybackError::Library(
+                "the library contains duplicate playlist IDs".into(),
+            ));
+        }
+        for track_id in &playlist.track_ids {
+            if !entries.iter().any(|entry| entry.item.id == *track_id) {
+                return Err(YouTubePlaybackError::Library(
+                    "the library playlist references an unknown track".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_library(
+    path: &Path,
+    entries: &[QueueEntry],
+    playlists: &[Playlist],
+) -> Result<(), YouTubePlaybackError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
@@ -488,6 +807,7 @@ fn write_library(path: &Path, entries: &[QueueEntry]) -> Result<(), YouTubePlayb
     let contents = serde_json::to_vec_pretty(&StoredLibrary {
         version: LIBRARY_VERSION,
         entries: entries.to_vec(),
+        playlists: playlists.to_vec(),
     })
     .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
     let mut file = fs::OpenOptions::new()
@@ -509,13 +829,133 @@ fn write_library(path: &Path, entries: &[QueueEntry]) -> Result<(), YouTubePlayb
     Ok(())
 }
 
+pub(crate) fn resolve_youtube_imports(
+    source_urls: &[String],
+    cookie_path: Option<&Path>,
+    report_progress: impl FnMut(usize, usize, bool, usize, usize),
+) -> Result<ResolvedYouTubeImport, YouTubePlaybackError> {
+    resolve_youtube_imports_with(
+        source_urls,
+        cookie_path,
+        metadata_arguments,
+        false,
+        report_progress,
+    )
+}
+
+pub(crate) fn discover_youtube_imports(
+    source_urls: &[String],
+    cookie_path: Option<&Path>,
+    report_progress: impl FnMut(usize, usize, bool, usize, usize),
+) -> Result<ResolvedYouTubeImport, YouTubePlaybackError> {
+    resolve_youtube_imports_with(
+        source_urls,
+        cookie_path,
+        discovery_metadata_arguments,
+        true,
+        report_progress,
+    )
+}
+
+fn resolve_youtube_imports_with(
+    source_urls: &[String],
+    cookie_path: Option<&Path>,
+    metadata_args: impl Fn(&str, Option<&Path>) -> Vec<String>,
+    metadata_dirty: bool,
+    mut report_progress: impl FnMut(usize, usize, bool, usize, usize),
+) -> Result<ResolvedYouTubeImport, YouTubePlaybackError> {
+    if source_urls.is_empty() {
+        return Err(YouTubePlaybackError::Metadata(
+            "at least one YouTube URL is required".into(),
+        ));
+    }
+
+    let parsed_urls = source_urls
+        .iter()
+        .map(|source_url| validate_youtube_url(source_url))
+        .collect::<Result<Vec<_>, _>>()?;
+    tracing::info!(
+        sources = parsed_urls.len(),
+        authenticated = cookie_path.is_some(),
+        "YouTube batch import started"
+    );
+
+    let started = Instant::now();
+    let mut imported = Vec::new();
+    let mut skipped_member_only = 0;
+    let mut skipped_member_only_ids = HashSet::new();
+    let mut timed_out_sources = 0;
+    let total_sources = parsed_urls.len();
+    for (source_index, parsed) in parsed_urls.into_iter().enumerate() {
+        let source_host = parsed.host_str().unwrap_or("unknown").to_owned();
+        report_progress(
+            source_index,
+            total_sources,
+            false,
+            imported.len(),
+            skipped_member_only,
+        );
+        tracing::debug!(source_index, source_host, "resolving YouTube import source");
+        let resolved = resolve_metadata_with_progress(
+            parsed.as_str(),
+            cookie_path,
+            metadata_args(parsed.as_str(), cookie_path),
+            metadata_dirty,
+            |source_tracks| {
+                report_progress(
+                    source_index,
+                    total_sources,
+                    false,
+                    imported.len() + source_tracks,
+                    skipped_member_only,
+                );
+            },
+        )?;
+        skipped_member_only += resolved.skipped_member_only;
+        skipped_member_only_ids.extend(resolved.skipped_member_only_ids);
+        timed_out_sources += usize::from(resolved.timed_out);
+        merge_queue_entries(&mut imported, resolved.entries);
+        report_progress(
+            source_index + 1,
+            total_sources,
+            true,
+            imported.len(),
+            skipped_member_only,
+        );
+    }
+    tracing::info!(
+        tracks = imported.len(),
+        elapsed_ms = started.elapsed().as_millis(),
+        "YouTube batch metadata resolved"
+    );
+    if imported.is_empty() {
+        return Err(YouTubePlaybackError::Metadata(
+            "no playable tracks found".into(),
+        ));
+    }
+
+    Ok(ResolvedYouTubeImport {
+        entries: imported,
+        skipped_member_only,
+        skipped_member_only_ids,
+        timed_out_sources,
+    })
+}
+
 fn metadata_arguments(source_url: &str, cookie_path: Option<&Path>) -> Vec<String> {
     let mut arguments = vec![
-        "--dump-single-json".into(),
+        "--dump-json".into(),
         "--yes-playlist".into(),
+        "--lazy-playlist".into(),
         "--ignore-errors".into(),
+        "--retries".into(),
+        "1".into(),
+        "--extractor-retries".into(),
+        "1".into(),
         "--skip-download".into(),
         "--no-warnings".into(),
+        "--socket-timeout".into(),
+        "30".into(),
     ];
     if let Some(cookie_path) = cookie_path {
         arguments.push("--cookies".into());
@@ -525,10 +965,47 @@ fn metadata_arguments(source_url: &str, cookie_path: Option<&Path>) -> Vec<Strin
     arguments
 }
 
+fn discovery_metadata_arguments(source_url: &str, cookie_path: Option<&Path>) -> Vec<String> {
+    let mut arguments = vec![
+        "--dump-json".into(),
+        "--flat-playlist".into(),
+        "--yes-playlist".into(),
+        "--ignore-errors".into(),
+        "--skip-download".into(),
+        "--no-warnings".into(),
+        "--socket-timeout".into(),
+        "30".into(),
+    ];
+    if let Some(cookie_path) = cookie_path {
+        arguments.push("--cookies".into());
+        arguments.push(cookie_path.to_string_lossy().into_owned());
+    }
+    arguments.push(source_url.into());
+    arguments
+}
+
+#[cfg(test)]
 fn resolve_metadata(
     source_url: &str,
     cookie_path: Option<&Path>,
 ) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
+    Ok(resolve_metadata_with_progress(
+        source_url,
+        cookie_path,
+        metadata_arguments(source_url, cookie_path),
+        false,
+        |_| {},
+    )?
+    .entries)
+}
+
+fn resolve_metadata_with_progress(
+    _source_url: &str,
+    cookie_path: Option<&Path>,
+    arguments: Vec<String>,
+    metadata_dirty: bool,
+    mut report_tracks: impl FnMut(usize),
+) -> Result<MetadataResolution, YouTubePlaybackError> {
     let yt_dlp = find_executable(
         "GMUSIC_YT_DLP_PATH",
         &["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"],
@@ -539,28 +1016,175 @@ fn resolve_metadata(
         authenticated = cookie_path.is_some(),
         "starting yt-dlp metadata resolution"
     );
-    let output = Command::new(&yt_dlp)
-        .args(metadata_arguments(source_url, cookie_path))
-        .output()
+    let mut child = Command::new(&yt_dlp)
+        .args(arguments)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|error| YouTubePlaybackError::DependencyUnavailable {
             name: "yt-dlp",
             detail: error.to_string(),
         })?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        YouTubePlaybackError::Metadata("yt-dlp did not provide a metadata stream".into())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        YouTubePlaybackError::Metadata("yt-dlp did not provide an error stream".into())
+    })?;
+    let (sender, receiver) = mpsc::channel();
+    let stdout_reader = thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if sender.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut output = String::new();
+        let _ = BufReader::new(stderr).read_to_string(&mut output);
+        output
+    });
 
-    if !output.status.success() {
-        tracing::error!(status = %output.status, "yt-dlp metadata resolution failed");
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(YouTubePlaybackError::Metadata(if detail.is_empty() {
-            format!("yt-dlp exited with {}", output.status)
-        } else {
-            detail
-        }));
+    let mut last_progress = Instant::now();
+    let mut entries = Vec::new();
+    let mut timed_out = false;
+    loop {
+        match receiver.recv_timeout(Duration::from_millis(250)) {
+            Ok(Ok(line)) => {
+                let streamed = parse_import_metadata_with_dirty_state(&line, metadata_dirty)?;
+                merge_queue_entries(&mut entries, streamed);
+                last_progress = Instant::now();
+                report_tracks(entries.len());
+            }
+            Ok(Err(error)) => return Err(YouTubePlaybackError::Metadata(error.to_string())),
+            Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                if child
+                    .try_wait()
+                    .map_err(|error| YouTubePlaybackError::Metadata(error.to_string()))?
+                    .is_some()
+                {
+                    break;
+                }
+                if last_progress.elapsed() >= METADATA_IDLE_TIMEOUT {
+                    timed_out = true;
+                    let _ = child.kill();
+                    break;
+                }
+            }
+        }
+    }
+    let _ = stdout_reader.join();
+    while let Ok(Ok(line)) = receiver.try_recv() {
+        let streamed = parse_import_metadata_with_dirty_state(&line, metadata_dirty)?;
+        merge_queue_entries(&mut entries, streamed);
+        report_tracks(entries.len());
+    }
+    let status = child
+        .wait()
+        .map_err(|error| YouTubePlaybackError::Metadata(error.to_string()))?;
+    let stderr = stderr_reader.join().unwrap_or_default();
+    let resolution = finish_metadata_resolution(entries, &stderr, timed_out)?;
+    if !status.success() {
+        tracing::warn!(
+            status = %status,
+            skipped_member_only = resolution.skipped_member_only,
+            tracks = resolution.entries.len(),
+            "yt-dlp skipped unavailable import entries"
+        );
+    }
+    if resolution.timed_out {
+        tracing::warn!(
+            idle_timeout_seconds = METADATA_IDLE_TIMEOUT.as_secs(),
+            tracks = resolution.entries.len(),
+            "yt-dlp metadata resolution stopped after inactivity"
+        );
+    }
+    tracing::debug!(
+        tracks = resolution.entries.len(),
+        skipped_member_only = resolution.skipped_member_only,
+        "yt-dlp metadata received"
+    );
+
+    Ok(resolution)
+}
+
+#[cfg(test)]
+fn parse_streamed_metadata(output: &str) -> Result<Vec<QueueEntry>, YouTubePlaybackError> {
+    let mut entries = Vec::new();
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        merge_queue_entries(&mut entries, parse_import_metadata(line)?);
+    }
+    if entries.is_empty() {
+        return Err(YouTubePlaybackError::Metadata(
+            "no playable tracks found".into(),
+        ));
     }
 
-    let output = String::from_utf8(output.stdout)
-        .map_err(|error| YouTubePlaybackError::Metadata(error.to_string()))?;
-    tracing::debug!(output_bytes = output.len(), "yt-dlp metadata received");
-    parse_import_metadata(&output)
+    Ok(entries)
+}
+
+fn member_only_error_count(stderr: &str) -> usize {
+    stderr
+        .lines()
+        .filter(|line| line.contains("members-only content") || line.contains("members on level"))
+        .count()
+}
+
+fn member_only_video_ids(stderr: &str) -> HashSet<String> {
+    stderr
+        .lines()
+        .filter(|line| line.contains("members-only content") || line.contains("members on level"))
+        .filter_map(|line| line.split("ERROR: [youtube] ").nth(1))
+        .filter_map(|line| line.split(':').next())
+        .filter(|id| is_youtube_video_id(id))
+        .map(str::to_owned)
+        .collect()
+}
+
+fn metadata_error_message(stderr: &str, playable_tracks: usize) -> String {
+    let skipped_member_only = member_only_error_count(stderr);
+    if playable_tracks == 0 && skipped_member_only > 0 {
+        return format!(
+            "no playable tracks found; skipped {skipped_member_only} members-only tracks"
+        );
+    }
+
+    let detail = stderr
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("");
+    if detail.is_empty() {
+        "no playable tracks found".into()
+    } else {
+        format!("could not resolve YouTube metadata: {detail}")
+    }
+}
+
+fn finish_metadata_resolution(
+    entries: Vec<QueueEntry>,
+    stderr: &str,
+    timed_out: bool,
+) -> Result<MetadataResolution, YouTubePlaybackError> {
+    let skipped_member_only = member_only_error_count(stderr);
+    if entries.is_empty() {
+        if timed_out {
+            return Err(YouTubePlaybackError::Metadata(format!(
+                "metadata resolution stopped after {} seconds without a playable track",
+                METADATA_IDLE_TIMEOUT.as_secs()
+            )));
+        }
+        return Err(YouTubePlaybackError::Metadata(metadata_error_message(
+            stderr, 0,
+        )));
+    }
+
+    Ok(MetadataResolution {
+        entries,
+        skipped_member_only,
+        skipped_member_only_ids: member_only_video_ids(stderr),
+        timed_out,
+    })
 }
 
 struct PlayerState {
@@ -573,6 +1197,7 @@ struct MpvPlayer {
     request_id: u64,
     session_cookie_path: Option<PathBuf>,
     socket_path: PathBuf,
+    watchdog: Option<Child>,
 }
 
 impl MpvPlayer {
@@ -582,6 +1207,7 @@ impl MpvPlayer {
             request_id: 0,
             session_cookie_path: None,
             socket_path: env::temp_dir().join(format!("gmusic-mpv-{}.sock", std::process::id())),
+            watchdog: None,
         }
     }
 
@@ -650,6 +1276,7 @@ impl MpvPlayer {
             return Ok(());
         }
 
+        self.stop();
         let _ = fs::remove_file(&self.socket_path);
         let mpv = find_executable(
             "GMUSIC_MPV_PATH",
@@ -688,6 +1315,10 @@ impl MpvPlayer {
         while Instant::now() < deadline {
             if self.socket_path.exists() {
                 tracing::debug!("mpv IPC socket is ready");
+                let child_pid = self.child.as_ref().map(Child::id).ok_or_else(|| {
+                    YouTubePlaybackError::Player("mpv exited before opening its IPC socket".into())
+                })?;
+                self.watchdog = Some(spawn_parent_exit_watchdog(std::process::id(), child_pid)?);
                 return Ok(());
             }
             if let Some(status) = self
@@ -792,6 +1423,10 @@ impl MpvPlayer {
     }
 
     fn stop(&mut self) {
+        if let Some(mut watchdog) = self.watchdog.take() {
+            let _ = watchdog.kill();
+            let _ = watchdog.wait();
+        }
         if self.child.is_some() {
             tracing::info!("stopping mpv process");
             let _ = self.send(json!(["quit"]));
@@ -802,6 +1437,25 @@ impl MpvPlayer {
         }
         let _ = fs::remove_file(&self.socket_path);
     }
+}
+
+fn spawn_parent_exit_watchdog(
+    parent_pid: u32,
+    player_pid: u32,
+) -> Result<Child, YouTubePlaybackError> {
+    Command::new("/bin/sh")
+        .args([
+            "-c",
+            PARENT_EXIT_WATCHDOG,
+            "gmusic-mpv-watchdog",
+            &parent_pid.to_string(),
+            &player_pid.to_string(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| YouTubePlaybackError::Player(error.to_string()))
 }
 
 impl Drop for MpvPlayer {
@@ -854,16 +1508,22 @@ fn playback_path() -> String {
 #[cfg(test)]
 mod tests {
     use std::{
-        fs, thread,
+        fs,
+        process::{Command, Stdio},
+        thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
     use std::path::Path;
 
     use super::{
-        YouTubePlaybackProvider, merge_queue_entries, metadata_arguments, mpv_arguments,
-        parse_import_metadata, resolve_metadata, validate_youtube_url,
+        YouTubePlaybackProvider, discovery_metadata_arguments, finish_metadata_resolution,
+        member_only_error_count, member_only_video_ids, merge_queue_entries, metadata_arguments,
+        metadata_error_message, mpv_arguments, parse_import_metadata,
+        parse_import_metadata_with_dirty_state, parse_streamed_metadata, resolve_metadata,
+        spawn_parent_exit_watchdog, validate_youtube_url,
     };
+    use crate::playback::{EditableTrackMetadata, Playlist};
 
     #[test]
     fn accepts_supported_youtube_urls() {
@@ -885,6 +1545,53 @@ mod tests {
     }
 
     #[test]
+    fn shutdown_terminates_the_running_mpv_process() {
+        let mut provider = YouTubePlaybackProvider::new();
+        let child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep fixture should start");
+        let pid = child.id();
+        provider.player.child = Some(child);
+
+        provider.shutdown();
+
+        let status = Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .expect("kill should inspect the fixture process");
+        assert!(!status.success(), "mpv process {pid} should be stopped");
+    }
+
+    #[test]
+    fn parent_exit_watchdog_terminates_mpv_after_an_ungraceful_app_exit() {
+        let mut app = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("app fixture should start");
+        let mut player = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("player fixture should start");
+        let player_pid = player.id();
+        let mut watchdog = spawn_parent_exit_watchdog(app.id(), player_pid)
+            .expect("watchdog fixture should start");
+
+        app.kill().expect("app fixture should stop");
+        app.wait().expect("app fixture should reap");
+        watchdog.wait().expect("watchdog should exit after cleanup");
+
+        assert!(
+            player
+                .try_wait()
+                .expect("player fixture status should be readable")
+                .is_some(),
+            "player process {player_pid} should stop when its app exits"
+        );
+    }
+
+    #[test]
     fn parses_rich_yt_dlp_metadata_into_an_imported_track() {
         let tracks = parse_import_metadata(
             r#"{"id":"M7lc1UVf-VE","title":"Video title","track":"YouTube Developers Live","artist":"Google for Developers","album":"API Sessions","channel":"Google Developers","duration":238.25,"webpage_url":"https://www.youtube.com/watch?v=M7lc1UVf-VE"}"#,
@@ -902,6 +1609,60 @@ mod tests {
             track.source_url,
             "https://www.youtube.com/watch?v=M7lc1UVf-VE"
         );
+    }
+
+    #[test]
+    fn keeps_flat_discovery_tracks_dirty_until_enrichment_replaces_them() {
+        let mut entries = parse_import_metadata_with_dirty_state(
+            r#"{"id":"M7lc1UVf-VE","title":"Fast discovery title","channel":"Channel"}"#,
+            true,
+        )
+        .expect("flat discovery fixture is valid");
+        let enriched = parse_import_metadata_with_dirty_state(
+            r#"{"id":"M7lc1UVf-VE","track":"Full metadata title","artist":"Artist","album":"Album","duration":120}"#,
+            false,
+        )
+        .expect("full metadata fixture is valid");
+
+        assert!(entries[0].item.metadata_dirty);
+        merge_queue_entries(&mut entries, enriched);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].item.title, "Full metadata title");
+        assert!(!entries[0].item.metadata_dirty);
+    }
+
+    #[test]
+    fn dirty_discoveries_survive_a_provider_restart_for_background_refresh() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "gmusic-dirty-library-{}-{unique}.json",
+            std::process::id()
+        ));
+        let entries = parse_import_metadata_with_dirty_state(
+            r#"{"id":"M7lc1UVf-VE","title":"Fast discovery title","channel":"Channel"}"#,
+            true,
+        )
+        .expect("flat discovery fixture is valid");
+
+        let mut provider = YouTubePlaybackProvider::from_library_path(path.clone())
+            .expect("an absent library should initialize empty");
+        provider.entries = entries;
+        provider.sync_queue();
+        provider
+            .persist_library()
+            .expect("the dirty discovery should persist");
+        drop(provider);
+
+        let mut restored = YouTubePlaybackProvider::from_library_path(path.clone())
+            .expect("the persisted library should load");
+        let snapshot = restored.snapshot().expect("restored state is readable");
+
+        assert!(snapshot.queue[0].metadata_dirty);
+        fs::remove_file(path).expect("temporary library should be removable");
     }
 
     #[test]
@@ -958,10 +1719,84 @@ mod tests {
     fn asks_yt_dlp_for_video_or_playlist_metadata_without_downloading() {
         let arguments = metadata_arguments("https://youtube.com/playlist?list=PL-example", None);
 
+        assert!(arguments.contains(&"--dump-json".into()));
+        assert!(!arguments.contains(&"--dump-single-json".into()));
         assert!(arguments.contains(&"--yes-playlist".into()));
         assert!(arguments.contains(&"--ignore-errors".into()));
+        assert!(arguments.contains(&"--lazy-playlist".into()));
+        assert!(arguments.contains(&"--retries".into()));
+        assert!(arguments.contains(&"--extractor-retries".into()));
         assert!(arguments.contains(&"--skip-download".into()));
         assert!(!arguments.contains(&"--no-playlist".into()));
+    }
+
+    #[test]
+    fn asks_yt_dlp_to_discover_collection_entries_without_per_video_resolution() {
+        let arguments = discovery_metadata_arguments("https://youtube.com/@channel/videos", None);
+
+        assert!(arguments.contains(&"--dump-json".into()));
+        assert!(arguments.contains(&"--flat-playlist".into()));
+        assert!(arguments.contains(&"--yes-playlist".into()));
+        assert!(arguments.contains(&"--skip-download".into()));
+        assert!(!arguments.contains(&"--extractor-retries".into()));
+    }
+
+    #[test]
+    fn parses_playable_tracks_from_streamed_yt_dlp_metadata() {
+        let tracks = parse_streamed_metadata(
+            concat!(
+                "{\"id\":\"M7lc1UVf-VE\",\"title\":\"First\",\"channel\":\"Channel\",\"duration\":120}\n",
+                "{\"id\":\"BaW_jenozKc\",\"title\":\"Second\",\"channel\":\"Channel\",\"duration\":90}"
+            ),
+        )
+        .expect("streamed metadata is valid");
+
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(tracks[0].item.title, "First");
+        assert_eq!(tracks[1].item.title, "Second");
+    }
+
+    #[test]
+    fn reports_member_only_entries_without_dumping_provider_errors() {
+        let stderr = concat!(
+            "ERROR: [youtube] first: This video is available to this channel's members on level: Supporters\n",
+            "ERROR: [youtube] second: This video is available to this channel's members on level: Supporters\n"
+        );
+
+        assert_eq!(member_only_error_count(stderr), 2);
+        assert_eq!(
+            metadata_error_message(stderr, 0),
+            "no playable tracks found; skipped 2 members-only tracks"
+        );
+    }
+
+    #[test]
+    fn identifies_member_only_video_ids_for_removal_after_enrichment() {
+        let stderr = concat!(
+            "ERROR: [youtube] M7lc1UVf-VE: This video is available to this channel's members on level: Supporters\n",
+            "ERROR: [youtube] BaW_jenozKc: This video is available to this channel's members on level: Supporters\n"
+        );
+
+        assert_eq!(
+            member_only_video_ids(stderr),
+            ["M7lc1UVf-VE".to_string(), "BaW_jenozKc".to_string()]
+                .into_iter()
+                .collect()
+        );
+    }
+
+    #[test]
+    fn keeps_streamed_tracks_when_metadata_stops_after_inactivity() {
+        let entries = parse_import_metadata(
+            r#"{"id":"M7lc1UVf-VE","title":"Imported before timeout","channel":"Channel","duration":120}"#,
+        )
+        .expect("fixture metadata is valid");
+
+        let resolution = finish_metadata_resolution(entries, "", true)
+            .expect("playable metadata should survive an inactivity timeout");
+
+        assert_eq!(resolution.entries.len(), 1);
+        assert!(resolution.timed_out);
     }
 
     #[test]
@@ -981,6 +1816,97 @@ mod tests {
         assert_eq!(entries[0].item.id, "M7lc1UVf-VE");
         assert_eq!(entries[0].item.title, "Updated title");
         assert_eq!(entries[1].item.id, "BaW_jenozKc");
+    }
+
+    #[test]
+    fn updates_user_owned_track_metadata_without_changing_its_source() {
+        let mut provider = YouTubePlaybackProvider::new();
+        provider.entries = parse_import_metadata(
+            r#"{"id":"M7lc1UVf-VE","title":"Original","channel":"Channel","duration":120}"#,
+        )
+        .expect("fixture metadata is valid");
+
+        provider
+            .update_track_metadata(
+                "M7lc1UVf-VE",
+                EditableTrackMetadata {
+                    title: "Edited title".into(),
+                    artist: "Edited artist".into(),
+                    album: Some("Edited album".into()),
+                    label: Some("Edited label".into()),
+                    genres: vec!["Electronic".into(), "electronic".into(), "Ambient".into()],
+                },
+            )
+            .expect("known tracks accept metadata updates");
+
+        let track = &provider.entries[0];
+        assert_eq!(track.item.title, "Edited title");
+        assert_eq!(track.item.artist, "Edited artist");
+        assert_eq!(track.item.album.as_deref(), Some("Edited album"));
+        assert_eq!(track.item.label.as_deref(), Some("Edited label"));
+        assert_eq!(track.item.genres, ["Electronic", "Ambient"]);
+        assert_eq!(
+            track.source_url,
+            "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+        );
+    }
+
+    #[test]
+    fn stores_playlists_against_stable_track_ids() {
+        let mut provider = YouTubePlaybackProvider::new();
+        provider.entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Channel","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Channel","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+
+        provider
+            .upsert_playlist(Playlist {
+                id: "focus".into(),
+                name: "Focus".into(),
+                track_ids: vec!["BaW_jenozKc".into(), "M7lc1UVf-VE".into()],
+            })
+            .expect("a playlist with known tracks is valid");
+
+        assert_eq!(provider.playlists.len(), 1);
+        assert_eq!(provider.playlists[0].name, "Focus");
+        assert_eq!(
+            provider.playlists[0].track_ids,
+            ["BaW_jenozKc", "M7lc1UVf-VE"]
+        );
+    }
+
+    #[test]
+    fn records_each_started_play_without_losing_track_metadata() {
+        let mut provider = YouTubePlaybackProvider::new();
+        provider.entries = parse_import_metadata(
+            r#"{"id":"M7lc1UVf-VE","title":"Track","channel":"Channel","duration":120}"#,
+        )
+        .expect("fixture metadata is valid");
+        provider.snapshot.current_item = Some(provider.entries[0].item.clone());
+
+        provider
+            .record_playback_start("M7lc1UVf-VE", 1_734_000_000_000)
+            .expect("known tracks can record a play");
+        provider
+            .record_playback_start("M7lc1UVf-VE", 1_734_000_060_000)
+            .expect("repeated track plays are counted");
+
+        let library = provider.library_snapshot();
+        assert_eq!(library.total_plays, 2);
+        assert_eq!(library.tracks[0].play_count, 2);
+        assert_eq!(library.tracks[0].last_played_at_ms, Some(1_734_000_060_000));
+        assert_eq!(
+            library.tracks[0].play_history_ms,
+            [1_734_000_000_000, 1_734_000_060_000]
+        );
+        assert_eq!(
+            provider
+                .snapshot
+                .current_item
+                .as_ref()
+                .map(|item| item.play_count),
+            Some(2)
+        );
     }
 
     #[test]

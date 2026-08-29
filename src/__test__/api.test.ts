@@ -33,16 +33,14 @@ describe("playbackApi", () => {
     expect(invoke).toHaveBeenCalledWith("inspect_playback");
   });
 
-  it("imports many YouTube sources through the playback service", async () => {
-    vi.mocked(invoke).mockResolvedValue(snapshot);
+  it("starts many YouTube sources through the background import service", async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
     const urls = [
       "https://www.youtube.com/playlist?list=PL-example",
       "https://www.youtube.com/@artist/videos",
     ];
 
-    await expect(playbackApi.importYouTubeUrls(urls)).resolves.toEqual(
-      snapshot,
-    );
+    await expect(playbackApi.importYouTubeUrls(urls)).resolves.toBeUndefined();
 
     expect(invoke).toHaveBeenCalledWith("import_youtube_urls", { urls });
   });

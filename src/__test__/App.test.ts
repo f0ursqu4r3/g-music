@@ -13,11 +13,16 @@ const playbackMocks = vi.hoisted(() => ({
 const windowMocks = vi.hoisted(() => ({
   showImport: vi.fn(),
 }));
+const eventMocks = vi.hoisted(() => ({
+  listen: vi.fn().mockResolvedValue(vi.fn()),
+}));
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: vi.fn(),
   LogicalSize: vi.fn(),
 }));
+
+vi.mock("@tauri-apps/api/event", () => eventMocks);
 
 vi.mock("@/api", async (importOriginal) => {
   const api = await importOriginal<typeof import("@/api")>();
@@ -52,6 +57,11 @@ vi.mock("@/composables/usePlayback", () => ({
       },
     },
     isUpdating: { value: false },
+    isImporting: { value: false },
+    importProgress: { value: null },
+    metadataRefreshes: {
+      value: { completedTracks: 0, jobs: [], totalTracks: 0 },
+    },
     errorMessage: { value: "" },
     refresh: vi.fn(),
     sync: playbackMocks.sync,
@@ -63,6 +73,8 @@ vi.mock("@/composables/usePlayback", () => ({
     moveQueueItem: vi.fn(),
     playTrack: playbackMocks.playTrack,
     importYouTubeUrls: playbackMocks.importYouTubeUrls,
+    updateImportProgress: vi.fn(),
+    updateMetadataRefreshes: vi.fn(),
   }),
 }));
 

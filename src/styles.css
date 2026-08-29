@@ -7,7 +7,7 @@
   --surface: oklch(0.19 0.028 260 / 0.985);
   --surface-raised: oklch(0.235 0.034 260);
   --surface-muted: oklch(0.265 0.032 260);
-  --glass-window: oklch(0.16 0.034 258 / 0.7);
+  --glass-window: oklch(0.1065 0.0177 305.16 / 40%);
   --glass-sidebar: oklch(0.14 0.031 260 / 0.56);
   --glass-panel: oklch(0.18 0.03 260 / 0.64);
   --glass-control: oklch(0.09 0.018 260 / 0.5);

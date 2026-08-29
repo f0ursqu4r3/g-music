@@ -61,7 +61,7 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value?.positionMs).toBe(2_000);
   });
 
-  it("imports many YouTube source URLs", async () => {
+  it("starts import work without blocking playback commands", async () => {
     const client = {
       inspect: vi.fn(),
       play: vi.fn(),
@@ -72,7 +72,7 @@ describe("usePlayback", () => {
       setVolume: vi.fn(),
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
-      importYouTubeUrls: vi.fn().mockResolvedValue(playing),
+      importYouTubeUrls: vi.fn().mockResolvedValue(undefined),
     };
     const playback = usePlayback(client);
     const urls = [
@@ -83,7 +83,21 @@ describe("usePlayback", () => {
     await playback.importYouTubeUrls(urls);
 
     expect(client.importYouTubeUrls).toHaveBeenCalledWith(urls);
-    expect(playback.snapshot.value).toEqual(playing);
+    expect(playback.isUpdating.value).toBe(false);
+    expect(playback.isImporting.value).toBe(true);
+
+    playback.updateImportProgress({
+      completedSources: 2,
+      importedTracks: 7,
+      message: "Imported 7 track(s) into the library.",
+      phase: "completed",
+      runId: 3,
+      skippedMemberOnly: 0,
+      totalSources: 2,
+    });
+
+    expect(playback.isImporting.value).toBe(false);
+    expect(playback.importProgress.value?.importedTracks).toBe(7);
   });
 
   it("plays a selected library track", async () => {

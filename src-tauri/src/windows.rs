@@ -104,8 +104,8 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
-        overlay_titlebar: false,
-        hidden_title: false,
+        overlay_titlebar: true,
+        hidden_title: true,
     },
 ];
 
@@ -342,6 +342,19 @@ mod tests {
         assert!(artwork.overlay_titlebar);
         assert!(artwork.hidden_title);
         assert!(artwork.decorations);
+    }
+
+    #[test]
+    fn import_uses_the_library_window_chrome() {
+        let import = all_surfaces()
+            .iter()
+            .find(|surface| surface.kind == WindowSurface::Import)
+            .expect("import surface");
+
+        assert!(import.overlay_titlebar);
+        assert!(import.hidden_title);
+        assert!(import.decorations);
+        assert!(import.transparent);
     }
 
     #[test]

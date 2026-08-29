@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
-import { windowApi } from "@/api";
+import {
+  type ImportProgress,
+  type MetadataRefreshSnapshot,
+  windowApi,
+} from "@/api";
 import type { ThemeName } from "@/lib/theme";
 import { readTheme, themes } from "@/lib/theme";
 import { resolveMockWindowView } from "@/lib/window-view";
@@ -27,6 +32,8 @@ const isWindowFocused = ref(true);
 let isMounted = false;
 let unlistenWindowFocus: (() => void) | undefined;
 let playbackSyncInterval: number | undefined;
+let unlistenImportProgress: (() => void) | undefined;
+let unlistenMetadataRefreshProgress: (() => void) | undefined;
 
 const statusMessage = computed(
   () =>
@@ -139,6 +146,28 @@ async function trackArtworkWindowFocus(): Promise<void> {
   }
 }
 
+async function trackImportProgress(): Promise<void> {
+  if (view !== "import") {
+    return;
+  }
+
+  unlistenImportProgress = await listen<ImportProgress>(
+    "import-progress",
+    ({ payload }) => {
+      playback.updateImportProgress(payload);
+    },
+  );
+}
+
+async function trackMetadataRefreshProgress(): Promise<void> {
+  unlistenMetadataRefreshProgress = await listen<MetadataRefreshSnapshot>(
+    "metadata-refresh-progress",
+    ({ payload }) => {
+      playback.updateMetadataRefreshes(payload);
+    },
+  );
+}
+
 onMounted(() => {
   isMounted = true;
   window.addEventListener("keydown", handleKeyboard);
@@ -152,11 +181,15 @@ onMounted(() => {
   if (view === "artwork") {
     void trackArtworkWindowFocus();
   }
+  void trackImportProgress();
+  void trackMetadataRefreshProgress();
 });
 
 onUnmounted(() => {
   isMounted = false;
   unlistenWindowFocus?.();
+  unlistenImportProgress?.();
+  unlistenMetadataRefreshProgress?.();
   if (playbackSyncInterval !== undefined) {
     window.clearInterval(playbackSyncInterval);
   }
@@ -187,18 +220,21 @@ onUnmounted(() => {
       :snapshot="playback.snapshot.value"
       :is-updating="playback.isUpdating.value"
       :error-message="windowError || playback.errorMessage.value"
+      :metadata-refreshes="playback.metadataRefreshes.value"
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
       @play-track="playback.playTrack"
+      @seek="playback.seek"
       @set-volume="playback.setVolume"
       @open-import="openImportWindow"
     />
 
     <ImportWindow
       v-else-if="view === 'import'"
-      :is-updating="playback.isUpdating.value"
+      :is-importing="playback.isImporting.value"
       :error-message="playback.errorMessage.value"
+      :progress="playback.importProgress.value"
       @import-youtube-urls="playback.importYouTubeUrls"
     />
 
@@ -210,6 +246,7 @@ onUnmounted(() => {
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
+      @seek="playback.seek"
     />
 
     <QueueWindow

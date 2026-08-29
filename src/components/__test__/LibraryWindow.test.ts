@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { MediaItem, PlaybackSnapshot } from "@/api";
 import { Slider } from "@/components/ui/slider";
 import LibraryWindow from "../LibraryWindow.vue";
+import { dragSlider } from "./slider-interaction";
 
 const importedTracks: MediaItem[] = [
   {
@@ -88,6 +89,17 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("keeps the whole sidebar scrollable when its content overflows", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    const sidebar = wrapper.get("[data-library-sidebar]");
+    const playlists = wrapper.get("[data-library-playlists]");
+    expect(sidebar.classes()).toContain("overflow-y-auto");
+    expect(playlists.classes()).not.toContain("overflow-y-auto");
+  });
+
   it("uses the compact reference-style library header and track table", () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -111,6 +123,49 @@ describe("LibraryWindow", () => {
     expect(wrapper.text()).toContain("API Sessions");
     expect(wrapper.text()).toContain("3:58");
     expect(wrapper.text()).not.toContain("Night Drive over the City");
+  });
+
+  it("shows active metadata work as a remaining counter after the library summary", () => {
+    const activeRefreshes = {
+      completedTracks: 4,
+      jobs: [
+        {
+          message: "Fetching full YouTube metadata.",
+          state: "refreshing" as const,
+          title: importedTracks[0].title,
+          trackId: importedTracks[0].id,
+        },
+      ],
+      totalTracks: 9,
+    };
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        metadataRefreshes: activeRefreshes,
+        snapshot,
+      },
+    });
+
+    const summary = wrapper.get("[data-library-summary]");
+    const remaining = wrapper.get("[data-metadata-refresh-remaining]");
+    expect(summary.text()).toContain("2 songs");
+    expect(remaining.text()).toBe("5");
+    expect(summary.element.nextElementSibling).toBe(remaining.element);
+
+    const completedWrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        metadataRefreshes: {
+          ...activeRefreshes,
+          completedTracks: 9,
+          jobs: [{ ...activeRefreshes.jobs[0], state: "completed" }],
+        },
+        snapshot,
+      },
+    });
+    expect(
+      completedWrapper.find("[data-metadata-refresh-remaining]").exists(),
+    ).toBe(false);
   });
 
   it("truncates track metadata within a fixed-layout table", () => {
@@ -174,6 +229,31 @@ describe("LibraryWindow", () => {
     expect(wrapper.emitted("playTrack")).toEqual([["BaW_jenozKc"]]);
   });
 
+  it("shows a spinning metadata refresh icon for tracks with incomplete metadata", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: {
+          ...snapshot,
+          queue: [
+            {
+              ...importedTracks[0],
+              metadataDirty: true,
+            },
+          ],
+        },
+      },
+    });
+
+    const indicator = wrapper.get(
+      '[data-track-id="M7lc1UVf-VE"] [data-metadata-dirty]',
+    );
+
+    expect(indicator.attributes("aria-label")).toBe("Metadata refresh pending");
+    expect(indicator.classes()).toContain("animate-spin");
+    expect(indicator.text()).toBe("");
+  });
+
   it("provides the complete reference-style playback strip", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -199,6 +279,22 @@ describe("LibraryWindow", () => {
     expect(volume).toBeDefined();
     volume!.vm.$emit("valueCommit", [72]);
     expect(wrapper.emitted("setVolume")).toEqual([[72]]);
+  });
+
+  it("commits pointer drags from the progress and volume scrubbers", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const volume = wrapper.get('[data-slot="slider"][aria-label="Volume"]');
+    const progress = wrapper.get(
+      '[data-slot="slider"][aria-label="Track progress"]',
+    );
+
+    await dragSlider(volume, 25);
+    await dragSlider(progress, 50);
+
+    expect(wrapper.emitted("setVolume")).toEqual([[25]]);
+    expect(wrapper.emitted("seek")).toEqual([[119_000]]);
   });
 
   it("toggles track favorites from the table", async () => {

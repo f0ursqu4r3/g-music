@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Shared capability for all G Music windows",
   "windows": ["main", "artwork", "queue", "mini-player", "settings", "import"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

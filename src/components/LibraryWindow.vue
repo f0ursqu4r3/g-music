@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  AudioLines,
   CarFront,
   CassetteTape,
   CircleDot,
@@ -11,6 +10,7 @@ import {
   Heart,
   List,
   ListMusic,
+  LoaderCircle,
   Mic2,
   Pause,
   Play,
@@ -21,16 +21,21 @@ import {
   SkipForward,
   Sparkles,
   Volume2,
-} from "lucide-vue-next";
-import { computed, onBeforeUnmount, ref } from "vue";
+} from 'lucide-vue-next';
+import { computed, onBeforeUnmount, ref } from 'vue';
 
-import type { MediaItem, PlaybackSnapshot } from "@/api";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { formatDuration } from "@/lib/time";
-import YouTubeArtwork from "./YouTubeArtwork.vue";
+import type {
+  MediaItem,
+  MetadataRefreshSnapshot,
+  PlaybackSnapshot,
+} from '@/api';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
+import { formatDuration } from '@/lib/time';
+import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue';
+import YouTubeArtwork from './YouTubeArtwork.vue';
 
-type LibraryCollection = "tracks" | "albums" | "artists";
+type LibraryCollection = 'tracks' | 'albums' | 'artists';
 
 interface LibraryAlbum {
   artist: string;
@@ -48,6 +53,7 @@ interface Props {
   snapshot: PlaybackSnapshot;
   isUpdating: boolean;
   errorMessage?: string;
+  metadataRefreshes?: MetadataRefreshSnapshot;
 }
 
 const props = defineProps<Props>();
@@ -56,25 +62,27 @@ const emit = defineEmits<{
   toggle: [];
   previous: [];
   next: [];
+  seek: [positionMs: number];
   setVolume: [percent: number];
   openImport: [];
   playTrack: [id: string];
 }>();
 
 const playlists = [
-  { href: "#favorites", icon: Heart, label: "Favorites" },
-  { href: "#chill-vibes", icon: Sparkles, label: "Chill Vibes" },
-  { href: "#focus", icon: CircleDot, label: "Focus" },
-  { href: "#road-trip", icon: CarFront, label: "Road Trip" },
-  { href: "#90s-mix", icon: CassetteTape, label: "90s Mix" },
+  { href: '#favorites', icon: Heart, label: 'Favorites' },
+  { href: '#chill-vibes', icon: Sparkles, label: 'Chill Vibes' },
+  { href: '#focus', icon: CircleDot, label: 'Focus' },
+  { href: '#road-trip', icon: CarFront, label: 'Road Trip' },
+  { href: '#90s-mix', icon: CassetteTape, label: '90s Mix' },
 ] as const;
 
-const activeCollection = ref<LibraryCollection>("tracks");
+const activeCollection = ref<LibraryCollection>('tracks');
 const favoriteTrackIds = ref(new Set<string>());
+const metadataRefreshDrawerOpen = ref(false);
 const columnWidths = ref([35, 25, 25, 9, 6]);
 const minimumColumnWidths = [18, 12, 12, 7, 5] as const;
 let stopColumnResize: (() => void) | undefined;
-const isPlaying = computed(() => props.snapshot.status === "playing");
+const isPlaying = computed(() => props.snapshot.status === 'playing');
 const currentItem = computed(() => props.snapshot.currentItem);
 const libraryTracks = computed(() => props.snapshot.queue);
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
@@ -106,37 +114,51 @@ const libraryArtists = computed<LibraryArtist[]>(() => {
   }
 
   return [...artists.entries()].map(([name, value]) => ({
-    detail: `${value.count} ${value.count === 1 ? "song" : "songs"}`,
+    detail: `${value.count} ${value.count === 1 ? 'song' : 'songs'}`,
     name,
     videoId: value.track.id,
   }));
 });
 const collectionTitle = computed(() => {
   const titles: Record<LibraryCollection, string> = {
-    albums: "Albums",
-    artists: "Artists",
-    tracks: "Tracks",
+    albums: 'Albums',
+    artists: 'Artists',
+    tracks: 'Tracks',
   };
 
   return titles[activeCollection.value];
 });
 const collectionSummary = computed(() => {
   const summaries: Record<LibraryCollection, string> = {
-    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? "album" : "albums"}`,
-    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? "artist" : "artists"}`,
+    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? 'album' : 'albums'}`,
+    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? 'artist' : 'artists'}`,
     tracks: trackCollectionSummary(libraryTracks.value),
   };
 
   return summaries[activeCollection.value];
 });
-
+const metadataRefreshRemaining = computed(() =>
+  Math.max(
+    (props.metadataRefreshes?.totalTracks ?? 0) -
+      (props.metadataRefreshes?.completedTracks ?? 0),
+    0
+  )
+);
+const hasActiveMetadataRefresh = computed(
+  () =>
+    metadataRefreshRemaining.value > 0 &&
+    (props.metadataRefreshes?.jobs.some(
+      (job) => job.state === 'queued' || job.state === 'refreshing'
+    ) ??
+      false)
+);
 function trackCollectionSummary(tracks: MediaItem[]): string {
   const count = tracks.length;
   const totalMinutes = Math.round(
-    tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000,
+    tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000
   );
 
-  return `${count} ${count === 1 ? "song" : "songs"} · ${totalMinutes} min`;
+  return `${count} ${count === 1 ? 'song' : 'songs'} · ${totalMinutes} min`;
 }
 
 function selectCollection(collection: LibraryCollection): void {
@@ -162,14 +184,21 @@ function toggleFavorite(trackId: string): void {
 function emitVolume(values: number[]): void {
   const value = values[0];
   if (Number.isFinite(value)) {
-    emit("setVolume", value);
+    emit('setVolume', value);
+  }
+}
+
+function emitSeek(values: number[]): void {
+  const value = values[0];
+  if (Number.isFinite(value)) {
+    emit('seek', value);
   }
 }
 
 function resizeColumnBoundary(
   boundaryIndex: number,
   requestedDelta: number,
-  initialWidths = columnWidths.value,
+  initialWidths = columnWidths.value
 ): void {
   const leftWidth = initialWidths[boundaryIndex];
   const rightWidth = initialWidths[boundaryIndex + 1];
@@ -186,7 +215,7 @@ function resizeColumnBoundary(
 
   const delta = Math.min(
     Math.max(requestedDelta, minimumLeftWidth - leftWidth),
-    rightWidth - minimumRightWidth,
+    rightWidth - minimumRightWidth
   );
   const nextWidths = [...initialWidths];
   nextWidths[boundaryIndex] = leftWidth + delta;
@@ -203,7 +232,7 @@ function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
   stopColumnResize?.();
   const startX = event.clientX;
   const initialWidths = [...columnWidths.value];
-  const table = (event.currentTarget as HTMLElement).closest("table");
+  const table = (event.currentTarget as HTMLElement).closest('table');
 
   const handleMouseMove = (moveEvent: MouseEvent): void => {
     const tableWidth = table?.getBoundingClientRect().width ?? 0;
@@ -215,31 +244,31 @@ function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
     resizeColumnBoundary(boundaryIndex, delta, initialWidths);
   };
   const handleMouseUp = (): void => {
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
     stopColumnResize = undefined;
   };
 
   stopColumnResize = handleMouseUp;
-  window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mouseup", handleMouseUp);
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
 }
 
 function resizeColumnWithKeyboard(
   boundaryIndex: number,
-  event: KeyboardEvent,
+  event: KeyboardEvent
 ): void {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
     return;
   }
 
   event.preventDefault();
-  resizeColumnBoundary(boundaryIndex, event.key === "ArrowRight" ? 1 : -1);
+  resizeColumnBoundary(boundaryIndex, event.key === 'ArrowRight' ? 1 : -1);
 }
 
 function playTrack(id: string): void {
   if (!props.isUpdating) {
-    emit("playTrack", id);
+    emit('playTrack', id);
   }
 }
 
@@ -248,17 +277,18 @@ onBeforeUnmount(() => stopColumnResize?.());
 
 <template>
   <main
-    class="library-window relative grid h-screen min-h-0 grid-cols-[244px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_104px] overflow-hidden bg-[radial-gradient(circle_at_14%_4%,oklch(0.48_0.09_274/0.22),transparent_34%),radial-gradient(circle_at_82%_12%,oklch(0.34_0.045_252/0.15),transparent_42%),linear-gradient(135deg,oklch(0.28_0.055_248/0.2),transparent_58%),var(--glass-window)] text-(--text) backdrop-saturate-[1.2] max-[760px]:grid-cols-1"
+    class="library-window relative grid h-screen min-h-0 grid-cols-[244px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_104px] overflow-hidden bg-(--glass-window) text-(--text) backdrop-saturate-[1.2] max-[760px]:grid-cols-1"
     aria-label="Music library"
   >
     <div
-      class="application-drag-region absolute top-0 right-44 left-0 z-10 h-13"
+      class="application-drag-region absolute top-0 right-0 left-0 z-10 h-13"
       data-tauri-drag-region
       aria-hidden="true"
     />
 
     <aside
-      class="col-start-1 row-start-1 flex min-h-0 flex-col border-r border-(--line) px-6 pt-14 pb-4 max-[760px]:hidden"
+      class="col-start-1 row-start-1 min-h-0 overflow-y-auto p-4 mt-8 max-[760px]:hidden"
+      data-library-sidebar
     >
       <nav class="grid gap-0.5" aria-label="Library navigation">
         <div
@@ -309,11 +339,16 @@ onBeforeUnmount(() => stopColumnResize?.());
         <span
           class="flex min-h-8.5 items-center gap-2.5 rounded-md px-2.5 text-[0.82rem] text-(--muted-text) [&>svg]:size-4"
           data-library-destination="playlists"
-          ><ListMusic aria-hidden="true" />Playlists</span
         >
+          <ListMusic aria-hidden="true" />Playlists
+        </span>
       </nav>
 
-      <nav class="mt-5 grid gap-0.5" aria-label="Playlists">
+      <nav
+        class="mt-5 grid gap-0.5"
+        aria-label="Playlists"
+        data-library-playlists
+      >
         <div class="mb-1 flex items-center justify-between px-2.5">
           <p
             class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)"
@@ -341,7 +376,7 @@ onBeforeUnmount(() => stopColumnResize?.());
     </aside>
 
     <section
-      class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[104px_minmax(0,1fr)] max-[760px]:col-start-1"
+      class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[104px_minmax(0,1fr)] max-[760px]:col-start-1 border-l border-(--line)"
     >
       <header
         class="flex items-center justify-between gap-6 border-b border-(--line) px-8 pt-3"
@@ -350,9 +385,23 @@ onBeforeUnmount(() => stopColumnResize?.());
           <h1 class="text-2xl font-semibold tracking-[-0.035em] text-(--text)">
             {{ collectionTitle }}
           </h1>
-          <span class="mt-1 block text-[0.77rem] text-(--muted-text)">{{
-            collectionSummary
-          }}</span>
+          <div
+            class="mt-1 flex items-center gap-2 text-[0.77rem] text-(--muted-text)"
+          >
+            <span data-library-summary>{{ collectionSummary }}</span>
+            <button
+              v-if="hasActiveMetadataRefresh"
+              :aria-expanded="metadataRefreshDrawerOpen"
+              :aria-label="`${metadataRefreshRemaining} metadata refreshes remaining`"
+              class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text)"
+              data-metadata-refresh-remaining
+              type="button"
+              @click="metadataRefreshDrawerOpen = !metadataRefreshDrawerOpen"
+            >
+              <LoaderCircle class="size-3 animate-spin" aria-hidden="true" />
+              {{ metadataRefreshRemaining }}
+            </button>
+          </div>
         </div>
 
         <p
@@ -382,6 +431,7 @@ onBeforeUnmount(() => stopColumnResize?.());
           >
             <Grid2X2 aria-hidden="true" />
           </button>
+
           <button
             aria-label="More library options"
             aria-haspopup="menu"
@@ -506,8 +556,16 @@ onBeforeUnmount(() => stopColumnResize?.());
                   <span v-else class="size-3.75 shrink-0" aria-hidden="true" />
                   <span
                     class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-                    >{{ track.title }}</span
                   >
+                    {{ track.title }}
+                  </span>
+                  <LoaderCircle
+                    v-if="track.metadataDirty"
+                    class="size-3.5 shrink-0 animate-spin text-amber-200"
+                    data-metadata-dirty
+                    aria-label="Metadata refresh pending"
+                    role="status"
+                  />
                 </span>
               </td>
               <td
@@ -515,16 +573,18 @@ onBeforeUnmount(() => stopColumnResize?.());
               >
                 <span
                   class="track-artist block overflow-hidden text-ellipsis whitespace-nowrap"
-                  >{{ track.artist }}</span
                 >
+                  {{ track.artist }}
+                </span>
               </td>
               <td
                 class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
               >
                 <span
                   class="track-album block overflow-hidden text-ellipsis whitespace-nowrap"
-                  >{{ track.album || "—" }}</span
                 >
+                  {{ track.album || '—' }}
+                </span>
               </td>
               <td
                 class="h-10.5 px-2 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
@@ -617,9 +677,9 @@ onBeforeUnmount(() => stopColumnResize?.());
 
     <footer class="contents">
       <div
-        class="col-start-1 row-start-2 flex min-w-0 items-center gap-3 border-t border-r border-(--line) px-6 max-[760px]:hidden"
+        class="relative col-start-1 row-start-2 flex min-w-0 items-center gap-3 border-t border-(--line) pr-4 max-[760px]:hidden"
       >
-        <div class="cover-art size-15 shrink-0 rounded-md">
+        <div class="cover-art h-full aspect-square shrink-0">
           <YouTubeArtwork
             class="absolute inset-0 size-full object-cover"
             :video-id="currentItem?.id"
@@ -629,21 +689,18 @@ onBeforeUnmount(() => stopColumnResize?.());
           <p
             class="overflow-hidden text-[0.82rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
           >
-            {{ currentItem?.title ?? "Nothing selected" }}
+            {{ currentItem?.title ?? 'Nothing selected' }}
           </p>
           <span
             class="mt-0.5 block overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
-            >{{ currentItem?.artist ?? "Choose a track" }}</span
           >
+            {{ currentItem?.artist ?? 'Choose a track' }}
+          </span>
         </div>
-        <AudioLines
-          class="ml-auto size-5 shrink-0 text-accent"
-          aria-label="Playback activity"
-        />
       </div>
 
       <div
-        class="col-start-2 row-start-2 grid min-w-0 grid-rows-[1fr_auto] border-t border-(--line) px-6 pt-2 pb-2 max-[760px]:col-start-1"
+        class="col-start-2 row-start-2 grid min-w-0 grid-rows-[1fr_auto] border-t border-l border-(--line) px-6 pt-2 pb-2 max-[760px]:col-start-1"
       >
         <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           <span aria-hidden="true" />
@@ -710,20 +767,29 @@ onBeforeUnmount(() => stopColumnResize?.());
         >
           <span>{{ formatDuration(snapshot.positionMs) }}</span>
           <Slider
-            class="pointer-events-none"
             aria-label="Track progress"
             :min="0"
             :max="currentItem?.durationMs ?? 0"
             :step="1000"
             :model-value="[snapshot.positionMs]"
-            :disabled="true"
+            :disabled="isUpdating || !currentItem"
+            @value-commit="emitSeek"
           />
-          <span class="text-right">{{
-            formatDuration(currentItem?.durationMs ?? 0)
-          }}</span>
+          <span class="text-right">
+            {{ formatDuration(currentItem?.durationMs ?? 0) }}
+          </span>
         </div>
       </div>
     </footer>
+
+    <MetadataRefreshDrawer
+      v-if="
+        metadataRefreshDrawerOpen &&
+        hasActiveMetadataRefresh &&
+        metadataRefreshes
+      "
+      :refreshes="metadataRefreshes"
+    />
   </main>
 </template>
 
@@ -737,14 +803,5 @@ onBeforeUnmount(() => stopColumnResize?.());
     var(--artwork-b) 58%,
     var(--artwork-c)
   );
-}
-
-.cover-art::after {
-  position: absolute;
-  inset: 15%;
-  content: "";
-  border: 1px solid oklch(0.98 0.01 90 / 0.35);
-  border-radius: inherit;
-  transform: rotate(-18deg);
 }
 </style>

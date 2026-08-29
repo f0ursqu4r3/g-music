@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ArrowDownToLine } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { ArrowDownToLine, TerminalSquare } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
 
+import type { ImportProgress } from "@/api";
 import { Button } from "@/components/ui/button";
 
 interface Props {
-  isUpdating: boolean;
+  isImporting: boolean;
   errorMessage?: string;
+  progress?: ImportProgress | null;
 }
 
 const props = defineProps<Props>();
@@ -16,6 +18,8 @@ const emit = defineEmits<{
 }>();
 
 const youtubeUrls = ref("");
+const logs = ref<string[]>(["Ready. Add one YouTube URL per line."]);
+let currentRunId: number | undefined;
 const importSources = computed(() => [
   ...new Set(
     youtubeUrls.value
@@ -24,9 +28,45 @@ const importSources = computed(() => [
       .filter(Boolean),
   ),
 ]);
+const progressPercent = computed(() => {
+  const total = props.progress?.totalSources ?? 0;
+  if (total === 0) {
+    return 0;
+  }
+
+  return Math.round(((props.progress?.completedSources ?? 0) / total) * 100);
+});
+const progressValue = computed<number | undefined>(() => {
+  const progress = props.progress;
+  if (progress?.phase === "resolving" && progress.completedSources === 0) {
+    return undefined;
+  }
+
+  return progressPercent.value;
+});
+
+watch(
+  () => props.progress,
+  (progress) => {
+    if (!progress) {
+      return;
+    }
+
+    if (progress.phase === "started" && currentRunId !== progress.runId) {
+      currentRunId = progress.runId;
+      logs.value = [];
+    }
+
+    const entry = progress.message.trim();
+    if (entry && logs.value[logs.value.length - 1] !== entry) {
+      logs.value.push(entry);
+    }
+  },
+  { immediate: true },
+);
 
 function submitYouTubeUrls(): void {
-  if (props.isUpdating || importSources.value.length === 0) {
+  if (props.isImporting || importSources.value.length === 0) {
     return;
   }
 
@@ -37,106 +77,154 @@ function submitYouTubeUrls(): void {
 
 <template>
   <main
-    class="import-window relative grid min-h-screen content-start gap-6 overflow-auto bg-[radial-gradient(circle_at_12%_0%,oklch(0.48_0.09_274/0.2),transparent_40%),var(--glass-window)] px-8 pt-10 pb-8 text-(--text)"
+    class="import-window relative grid h-screen min-h-0 overflow-hidden bg-(--glass-window) text-(--text) backdrop-saturate-[1.2]"
     aria-label="Import music"
   >
-    <header>
-      <h1 class="text-2xl font-semibold tracking-[-0.035em]">Import Music</h1>
-      <p class="mt-1 text-[0.78rem] text-(--muted-text)">
-        Add videos, playlists, albums, channels, or complete artist pages.
-      </p>
-    </header>
+    <div
+      class="application-drag-region absolute top-0 right-0 left-0 z-10 h-13"
+      data-tauri-drag-region
+      aria-hidden="true"
+    />
 
-    <p
-      v-if="errorMessage"
-      class="m-0 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-sm text-red-300"
-      role="alert"
-    >
-      {{ errorMessage }}
-    </p>
-
-    <form
-      class="grid gap-6"
-      aria-label="Import music from YouTube"
-      @submit.prevent="submitYouTubeUrls"
-    >
-      <section
-        class="rounded-xl border border-(--line) bg-[oklch(0.22_0.025_258/0.25)] p-6"
+    <section class="grid min-h-0 min-w-0 grid-rows-[104px_minmax(0,1fr)]">
+      <header
+        class="flex items-center justify-between gap-6 border-b border-(--line) px-8 pt-3"
       >
-        <div class="flex items-start gap-4">
-          <span
-            class="grid size-11 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.08_288/0.14)] text-accent [&>svg]:size-5"
-            aria-hidden="true"
-          >
-            <ArrowDownToLine />
-          </span>
-          <div>
-            <h2 class="text-base font-semibold">Import from YouTube</h2>
-            <p class="mt-1 text-[0.78rem] leading-5 text-(--muted-text)">
-              Paste one or more links. Artist and channel pages import every
-              playable item that YouTube provides. Importing does not interrupt
-              playback.
-            </p>
-          </div>
+        <div>
+          <h1 class="text-2xl font-semibold tracking-[-0.035em] text-(--text)">
+            Import Music
+          </h1>
+          <p class="mt-1 text-[0.77rem] text-(--muted-text)">
+            Add videos, playlists, albums, channels, or artist pages.
+          </p>
         </div>
-
-        <label
-          class="mt-6 block text-[0.7rem] font-semibold tracking-[0.04em] text-(--muted-text) uppercase"
-          for="youtube-import-urls"
+        <span
+          class="rounded-full border border-(--line) px-2.5 py-1 text-[0.68rem] font-medium text-(--muted-text)"
         >
-          YouTube URLs
-        </label>
-        <textarea
-          id="youtube-import-urls"
-          v-model="youtubeUrls"
-          aria-label="YouTube URLs"
-          class="mt-2 min-h-52 w-full resize-y rounded-lg border border-(--line-strong) bg-[oklch(0.16_0.02_258/0.42)] px-3.5 py-3 font-mono text-[0.76rem] leading-5 text-(--text) outline-none transition-colors placeholder:text-(--subtle-text) focus:border-(--focus-ring)"
-          placeholder="Paste one URL per line\nhttps://youtube.com/watch?v=…\nhttps://youtube.com/playlist?list=…\nhttps://youtube.com/@artist/videos"
-          :disabled="isUpdating"
-          spellcheck="false"
-        />
+          {{ isImporting ? "Import running" : "Library import" }}
+        </span>
+      </header>
 
-        <div class="mt-3 flex items-center justify-between gap-4">
-          <p class="text-[0.72rem] text-(--muted-text)">
-            {{ importSources.length }}
-            {{ importSources.length === 1 ? "source" : "sources" }} ready
-          </p>
-          <Button
-            type="submit"
-            :disabled="isUpdating || importSources.length === 0"
+      <div class="min-h-0 overflow-auto px-5 py-5">
+        <p
+          v-if="errorMessage"
+          class="mb-4 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-sm text-red-300"
+          role="alert"
+        >
+          {{ errorMessage }}
+        </p>
+
+        <form
+          class="grid gap-4"
+          aria-label="Import music from YouTube"
+          @submit.prevent="submitYouTubeUrls"
+        >
+          <section
+            class="rounded-xl border border-(--line) bg-[oklch(0.22_0.025_258/0.25)] p-5"
           >
-            <ArrowDownToLine aria-hidden="true" />
-            {{ isUpdating ? "Importing…" : "Import to library" }}
-          </Button>
-        </div>
-      </section>
+            <div class="flex items-start gap-4">
+              <span
+                class="grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.08_288/0.14)] text-accent [&>svg]:size-5"
+                aria-hidden="true"
+              >
+                <ArrowDownToLine />
+              </span>
+              <div>
+                <h2 class="text-base font-semibold">Import from YouTube</h2>
+                <p class="mt-1 text-[0.78rem] leading-5 text-(--muted-text)">
+                  Paste one link per line. Imports run in the background and do
+                  not interrupt playback.
+                </p>
+              </div>
+            </div>
 
-      <section class="grid grid-cols-3 gap-3 max-[620px]:grid-cols-1">
-        <div class="rounded-lg border border-(--line) p-4">
-          <h2 class="text-[0.78rem] font-semibold">Videos</h2>
-          <p class="mt-1 text-[0.7rem] leading-4 text-(--muted-text)">
-            Add individual videos or music tracks.
-          </p>
-        </div>
-        <div class="rounded-lg border border-(--line) p-4">
-          <h2 class="text-[0.78rem] font-semibold">Playlists and albums</h2>
-          <p class="mt-1 text-[0.7rem] leading-4 text-(--muted-text)">
-            Expand a collection into ordered library tracks.
-          </p>
-        </div>
-        <div class="rounded-lg border border-(--line) p-4">
-          <h2 class="text-[0.78rem] font-semibold">Artists and channels</h2>
-          <p class="mt-1 text-[0.7rem] leading-4 text-(--muted-text)">
-            Import all playable items from a complete artist page.
-          </p>
-        </div>
-      </section>
-    </form>
+            <label
+              class="mt-5 block text-[0.7rem] font-semibold tracking-[0.04em] text-(--muted-text) uppercase"
+              for="youtube-import-urls"
+            >
+              YouTube URLs
+            </label>
+            <textarea
+              id="youtube-import-urls"
+              v-model="youtubeUrls"
+              aria-label="YouTube URLs"
+              class="mt-2 min-h-40 w-full resize-y rounded-lg border border-(--line-strong) bg-[oklch(0.16_0.02_258/0.42)] px-3.5 py-3 font-mono text-[0.76rem] leading-5 text-(--text) outline-none transition-colors placeholder:text-(--subtle-text) focus:border-(--focus-ring)"
+              placeholder="Paste one URL per line&#10;https://youtube.com/watch?v=…&#10;https://youtube.com/playlist?list=…&#10;https://youtube.com/@artist/videos"
+              :disabled="isImporting"
+              spellcheck="false"
+            />
+
+            <div class="mt-3 flex items-center justify-between gap-4">
+              <p class="text-[0.72rem] text-(--muted-text)">
+                {{ importSources.length }}
+                {{ importSources.length === 1 ? "source" : "sources" }} ready
+              </p>
+              <Button
+                type="submit"
+                :disabled="isImporting || importSources.length === 0"
+              >
+                <ArrowDownToLine aria-hidden="true" />
+                {{ isImporting ? "Importing…" : "Import to library" }}
+              </Button>
+            </div>
+          </section>
+
+          <section
+            class="rounded-xl border border-(--line) bg-[oklch(0.16_0.02_258/0.34)] p-4"
+            aria-label="Import progress"
+          >
+            <div class="flex items-center justify-between gap-4">
+              <div class="flex items-center gap-2 text-[0.76rem] font-medium">
+                <TerminalSquare class="size-4 text-accent" aria-hidden="true" />
+                Import terminal
+              </div>
+              <span class="text-[0.7rem] text-(--muted-text)">
+                {{ progress?.completedSources ?? 0 }} /
+                {{ progress?.totalSources ?? 0 }} sources
+              </span>
+            </div>
+            <p class="mt-2 text-[0.7rem] text-(--muted-text)">
+              {{ progress?.importedTracks ?? 0 }} track(s) found
+              <template v-if="progress?.skippedMemberOnly">
+                · {{ progress.skippedMemberOnly }} members-only track(s) skipped
+              </template>
+            </p>
+            <progress
+              class="mt-3 h-1.5 w-full overflow-hidden rounded-full accent-accent"
+              :value="progressValue"
+              max="100"
+            >
+              {{ progressPercent }}%
+            </progress>
+            <output
+              class="mt-3 block max-h-36 min-h-24 overflow-auto rounded-lg border border-(--line) bg-black/30 p-3 font-mono text-[0.69rem] leading-5 text-[oklch(0.82_0.025_258)]"
+              role="log"
+              aria-live="polite"
+            >
+              <span
+                v-for="(log, index) in logs"
+                :key="`${index}-${log}`"
+                class="block"
+                >&gt; {{ log }}</span
+              >
+            </output>
+          </section>
+        </form>
+      </div>
+    </section>
   </main>
 </template>
 
 <style scoped>
-.import-window {
-  background-color: var(--glass-window);
+progress::-webkit-progress-bar {
+  background: var(--surface-muted);
+}
+
+progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+progress::-moz-progress-bar {
+  background: var(--accent);
 }
 </style>

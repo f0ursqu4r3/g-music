@@ -6,6 +6,7 @@ import { Slider } from "@/components/ui/slider";
 
 import MiniPlayer from "../MiniPlayer.vue";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
+import { dragSlider } from "./slider-interaction";
 
 const snapshot: PlaybackSnapshot = {
   status: "paused",
@@ -76,5 +77,21 @@ describe("MiniPlayer", () => {
 
     expect(wrapper.emitted("setVolume")).toEqual([[61]]);
     expect(wrapper.emitted("seek")).toEqual([[96_000]]);
+  });
+
+  it("commits pointer drags from the progress and volume scrubbers", async () => {
+    const wrapper = mount(MiniPlayer, {
+      props: { snapshot, isUpdating: false },
+    });
+    const volume = wrapper.get('[data-slot="slider"][aria-label="Volume"]');
+    const progress = wrapper.get(
+      '[data-slot="slider"][aria-label="Track progress"]',
+    );
+
+    await dragSlider(volume, 25);
+    await dragSlider(progress, 50);
+
+    expect(wrapper.emitted("setVolume")).toEqual([[25]]);
+    expect(wrapper.emitted("seek")).toEqual([[118_000]]);
   });
 });

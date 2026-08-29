@@ -1,8 +1,17 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
-import { playbackApi, type PlaybackSnapshot } from "@/api";
+import {
+  playbackApi,
+  type ImportProgress,
+  type MetadataRefreshSnapshot,
+  type PlaybackSnapshot,
+} from "@/api";
 
-export type PlaybackClient = typeof playbackApi;
+export type PlaybackClient = Omit<
+  typeof playbackApi,
+  "inspectMetadataRefreshes"
+> &
+  Partial<Pick<typeof playbackApi, "inspectMetadataRefreshes">>;
 
 function readErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -24,8 +33,18 @@ function readErrorMessage(error: unknown): string {
 export function usePlayback(client: PlaybackClient = playbackApi) {
   const snapshot = ref<PlaybackSnapshot | null>(null);
   const errorMessage = ref("");
+  const importProgress = ref<ImportProgress | null>(null);
+  const metadataRefreshes = ref<MetadataRefreshSnapshot>({
+    completedTracks: 0,
+    jobs: [],
+    totalTracks: 0,
+  });
   const isUpdating = ref(false);
   let isSyncing = false;
+  const isImporting = computed(() => {
+    const phase = importProgress.value?.phase;
+    return phase === "started" || phase === "resolving" || phase === "merging";
+  });
 
   async function execute(
     action: () => Promise<PlaybackSnapshot>,
@@ -48,6 +67,19 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   async function refresh(): Promise<void> {
     await execute(client.inspect);
+    await refreshMetadataRefreshes();
+  }
+
+  async function refreshMetadataRefreshes(): Promise<void> {
+    if (!client.inspectMetadataRefreshes) {
+      return;
+    }
+
+    try {
+      metadataRefreshes.value = await client.inspectMetadataRefreshes();
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    }
   }
 
   async function sync(): Promise<void> {
@@ -66,7 +98,53 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function importYouTubeUrls(urls: string[]): Promise<void> {
-    await execute(() => client.importYouTubeUrls(urls));
+    if (isImporting.value) {
+      return;
+    }
+
+    errorMessage.value = "";
+    importProgress.value = {
+      completedSources: 0,
+      importedTracks: 0,
+      message: "Queueing import…",
+      phase: "started",
+      runId: 0,
+      skippedMemberOnly: 0,
+      totalSources: urls.length,
+    };
+
+    try {
+      await client.importYouTubeUrls(urls);
+    } catch (error) {
+      const message = readErrorMessage(error);
+      errorMessage.value = message;
+      importProgress.value = {
+        completedSources: importProgress.value?.completedSources ?? 0,
+        importedTracks: importProgress.value?.importedTracks ?? 0,
+        message,
+        phase: "failed",
+        runId: importProgress.value?.runId ?? 0,
+        skippedMemberOnly: importProgress.value?.skippedMemberOnly ?? 0,
+        totalSources: importProgress.value?.totalSources ?? urls.length,
+      };
+    }
+  }
+
+  function updateImportProgress(progress: ImportProgress): void {
+    importProgress.value = progress;
+    if (progress.phase === "failed") {
+      errorMessage.value = progress.message;
+    }
+    if (progress.phase === "merging" || progress.phase === "completed") {
+      void refresh();
+    }
+  }
+
+  function updateMetadataRefreshes(progress: MetadataRefreshSnapshot): void {
+    metadataRefreshes.value = progress;
+    if (progress.jobs.some((job) => job.state === "completed")) {
+      void sync();
+    }
   }
 
   async function toggle(): Promise<void> {
@@ -101,6 +179,9 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   return {
     errorMessage,
+    importProgress,
+    metadataRefreshes,
+    isImporting,
     isUpdating,
     importYouTubeUrls,
     moveQueueItem,
@@ -108,10 +189,13 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     playTrack,
     previous,
     refresh,
+    refreshMetadataRefreshes,
     seek,
     setVolume,
     snapshot,
     sync,
     toggle,
+    updateImportProgress,
+    updateMetadataRefreshes,
   };
 }
