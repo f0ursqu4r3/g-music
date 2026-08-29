@@ -22,7 +22,14 @@ import {
   Sparkles,
   Volume2,
 } from 'lucide-vue-next';
-import { computed, onBeforeUnmount, ref } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 
 import type {
   MediaItem,
@@ -81,10 +88,42 @@ const favoriteTrackIds = ref(new Set<string>());
 const metadataRefreshDrawerOpen = ref(false);
 const columnWidths = ref([35, 25, 25, 9, 6]);
 const minimumColumnWidths = [18, 12, 12, 7, 5] as const;
+const trackList = ref<HTMLElement>();
+const trackListHeight = ref(600);
+const trackListScrollTop = ref(0);
+const trackRowHeight = 44;
+const trackOverscan = 6;
 let stopColumnResize: (() => void) | undefined;
+let trackListResizeObserver: ResizeObserver | undefined;
 const isPlaying = computed(() => props.snapshot.status === 'playing');
 const currentItem = computed(() => props.snapshot.currentItem);
 const libraryTracks = computed(() => props.snapshot.queue);
+const virtualTrackRange = computed(() => {
+  const start = Math.max(
+    Math.floor(trackListScrollTop.value / trackRowHeight) - trackOverscan,
+    0
+  );
+  const visibleCount = Math.ceil(trackListHeight.value / trackRowHeight);
+  const end = Math.min(
+    start + visibleCount + trackOverscan * 2,
+    libraryTracks.value.length
+  );
+
+  return { end, start };
+});
+const visibleTracks = computed(() =>
+  libraryTracks.value.slice(
+    virtualTrackRange.value.start,
+    virtualTrackRange.value.end
+  )
+);
+const trackSpacerBefore = computed(
+  () => virtualTrackRange.value.start * trackRowHeight
+);
+const trackSpacerAfter = computed(
+  () =>
+    (libraryTracks.value.length - virtualTrackRange.value.end) * trackRowHeight
+);
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
   const albums = new Map<string, LibraryAlbum>();
 
@@ -272,7 +311,47 @@ function playTrack(id: string): void {
   }
 }
 
-onBeforeUnmount(() => stopColumnResize?.());
+function updateTrackListViewport(): void {
+  trackListHeight.value = trackList.value?.clientHeight || 600;
+}
+
+function observeTrackList(): void {
+  trackListResizeObserver?.disconnect();
+  updateTrackListViewport();
+
+  if (!trackList.value || typeof ResizeObserver === 'undefined') {
+    return;
+  }
+
+  trackListResizeObserver = new ResizeObserver(updateTrackListViewport);
+  trackListResizeObserver.observe(trackList.value);
+}
+
+function handleTrackListScroll(event: Event): void {
+  trackListScrollTop.value = (event.currentTarget as HTMLElement).scrollTop;
+}
+
+onMounted(observeTrackList);
+
+watch(activeCollection, () => void nextTick(observeTrackList));
+
+watch(libraryTracks, () => {
+  const maximumScrollTop = Math.max(
+    libraryTracks.value.length * trackRowHeight - trackListHeight.value,
+    0
+  );
+  const nextScrollTop = Math.min(trackListScrollTop.value, maximumScrollTop);
+
+  if (trackList.value && trackList.value.scrollTop !== nextScrollTop) {
+    trackList.value.scrollTop = nextScrollTop;
+  }
+  trackListScrollTop.value = nextScrollTop;
+});
+
+onBeforeUnmount(() => {
+  stopColumnResize?.();
+  trackListResizeObserver?.disconnect();
+});
 </script>
 
 <template>
@@ -445,10 +524,11 @@ onBeforeUnmount(() => stopColumnResize?.());
 
       <div
         v-if="activeCollection === 'tracks'"
-        class="min-h-0 overflow-auto px-5 py-2.5"
+        class="flex min-h-0 flex-col py-2.5 pl-2"
       >
         <table
-          class="w-full table-fixed border-separate border-spacing-y-0.5 text-left"
+          class="w-full shrink-0 table-fixed text-left px-5"
+          data-library-track-header
         >
           <colgroup>
             <col
@@ -531,85 +611,123 @@ onBeforeUnmount(() => stopColumnResize?.());
               </th>
             </tr>
           </thead>
-          <tbody>
-            <tr
-              v-for="track in libraryTracks"
-              :key="track.id"
-              :aria-label="`Play ${track.title}`"
-              class="group cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-              :data-current="track.id === currentItem?.id"
-              :data-track-id="track.id"
-              tabindex="0"
-              @click="playTrack(track.id)"
-              @keydown.enter.prevent="playTrack(track.id)"
-              @keydown.space.prevent="playTrack(track.id)"
-            >
-              <td
-                class="h-10.5 overflow-hidden rounded-l-md px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-              >
-                <span class="flex min-w-0 items-center gap-2.5 font-medium">
-                  <Volume2
-                    v-if="track.id === currentItem?.id"
-                    class="track-playing-indicator size-3.75 shrink-0 text-(--text)"
-                    aria-label="Currently playing"
-                  />
-                  <span v-else class="size-3.75 shrink-0" aria-hidden="true" />
-                  <span
-                    class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-                  >
-                    {{ track.title }}
-                  </span>
-                  <LoaderCircle
-                    v-if="track.metadataDirty"
-                    class="size-3.5 shrink-0 animate-spin text-amber-200"
-                    data-metadata-dirty
-                    aria-label="Metadata refresh pending"
-                    role="status"
-                  />
-                </span>
-              </td>
-              <td
-                class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-              >
-                <span
-                  class="track-artist block overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {{ track.artist }}
-                </span>
-              </td>
-              <td
-                class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-              >
-                <span
-                  class="track-album block overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {{ track.album || '—' }}
-                </span>
-              </td>
-              <td
-                class="h-10.5 px-2 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-              >
-                {{ formatDuration(track.durationMs) }}
-              </td>
-              <td
-                class="h-10.5 rounded-r-md px-2 text-center group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-              >
-                <button
-                  :aria-label="`Favorite ${track.title}`"
-                  :aria-pressed="isFavorite(track.id)"
-                  class="mx-auto grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
-                  type="button"
-                  @click.stop="toggleFavorite(track.id)"
-                >
-                  <Heart
-                    aria-hidden="true"
-                    :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
-                  />
-                </button>
-              </td>
-            </tr>
-          </tbody>
         </table>
+
+        <div
+          class="library-track-scroll min-h-0 flex-1 overflow-auto"
+          data-library-track-list
+          ref="trackList"
+          @scroll="handleTrackListScroll"
+        >
+          <table
+            class="w-full table-fixed border-separate border-spacing-y-0.5 text-left"
+          >
+            <colgroup>
+              <col
+                v-for="(width, index) in columnWidths"
+                :key="index"
+                :data-column="
+                  ['title', 'artist', 'album', 'duration', 'favorite'][index]
+                "
+                :style="{ width: `${width}%` }"
+              />
+            </colgroup>
+            <tbody>
+              <tr v-if="trackSpacerBefore" aria-hidden="true">
+                <td
+                  :colspan="columnWidths.length"
+                  :style="{ height: `${trackSpacerBefore}px` }"
+                />
+              </tr>
+              <tr
+                v-for="track in visibleTracks"
+                :key="track.id"
+                :aria-label="`Play ${track.title}`"
+                class="group cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                :data-current="track.id === currentItem?.id"
+                :data-track-id="track.id"
+                tabindex="0"
+                @click="playTrack(track.id)"
+                @keydown.enter.prevent="playTrack(track.id)"
+                @keydown.space.prevent="playTrack(track.id)"
+              >
+                <td
+                  class="h-10.5 overflow-hidden rounded-l-md px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                >
+                  <span class="flex min-w-0 items-center gap-2.5 font-medium">
+                    <Volume2
+                      v-if="track.id === currentItem?.id"
+                      class="track-playing-indicator size-3.75 shrink-0 text-(--text)"
+                      aria-label="Currently playing"
+                    />
+                    <span
+                      v-else
+                      class="size-3.75 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span
+                      class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+                    >
+                      {{ track.title }}
+                    </span>
+                    <LoaderCircle
+                      v-if="track.metadataDirty"
+                      class="size-3.5 shrink-0 animate-spin text-amber-200"
+                      data-metadata-dirty
+                      aria-label="Metadata refresh pending"
+                      role="status"
+                    />
+                  </span>
+                </td>
+                <td
+                  class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+                >
+                  <span
+                    class="track-artist block overflow-hidden text-ellipsis whitespace-nowrap"
+                  >
+                    {{ track.artist }}
+                  </span>
+                </td>
+                <td
+                  class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+                >
+                  <span
+                    class="track-album block overflow-hidden text-ellipsis whitespace-nowrap"
+                  >
+                    {{ track.album || '—' }}
+                  </span>
+                </td>
+                <td
+                  class="h-10.5 px-2 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+                >
+                  {{ formatDuration(track.durationMs) }}
+                </td>
+                <td
+                  class="h-10.5 rounded-r-md px-2 text-center group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                >
+                  <button
+                    :aria-label="`Favorite ${track.title}`"
+                    :aria-pressed="isFavorite(track.id)"
+                    class="mx-auto grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
+                    type="button"
+                    @click.stop="toggleFavorite(track.id)"
+                  >
+                    <Heart
+                      aria-hidden="true"
+                      :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
+                    />
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="trackSpacerAfter" aria-hidden="true">
+                <td
+                  :colspan="columnWidths.length"
+                  :style="{ height: `${trackSpacerAfter}px` }"
+                />
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <section
@@ -803,5 +921,14 @@ onBeforeUnmount(() => stopColumnResize?.());
     var(--artwork-b) 58%,
     var(--artwork-c)
   );
+}
+
+.library-track-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 24px);
+  -webkit-mask-origin: content-box;
+  -webkit-mask-clip: content-box;
+  mask-image: linear-gradient(to bottom, transparent, black 24px);
+  mask-origin: content-box;
+  mask-clip: content-box;
 }
 </style>

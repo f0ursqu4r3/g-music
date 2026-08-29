@@ -182,6 +182,37 @@ describe("LibraryWindow", () => {
     }
   });
 
+  it("keeps track headings above a masked virtualized library", async () => {
+    const tracks = Array.from({ length: 200 }, (_, index) => ({
+      ...importedTracks[index % importedTracks.length]!,
+      id: `track-${index}`,
+      title: `Track ${index}`,
+    }));
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, queue: tracks },
+      },
+    });
+    const trackList = wrapper.get("[data-library-track-list]");
+
+    expect(wrapper.get("[data-library-track-header]").classes()).toContain(
+      "shrink-0",
+    );
+    expect(wrapper.get("thead").classes()).not.toContain("sticky");
+    expect(wrapper.find("[data-library-track-header-fade]").exists()).toBe(false);
+    expect(trackList.classes()).toContain("library-track-scroll");
+    expect(wrapper.findAll("tbody [data-track-id]").length).toBeLessThan(
+      tracks.length,
+    );
+
+    trackList.element.scrollTop = 44 * 100;
+    await trackList.trigger("scroll");
+
+    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
+    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false);
+  });
+
   it("provides keyboard-resizable track columns", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
