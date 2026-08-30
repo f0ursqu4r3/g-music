@@ -1,7 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
-import type { MediaItem, PlaybackSnapshot } from "@/api";
+import type { MediaItem, PlaybackSnapshot, PlaybackTransport } from "@/api";
 import { Slider } from "@/components/ui/slider";
 import LibraryWindow from "../LibraryWindow.vue";
 import { dragSlider } from "./slider-interaction";
@@ -30,8 +30,25 @@ const snapshot: PlaybackSnapshot = {
   queue: importedTracks,
   volumePercent: 64,
 };
+const transport: PlaybackTransport = {
+  currentItem: importedTracks[0],
+  positionMs: 0,
+  status: "paused",
+  volumePercent: 64,
+};
 
 describe("LibraryWindow", () => {
+  it("renders from stable library tracks and separate transport state", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, tracks: importedTracks, transport },
+    });
+
+    expect(wrapper.findAll("[data-track-id]")).toHaveLength(2);
+    expect(wrapper.get('[aria-label="Track progress"]').text()).toContain(
+      "0:00",
+    );
+  });
+
   it("shows playback command errors in the library window", () => {
     const wrapper = mount(LibraryWindow, {
       props: {
@@ -218,7 +235,9 @@ describe("LibraryWindow", () => {
       wrapper.findAll('[aria-label="Library view options"] button'),
     ).toHaveLength(3);
     expect(wrapper.findAll("thead th")).toHaveLength(5);
-    expect(wrapper.findAll("tbody tr")).toHaveLength(2);
+    expect(
+      wrapper.findAll('[data-library-track-virtualizer] [role="row"]'),
+    ).toHaveLength(2);
     expect(wrapper.findAll(".track-row-artwork")).toHaveLength(0);
     expect(wrapper.get(".track-playing-indicator")).toBeDefined();
     expect(wrapper.findAll('[aria-label^="Favorite "]')).toHaveLength(2);
@@ -316,7 +335,20 @@ describe("LibraryWindow", () => {
     await trackList.trigger("scroll");
 
     expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
+    expect(
+      wrapper.get('[data-track-id="track-100"]').attributes("data-index"),
+    ).toBe("100");
     expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false);
+  });
+
+  it("positions virtualized track rows outside a table body", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const virtualizer = wrapper.get("[data-library-track-virtualizer]");
+
+    expect(virtualizer.findAll('[role="row"]')).toHaveLength(2);
+    expect(virtualizer.find("table").exists()).toBe(false);
   });
 
   it("resets virtual track position when the list remounts", async () => {
@@ -371,9 +403,10 @@ describe("LibraryWindow", () => {
       window.dispatchEvent(new Event("resize"));
       await wrapper.vm.$nextTick();
 
-      expect(wrapper.findAll("tbody [data-track-id]").length).toBeGreaterThan(
-        26,
-      );
+      expect(
+        wrapper.findAll("[data-library-track-virtualizer] [data-track-id]")
+          .length,
+      ).toBeGreaterThan(26);
     } finally {
       Object.defineProperty(window, "innerHeight", {
         configurable: true,

@@ -9,14 +9,14 @@ import {
   Volume2,
 } from "lucide-vue-next";
 
-import type { MediaItem, PlaybackSnapshot } from "@/api";
+import type { MediaItem, PlaybackTransport } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { formatDuration } from "@/lib/time";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
 const props = defineProps<{
-  snapshot: PlaybackSnapshot;
+  playback: PlaybackTransport;
   currentItem: MediaItem | null;
   isPlaying: boolean;
   isUpdating: boolean;
@@ -129,7 +129,7 @@ function emitSeek(values: number[]): void {
             :min="0"
             :max="100"
             :step="1"
-            :model-value="[props.snapshot.volumePercent]"
+            :model-value="[props.playback.volumePercent]"
             :disabled="props.isUpdating"
             @value-commit="emitVolume"
           />
@@ -140,13 +140,13 @@ function emitSeek(values: number[]): void {
         class="grid grid-cols-[30px_minmax(0,1fr)_30px] items-center gap-2 text-[0.65rem] text-(--muted-text) tabular-nums"
         aria-label="Track progress"
       >
-        <span>{{ formatDuration(props.snapshot.positionMs) }}</span>
+        <span>{{ formatDuration(props.playback.positionMs) }}</span>
         <Slider
           aria-label="Track progress"
           :min="0"
           :max="props.currentItem?.durationMs ?? 0"
           :step="1000"
-          :model-value="[props.snapshot.positionMs]"
+          :model-value="[props.playback.positionMs]"
           :disabled="props.isUpdating || !props.currentItem"
           @value-commit="emitSeek"
         />

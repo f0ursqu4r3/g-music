@@ -1,17 +1,24 @@
-import { computed, ref } from "vue";
+import { computed, ref, shallowRef } from "vue";
 
 import {
   playbackApi,
   type ImportProgress,
+  type LibrarySnapshot,
   type MetadataRefreshSnapshot,
   type PlaybackSnapshot,
+  type PlaybackTransport,
 } from "@/api";
 
 export type PlaybackClient = Omit<
   typeof playbackApi,
-  "inspectMetadataRefreshes"
+  "inspectLibrary" | "inspectMetadataRefreshes" | "inspectTransport"
 > &
-  Partial<Pick<typeof playbackApi, "inspectMetadataRefreshes">>;
+  Partial<
+    Pick<
+      typeof playbackApi,
+      "inspectLibrary" | "inspectMetadataRefreshes" | "inspectTransport"
+    >
+  >;
 
 function readErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -31,7 +38,15 @@ function readErrorMessage(error: unknown): string {
 }
 
 export function usePlayback(client: PlaybackClient = playbackApi) {
-  const snapshot = ref<PlaybackSnapshot | null>(null);
+  const library = shallowRef<LibrarySnapshot | null>(null);
+  const transport = ref<PlaybackTransport | null>(null);
+  const snapshot = computed<PlaybackSnapshot | null>(() => {
+    if (!library.value || !transport.value) {
+      return null;
+    }
+
+    return { ...transport.value, queue: library.value.tracks };
+  });
   const errorMessage = ref("");
   const importProgress = ref<ImportProgress | null>(null);
   const metadataRefreshes = ref<MetadataRefreshSnapshot>({
@@ -46,6 +61,16 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     return phase === "started" || phase === "resolving" || phase === "merging";
   });
 
+  function applySnapshot(nextSnapshot: PlaybackSnapshot): void {
+    library.value = { tracks: nextSnapshot.queue };
+    transport.value = {
+      currentItem: nextSnapshot.currentItem,
+      positionMs: nextSnapshot.positionMs,
+      status: nextSnapshot.status,
+      volumePercent: nextSnapshot.volumePercent,
+    };
+  }
+
   async function execute(
     action: () => Promise<PlaybackSnapshot>,
   ): Promise<void> {
@@ -57,7 +82,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     errorMessage.value = "";
 
     try {
-      snapshot.value = await action();
+      applySnapshot(await action());
     } catch (error) {
       errorMessage.value = readErrorMessage(error);
     } finally {
@@ -66,7 +91,28 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function refresh(): Promise<void> {
-    await execute(client.inspect);
+    if (isUpdating.value) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      if (client.inspectLibrary && client.inspectTransport) {
+        const [nextLibrary, nextTransport] = await Promise.all([
+          client.inspectLibrary(),
+          client.inspectTransport(),
+        ]);
+        library.value = nextLibrary;
+        transport.value = nextTransport;
+      } else {
+        applySnapshot(await client.inspect());
+      }
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
     await refreshMetadataRefreshes();
   }
 
@@ -89,7 +135,11 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
     isSyncing = true;
     try {
-      snapshot.value = await client.inspect();
+      if (client.inspectTransport) {
+        transport.value = await client.inspectTransport();
+      } else {
+        applySnapshot(await client.inspect());
+      }
     } catch (error) {
       errorMessage.value = readErrorMessage(error);
     } finally {
@@ -143,7 +193,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   function updateMetadataRefreshes(progress: MetadataRefreshSnapshot): void {
     metadataRefreshes.value = progress;
     if (progress.jobs.some((job) => job.state === "completed")) {
-      void sync();
+      void refresh();
     }
   }
 
@@ -180,9 +230,10 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   return {
     errorMessage,
     importProgress,
-    metadataRefreshes,
     isImporting,
     isUpdating,
+    library,
+    metadataRefreshes,
     importYouTubeUrls,
     moveQueueItem,
     next,
@@ -195,6 +246,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     snapshot,
     sync,
     toggle,
+    transport,
     updateImportProgress,
     updateMetadataRefreshes,
   };

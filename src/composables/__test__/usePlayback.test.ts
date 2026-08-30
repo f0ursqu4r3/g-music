@@ -61,6 +61,53 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value?.positionMs).toBe(2_000);
   });
 
+  it("keeps library data stable while synchronizing transport state", async () => {
+    const library = {
+      tracks: [
+        {
+          artist: "YouTube Creators",
+          durationMs: 207_000,
+          id: "BaW_jenozKc",
+          title: "Creator Studio Session",
+        },
+      ],
+    };
+    const initialTransport = {
+      currentItem: library.tracks[0],
+      positionMs: 0,
+      status: "playing" as const,
+      volumePercent: 70,
+    };
+    const advancedTransport = { ...initialTransport, positionMs: 2_000 };
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn(),
+      inspectLibrary: vi.fn().mockResolvedValue(library),
+      inspectTransport: vi
+        .fn()
+        .mockResolvedValueOnce(initialTransport)
+        .mockResolvedValueOnce(advancedTransport),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    const loadedLibrary = playback.library.value;
+    await playback.sync();
+
+    expect(playback.library.value).toBe(loadedLibrary);
+    expect(playback.transport.value?.positionMs).toBe(2_000);
+    expect(client.inspectLibrary).toHaveBeenCalledOnce();
+    expect(client.inspectTransport).toHaveBeenCalledTimes(2);
+  });
+
   it("starts import work without blocking playback commands", async () => {
     const client = {
       inspect: vi.fn(),

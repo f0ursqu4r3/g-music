@@ -7,7 +7,18 @@ import {
   Volume2,
   X,
 } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  observeElementRect,
+  type Rect,
+  useVirtualizer,
+  type Virtualizer,
+} from "@tanstack/vue-virtual";
+import {
+  type ComponentPublicInstance,
+  computed,
+  onBeforeUnmount,
+  ref,
+} from "vue";
 
 import type { MediaItem } from "@/api";
 import { formatDuration } from "@/lib/time";
@@ -27,39 +38,55 @@ const emit = defineEmits<{
 const favoriteTrackIds = ref(new Set<string>());
 const columnWidths = ref([35, 25, 25, 9, 6]);
 const minimumColumnWidths = [18, 12, 12, 7, 5] as const;
-const trackList = ref<HTMLElement>();
-const trackListHeight = ref(600);
-const trackListScrollTop = ref(0);
+const trackList = ref<HTMLElement | null>(null);
 const trackRowHeight = 44;
-const trackOverscan = 6;
-const defaultTrackListHeight = 600;
 let stopColumnResize: (() => void) | undefined;
-let trackListResizeObserver: ResizeObserver | undefined;
 
-const virtualTrackRange = computed(() => {
-  const start = Math.max(
-    Math.floor(trackListScrollTop.value / trackRowHeight) - trackOverscan,
-    0,
-  );
-  const visibleCount = Math.ceil(trackListHeight.value / trackRowHeight);
-  const end = Math.min(
-    start + visibleCount + trackOverscan * 2,
-    props.tracks.length,
-  );
+function viewportHeight(): number {
+  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
+}
 
-  return { end, start };
+function setTrackList(element: Element | ComponentPublicInstance | null): void {
+  trackList.value = element instanceof HTMLElement ? element : null;
+}
+
+function observeTrackListRect(
+  instance: Virtualizer<HTMLElement, Element>,
+  callback: (rect: Rect) => void,
+): (() => void) | undefined {
+  return observeElementRect(instance, (rect) => {
+    callback(rect.height > 0 ? rect : { ...rect, height: viewportHeight() });
+  });
+}
+
+const virtualizerOptions = computed(() => {
+  const scrollElement = trackList.value;
+
+  return {
+    count: props.tracks.length,
+    estimateSize: () => trackRowHeight,
+    getScrollElement: () => scrollElement,
+    initialRect: {
+      height: viewportHeight(),
+      width: 0,
+    },
+    observeElementRect: observeTrackListRect,
+    overscan: 8,
+  };
 });
-const visibleTracks = computed(() =>
-  props.tracks.slice(
-    virtualTrackRange.value.start,
-    virtualTrackRange.value.end,
-  ),
+const trackVirtualizer = useVirtualizer(virtualizerOptions);
+const virtualTracks = computed(() =>
+  trackVirtualizer.value.getVirtualItems().flatMap((virtualItem) => {
+    const track = props.tracks[virtualItem.index];
+
+    return track ? [{ track, virtualItem }] : [];
+  }),
 );
-const trackSpacerBefore = computed(
-  () => virtualTrackRange.value.start * trackRowHeight,
+const trackGridTemplateColumns = computed(() =>
+  columnWidths.value.map((width) => `${width}%`).join(" "),
 );
-const trackSpacerAfter = computed(
-  () => (props.tracks.length - virtualTrackRange.value.end) * trackRowHeight,
+const virtualTrackHeight = computed(
+  () => `${trackVirtualizer.value.getTotalSize()}px`,
 );
 
 function isFavorite(trackId: string): boolean {
@@ -149,62 +176,8 @@ function resizeColumnWithKeyboard(
   resizeColumnBoundary(boundaryIndex, event.key === "ArrowRight" ? 1 : -1);
 }
 
-function updateTrackListViewport(): void {
-  trackListHeight.value =
-    trackList.value?.clientHeight ||
-    window.innerHeight ||
-    defaultTrackListHeight;
-}
-
-function resetTrackListPosition(): void {
-  trackListScrollTop.value = 0;
-  if (trackList.value) {
-    trackList.value.scrollTop = 0;
-  }
-}
-
-function observeTrackList(): void {
-  trackListResizeObserver?.disconnect();
-  resetTrackListPosition();
-  updateTrackListViewport();
-
-  if (!trackList.value || typeof ResizeObserver === "undefined") {
-    return;
-  }
-
-  trackListResizeObserver = new ResizeObserver(updateTrackListViewport);
-  trackListResizeObserver.observe(trackList.value);
-}
-
-function handleTrackListScroll(event: Event): void {
-  trackListScrollTop.value = (event.currentTarget as HTMLElement).scrollTop;
-}
-
-onMounted(() => {
-  observeTrackList();
-  window.addEventListener("resize", updateTrackListViewport);
-});
-
-watch(
-  () => props.tracks,
-  () => {
-    const maximumScrollTop = Math.max(
-      props.tracks.length * trackRowHeight - trackListHeight.value,
-      0,
-    );
-    const nextScrollTop = Math.min(trackListScrollTop.value, maximumScrollTop);
-
-    if (trackList.value && trackList.value.scrollTop !== nextScrollTop) {
-      trackList.value.scrollTop = nextScrollTop;
-    }
-    trackListScrollTop.value = nextScrollTop;
-  },
-);
-
 onBeforeUnmount(() => {
   stopColumnResize?.();
-  trackListResizeObserver?.disconnect();
-  window.removeEventListener("resize", updateTrackListViewport);
 });
 </script>
 
@@ -316,113 +289,102 @@ onBeforeUnmount(() => {
     <div
       class="library-track-scroll min-h-0 flex-1 overflow-auto"
       data-library-track-list
-      ref="trackList"
-      @scroll="handleTrackListScroll"
+      :ref="setTrackList"
     >
-      <table
-        class="w-full table-fixed border-separate border-spacing-y-0.5 text-left"
+      <div
+        class="relative min-w-0"
+        data-library-track-virtualizer
+        role="rowgroup"
+        :style="{ height: virtualTrackHeight }"
       >
-        <colgroup>
-          <col
-            v-for="(width, index) in columnWidths"
-            :key="index"
-            :data-column="
-              ['title', 'artist', 'album', 'duration', 'favorite'][index]
-            "
-            :style="{ width: `${width}%` }"
-          />
-        </colgroup>
-        <tbody>
-          <tr v-if="trackSpacerBefore" aria-hidden="true">
-            <td
-              :colspan="columnWidths.length"
-              :style="{ height: `${trackSpacerBefore}px` }"
-            />
-          </tr>
-          <tr
-            v-for="track in visibleTracks"
-            :key="track.id"
-            :aria-label="`Play ${track.title}`"
-            class="group cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-            :data-current="track.id === props.currentItemId"
-            :data-track-id="track.id"
-            tabindex="0"
-            @click="emit('selectTrack', track)"
-            @keydown.enter.prevent="emit('selectTrack', track)"
-            @keydown.space.prevent="emit('selectTrack', track)"
+        <div
+          v-for="{ track, virtualItem } in virtualTracks"
+          :key="String(virtualItem.key)"
+          :aria-label="`Play ${track.title}`"
+          class="group absolute left-0 grid h-10.5 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+          :data-current="track.id === props.currentItemId"
+          :data-index="virtualItem.index"
+          :data-track-id="track.id"
+          role="row"
+          tabindex="0"
+          :style="{
+            gridTemplateColumns: trackGridTemplateColumns,
+            transform: `translateY(${virtualItem.start}px)`,
+          }"
+          @click="emit('selectTrack', track)"
+          @keydown.enter.prevent="emit('selectTrack', track)"
+          @keydown.space.prevent="emit('selectTrack', track)"
+        >
+          <div
+            class="overflow-hidden rounded-l-md px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            role="gridcell"
           >
-            <td
-              class="h-10.5 overflow-hidden rounded-l-md px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-            >
-              <span class="flex min-w-0 items-center gap-2.5 font-medium">
-                <Volume2
-                  v-if="track.id === props.currentItemId"
-                  class="track-playing-indicator size-3.75 shrink-0 text-(--text)"
-                  aria-label="Currently playing"
-                />
-                <span v-else class="size-3.75 shrink-0" aria-hidden="true" />
-                <span
-                  class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {{ track.title }}
-                </span>
-                <LoaderCircle
-                  v-if="track.metadataDirty"
-                  class="size-3.5 shrink-0 animate-spin text-amber-200"
-                  data-metadata-dirty
-                  aria-label="Metadata refresh pending"
-                  role="status"
-                />
-              </span>
-            </td>
-            <td
-              class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-            >
+            <span class="flex h-full min-w-0 items-center gap-2.5 font-medium">
+              <Volume2
+                v-if="track.id === props.currentItemId"
+                class="track-playing-indicator size-3.75 shrink-0 text-(--text)"
+                aria-label="Currently playing"
+              />
+              <span v-else class="size-3.75 shrink-0" aria-hidden="true" />
               <span
-                class="track-artist block overflow-hidden text-ellipsis whitespace-nowrap"
+                class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
               >
-                {{ track.artist }}
+                {{ track.title }}
               </span>
-            </td>
-            <td
-              class="h-10.5 overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              <LoaderCircle
+                v-if="track.metadataDirty"
+                class="size-3.5 shrink-0 animate-spin text-amber-200"
+                data-metadata-dirty
+                aria-label="Metadata refresh pending"
+                role="status"
+              />
+            </span>
+          </div>
+          <div
+            class="overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+            role="gridcell"
+          >
+            <span
+              class="track-artist block overflow-hidden text-ellipsis whitespace-nowrap leading-10.5"
             >
-              <span
-                class="track-album block overflow-hidden text-ellipsis whitespace-nowrap"
-              >
-                {{ track.album || "—" }}
-              </span>
-            </td>
-            <td
-              class="h-10.5 px-2 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              {{ track.artist }}
+            </span>
+          </div>
+          <div
+            class="overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+            role="gridcell"
+          >
+            <span
+              class="track-album block overflow-hidden text-ellipsis whitespace-nowrap leading-10.5"
             >
-              {{ formatDuration(track.durationMs) }}
-            </td>
-            <td
-              class="h-10.5 rounded-r-md px-2 text-center group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              {{ track.album || "—" }}
+            </span>
+          </div>
+          <div
+            class="px-2 text-center text-[0.78rem] leading-10.5 text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+            role="gridcell"
+          >
+            {{ formatDuration(track.durationMs) }}
+          </div>
+          <div
+            class="grid place-items-center rounded-r-md px-2 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            role="gridcell"
+          >
+            <button
+              :aria-label="`Favorite ${track.title}`"
+              :aria-pressed="isFavorite(track.id)"
+              class="grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
+              type="button"
+              @click.stop="toggleFavorite(track.id)"
             >
-              <button
-                :aria-label="`Favorite ${track.title}`"
-                :aria-pressed="isFavorite(track.id)"
-                class="mx-auto grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
-                type="button"
-                @click.stop="toggleFavorite(track.id)"
-              >
-                <Heart
-                  aria-hidden="true"
-                  :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
-                />
-              </button>
-            </td>
-          </tr>
-          <tr v-if="trackSpacerAfter" aria-hidden="true">
-            <td
-              :colspan="columnWidths.length"
-              :style="{ height: `${trackSpacerAfter}px` }"
-            />
-          </tr>
-        </tbody>
-      </table>
+              <Heart
+                aria-hidden="true"
+                :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
+              />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

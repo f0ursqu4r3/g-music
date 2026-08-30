@@ -11,8 +11,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::playback::{
-    DirtyTrack, EditableTrackMetadata, LibrarySnapshot, PlaybackSnapshot, Playlist,
-    YouTubePlaybackError, YouTubePlaybackProvider, discover_youtube_imports,
+    DirtyTrack, EditableTrackMetadata, LibrarySnapshot, PlaybackSnapshot, PlaybackTransport,
+    Playlist, YouTubePlaybackError, YouTubePlaybackProvider, discover_youtube_imports,
     resolve_youtube_imports,
 };
 use crate::{auth, windows};
@@ -405,6 +405,22 @@ pub fn inspect_playback(state: State<'_, AppState>) -> Result<PlaybackSnapshot, 
         "inspect_playback",
         YouTubePlaybackProvider::snapshot,
     )
+}
+
+#[tauri::command]
+pub fn inspect_playback_transport(
+    state: State<'_, AppState>,
+) -> Result<PlaybackTransport, CommandError> {
+    with_playback(
+        &state,
+        "inspect_playback_transport",
+        YouTubePlaybackProvider::transport,
+    )
+}
+
+#[tauri::command]
+pub fn inspect_library(state: State<'_, AppState>) -> Result<LibrarySnapshot, CommandError> {
+    state.library_snapshot()
 }
 
 #[tauri::command]

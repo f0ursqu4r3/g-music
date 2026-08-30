@@ -19,6 +19,17 @@ export interface PlaybackSnapshot {
   queue: MediaItem[];
 }
 
+export interface PlaybackTransport {
+  status: PlaybackStatus;
+  currentItem: MediaItem | null;
+  positionMs: number;
+  volumePercent: number;
+}
+
+export interface LibrarySnapshot {
+  tracks: MediaItem[];
+}
+
 export type ImportProgressPhase =
   "started" | "resolving" | "merging" | "completed" | "failed";
 
@@ -60,6 +71,10 @@ export interface YouTubeAuthStatus {
 export const playbackApi = {
   inspect: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("inspect_playback"),
+  inspectLibrary: (): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("inspect_library"),
+  inspectTransport: (): Promise<PlaybackTransport> =>
+    invoke<PlaybackTransport>("inspect_playback_transport"),
   inspectMetadataRefreshes: (): Promise<MetadataRefreshSnapshot> =>
     invoke<MetadataRefreshSnapshot>("inspect_metadata_refreshes"),
   importYouTubeUrls: (urls: string[]): Promise<void> =>

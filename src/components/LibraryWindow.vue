@@ -5,6 +5,7 @@ import type {
   MediaItem,
   MetadataRefreshSnapshot,
   PlaybackSnapshot,
+  PlaybackTransport,
 } from "@/api";
 import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
 import LibraryAlbumGrid from "./library/LibraryAlbumGrid.vue";
@@ -15,6 +16,7 @@ import LibraryPlaybackFooter from "./library/LibraryPlaybackFooter.vue";
 import LibrarySidebar from "./library/LibrarySidebar.vue";
 import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
 import LibraryTrackList from "./library/LibraryTrackList.vue";
+import { buildLibraryArtists, groupItems } from "./library/collections";
 import type {
   AlbumGroup,
   ArtistGroup,
@@ -34,7 +36,9 @@ type SelectedLibraryItem =
   | { kind: "artist"; name: string };
 
 interface Props {
-  snapshot: PlaybackSnapshot;
+  snapshot?: PlaybackSnapshot;
+  tracks?: MediaItem[];
+  transport?: PlaybackTransport;
   isUpdating: boolean;
   errorMessage?: string;
   metadataRefreshes?: MetadataRefreshSnapshot;
@@ -58,17 +62,27 @@ const groupBy = ref<LibraryGroupOption>("none");
 const gridItemSize = ref(176);
 const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
+const playback = computed<PlaybackTransport>(
+  () =>
+    props.transport ??
+    props.snapshot ?? {
+      currentItem: null,
+      positionMs: 0,
+      status: "paused",
+      volumePercent: 0,
+    },
+);
 const selectedLibraryItem = ref<SelectedLibraryItem | null>(
-  props.snapshot.currentItem
-    ? { id: props.snapshot.currentItem.id, kind: "track" }
+  playback.value.currentItem
+    ? { id: playback.value.currentItem.id, kind: "track" }
     : null,
 );
 const sortBy = ref<LibrarySortOption>("title-asc");
 const trackFilter = ref<TrackFilter | null>(null);
 
-const isPlaying = computed(() => props.snapshot.status === "playing");
-const currentItem = computed(() => props.snapshot.currentItem);
-const allTracks = computed(() => props.snapshot.queue);
+const isPlaying = computed(() => playback.value.status === "playing");
+const currentItem = computed(() => playback.value.currentItem);
+const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? []);
 const selectedTrack = computed(() => {
   const selection = selectedLibraryItem.value;
   if (!selection || selection.kind !== "track") {
@@ -119,32 +133,8 @@ const libraryAlbums = computed<LibraryAlbum[]>(() => {
   return sortCollection(albums.values(), sortBy.value, "album");
 });
 const libraryArtists = computed<LibraryArtist[]>(() => {
-  const artists = new Map<string, { count: number; track: MediaItem }>();
-
-  for (const track of allTracks.value) {
-    const existing = artists.get(track.artist);
-    artists.set(track.artist, {
-      count: (existing?.count ?? 0) + 1,
-      track: existing?.track ?? track,
-    });
-  }
-
   return sortCollection(
-    [...artists.entries()].map(([name, value]) => ({
-      albumCount: new Set(
-        allTracks.value
-          .filter((track) => track.artist === name)
-          .map((track) => track.album)
-          .filter(Boolean),
-      ).size,
-      detail: `${value.count} ${value.count === 1 ? "song" : "songs"}`,
-      durationMs: allTracks.value
-        .filter((track) => track.artist === name)
-        .reduce((total, track) => total + track.durationMs, 0),
-      name,
-      trackCount: value.count,
-      videoId: value.track.id,
-    })),
+    buildLibraryArtists(allTracks.value),
     sortBy.value,
     "artist",
   );
@@ -175,16 +165,11 @@ const groupedTracks = computed<TrackGroup[]>(() => {
     return [{ items: libraryTracks.value, label: "" }];
   }
 
-  const groups = new Map<string, MediaItem[]>();
-  for (const track of libraryTracks.value) {
-    const label =
-      groupBy.value === "artist"
-        ? track.artist
-        : track.album?.trim() || "Unknown album";
-    groups.set(label, [...(groups.get(label) ?? []), track]);
-  }
-
-  return [...groups.entries()].map(([label, items]) => ({ items, label }));
+  return groupItems(libraryTracks.value, (track) =>
+    groupBy.value === "artist"
+      ? track.artist
+      : track.album?.trim() || "Unknown album",
+  );
 });
 const groupedAlbums = computed<AlbumGroup[]>(() =>
   groupCollection(libraryAlbums.value, (album) =>
@@ -298,16 +283,7 @@ function groupCollection<T>(
     return [{ items, label: "" }];
   }
 
-  const groups = new Map<string, T[]>();
-  for (const item of items) {
-    const label = getLabel(item);
-    groups.set(label, [...(groups.get(label) ?? []), item]);
-  }
-
-  return [...groups.entries()].map(([label, groupedItems]) => ({
-    items: groupedItems,
-    label,
-  }));
+  return groupItems(items, getLabel);
 }
 
 function selectCollection(collection: LibraryCollection): void {
@@ -459,7 +435,7 @@ function toggleMetadataRefresh(): void {
       :current-item="currentItem"
       :is-playing="isPlaying"
       :is-updating="isUpdating"
-      :snapshot="snapshot"
+      :playback="playback"
       @next="emit('next')"
       @previous="emit('previous')"
       @seek="emit('seek', $event)"

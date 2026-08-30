@@ -6,6 +6,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   type ImportProgress,
   type MetadataRefreshSnapshot,
+  type PlaybackSnapshot,
   windowApi,
 } from "@/api";
 import type { ThemeName } from "@/lib/theme";
@@ -40,6 +41,21 @@ const statusMessage = computed(
     windowError.value ||
     playback.errorMessage.value ||
     "Local YouTube via yt-dlp + mpv",
+);
+const isViewLoaded = computed(() =>
+  view === "library"
+    ? Boolean(playback.library.value && playback.transport.value)
+    : Boolean(playback.snapshot.value),
+);
+const playbackSnapshot = computed<PlaybackSnapshot>(
+  () =>
+    playback.snapshot.value ?? {
+      currentItem: null,
+      positionMs: 0,
+      queue: [],
+      status: "paused",
+      volumePercent: 0,
+    },
 );
 
 watch(
@@ -206,7 +222,7 @@ onUnmounted(() => {
     <SettingsWindow v-if="view === 'settings'" />
 
     <section
-      v-else-if="!playback.snapshot.value"
+      v-else-if="!isViewLoaded"
       class="grid min-h-screen content-center gap-3.5 bg-(--glass-window) p-12"
       aria-label="Loading music window"
     >
@@ -217,7 +233,8 @@ onUnmounted(() => {
 
     <LibraryWindow
       v-else-if="view === 'library'"
-      :snapshot="playback.snapshot.value"
+      :tracks="playback.library.value?.tracks"
+      :transport="playback.transport.value ?? undefined"
       :is-updating="playback.isUpdating.value"
       :error-message="windowError || playback.errorMessage.value"
       :metadata-refreshes="playback.metadataRefreshes.value"
@@ -240,7 +257,7 @@ onUnmounted(() => {
 
     <ArtworkWindow
       v-else-if="view === 'artwork'"
-      :snapshot="playback.snapshot.value"
+      :snapshot="playbackSnapshot"
       :is-updating="playback.isUpdating.value"
       :is-window-focused="isWindowFocused"
       @toggle="playback.toggle"
@@ -251,13 +268,13 @@ onUnmounted(() => {
 
     <QueueWindow
       v-else-if="view === 'queue'"
-      :queue="playback.snapshot.value.queue"
-      :current-item-id="playback.snapshot.value.currentItem?.id"
+      :queue="playbackSnapshot.queue"
+      :current-item-id="playbackSnapshot.currentItem?.id"
     />
 
     <MiniWindow
       v-else
-      :snapshot="playback.snapshot.value"
+      :snapshot="playbackSnapshot"
       :is-updating="playback.isUpdating.value"
       :queue-expanded="queueExpanded"
       :theme="theme"

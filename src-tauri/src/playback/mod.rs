@@ -73,3 +73,23 @@ pub struct PlaybackSnapshot {
     pub volume_percent: u8,
     pub queue: Vec<MediaItem>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackTransport {
+    pub status: PlaybackStatus,
+    pub current_item: Option<MediaItem>,
+    pub position_ms: u64,
+    pub volume_percent: u8,
+}
+
+impl From<&PlaybackSnapshot> for PlaybackTransport {
+    fn from(snapshot: &PlaybackSnapshot) -> Self {
+        Self {
+            status: snapshot.status,
+            current_item: snapshot.current_item.clone(),
+            position_ms: snapshot.position_ms,
+            volume_percent: snapshot.volume_percent,
+        }
+    }
+}

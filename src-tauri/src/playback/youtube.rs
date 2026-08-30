@@ -19,7 +19,8 @@ use thiserror::Error;
 use url::Url;
 
 use super::{
-    EditableTrackMetadata, LibrarySnapshot, MediaItem, PlaybackSnapshot, PlaybackStatus, Playlist,
+    EditableTrackMetadata, LibrarySnapshot, MediaItem, PlaybackSnapshot, PlaybackStatus,
+    PlaybackTransport, Playlist,
 };
 
 const IPC_TIMEOUT: Duration = Duration::from_secs(3);
@@ -370,6 +371,18 @@ impl YouTubePlaybackProvider {
     }
 
     pub fn snapshot(&mut self) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
+        self.update_transport()?;
+
+        Ok(self.snapshot.clone())
+    }
+
+    pub fn transport(&mut self) -> Result<PlaybackTransport, YouTubePlaybackError> {
+        self.update_transport()?;
+
+        Ok(PlaybackTransport::from(&self.snapshot))
+    }
+
+    fn update_transport(&mut self) -> Result<(), YouTubePlaybackError> {
         if self.snapshot.current_item.is_some() {
             let state = self.player.inspect()?;
             self.snapshot.status = if state.paused {
@@ -385,7 +398,7 @@ impl YouTubePlaybackProvider {
             );
         }
 
-        Ok(self.snapshot.clone())
+        Ok(())
     }
 
     pub fn play(&mut self) -> Result<(), YouTubePlaybackError> {

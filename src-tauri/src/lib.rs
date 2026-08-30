@@ -32,6 +32,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::inspect_playback,
+            commands::inspect_playback_transport,
+            commands::inspect_library,
             commands::inspect_metadata_refreshes,
             commands::inspect_youtube_auth,
             commands::open_youtube_login,

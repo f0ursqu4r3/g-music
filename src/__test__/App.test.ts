@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 
 import App from "../App.vue";
+import LibraryWindow from "../components/LibraryWindow.vue";
 
 const playbackMocks = vi.hoisted(() => ({
   importYouTubeUrls: vi.fn(),
@@ -56,6 +57,31 @@ vi.mock("@/composables/usePlayback", () => ({
         ],
       },
     },
+    library: {
+      value: {
+        tracks: [
+          {
+            id: "night-drive",
+            title: "Night Drive",
+            artist: "Chromatic Skies",
+            durationMs: 238_000,
+          },
+        ],
+      },
+    },
+    transport: {
+      value: {
+        status: "paused",
+        currentItem: {
+          id: "night-drive",
+          title: "Night Drive",
+          artist: "Chromatic Skies",
+          durationMs: 238_000,
+        },
+        positionMs: 57_000,
+        volumePercent: 72,
+      },
+    },
     isUpdating: { value: false },
     isImporting: { value: false },
     importProgress: { value: null },
@@ -99,6 +125,18 @@ describe("application landmarks", () => {
 
     expect(wrapper.findAll("main")).toHaveLength(1);
     expect(wrapper.get("main").attributes("aria-label")).toBe("Music library");
+  });
+
+  it("passes library and transport state separately to the library window", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const libraryWindow = wrapper.getComponent(LibraryWindow);
+
+    expect(libraryWindow.props("tracks")).toHaveLength(1);
+    expect(libraryWindow.props("transport")).toMatchObject({
+      positionMs: 57_000,
+      status: "paused",
+    });
   });
 
   it("opens Import Music from the Library plus button", async () => {
