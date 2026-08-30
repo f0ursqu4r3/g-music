@@ -319,6 +319,69 @@ describe("LibraryWindow", () => {
     expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false);
   });
 
+  it("resets virtual track position when the list remounts", async () => {
+    const tracks = Array.from({ length: 200 }, (_, index) => ({
+      ...importedTracks[index % importedTracks.length]!,
+      id: `track-${index}`,
+      title: `Track ${index}`,
+    }));
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, queue: tracks },
+      },
+    });
+    const trackList = wrapper.get("[data-library-track-list]");
+
+    trackList.element.scrollTop = 44 * 100;
+    await trackList.trigger("scroll");
+    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    await wrapper.get('button[aria-label="List view"]').trigger("click");
+
+    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(true);
+    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(false);
+  });
+
+  it("uses the window viewport when the list has no measurable height", async () => {
+    const tracks = Array.from({ length: 200 }, (_, index) => ({
+      ...importedTracks[index % importedTracks.length]!,
+      id: `track-${index}`,
+      title: `Track ${index}`,
+    }));
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 1_200,
+    });
+
+    try {
+      const wrapper = mount(LibraryWindow, {
+        props: {
+          isUpdating: false,
+          snapshot: { ...snapshot, queue: tracks },
+        },
+      });
+      const trackList = wrapper.get("[data-library-track-list]");
+      Object.defineProperty(trackList.element, "clientHeight", {
+        configurable: true,
+        value: 0,
+      });
+      window.dispatchEvent(new Event("resize"));
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.findAll("tbody [data-track-id]").length).toBeGreaterThan(
+        26,
+      );
+    } finally {
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalInnerHeight,
+      });
+    }
+  });
+
   it("provides keyboard-resizable track columns", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
