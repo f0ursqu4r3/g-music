@@ -13,6 +13,7 @@ dist-ssr
 coverage
 .vite
 *.tsbuildinfo
+gmusic-current-library.json
 src-tauri/gen
 src-tauri/target
 *.local
