@@ -38,6 +38,34 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value).toEqual(playing);
   });
 
+  it("marks a pending play command as starting", async () => {
+    let resolvePlay: ((snapshot: PlaybackSnapshot) => void) | undefined;
+    const pendingPlay = new Promise<PlaybackSnapshot>((resolve) => {
+      resolvePlay = resolve;
+    });
+    const client = {
+      inspect: vi.fn().mockResolvedValue(paused),
+      play: vi.fn().mockReturnValue(pendingPlay),
+      pause: vi.fn(),
+      previous: vi.fn(),
+      next: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      moveQueueItem: vi.fn(),
+      playTrack: vi.fn(),
+      importYouTubeUrls: vi.fn(),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    const starting = playback.toggle();
+
+    expect(playback.isStarting.value).toBe(true);
+    resolvePlay?.(playing);
+    await starting;
+    expect(playback.isStarting.value).toBe(false);
+  });
+
   it("synchronizes advancing playback without entering the updating state", async () => {
     const advanced = { ...playing, positionMs: 2_000 };
     const client = {

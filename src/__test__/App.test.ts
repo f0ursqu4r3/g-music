@@ -82,6 +82,7 @@ vi.mock("@/composables/usePlayback", () => ({
         volumePercent: 72,
       },
     },
+    isStarting: { value: false },
     isUpdating: { value: false },
     isImporting: { value: false },
     importProgress: { value: null },

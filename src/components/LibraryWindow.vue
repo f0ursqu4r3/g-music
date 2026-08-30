@@ -8,7 +8,6 @@ import type {
   PlaybackTransport,
 } from "@/api";
 import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
-import QueueDrawer from "./QueueDrawer.vue";
 import LibraryAlbumGrid from "./library/LibraryAlbumGrid.vue";
 import LibraryArtistGrid from "./library/LibraryArtistGrid.vue";
 import LibraryHeader from "./library/LibraryHeader.vue";
@@ -40,6 +39,7 @@ interface Props {
   snapshot?: PlaybackSnapshot;
   tracks?: MediaItem[];
   transport?: PlaybackTransport;
+  isStarting?: boolean;
   isUpdating: boolean;
   errorMessage?: string;
   metadataRefreshes?: MetadataRefreshSnapshot;
@@ -56,7 +56,6 @@ const emit = defineEmits<{
   toggleMute: [];
   openImport: [];
   playTrack: [id: string];
-  moveQueueItem: [from: number, to: number];
 }>();
 
 const activeCollection = ref<LibraryCollection>("tracks");
@@ -65,7 +64,7 @@ const groupBy = ref<LibraryGroupOption>("none");
 const gridItemSize = ref(176);
 const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
-const queueSidebarOpen = ref(false);
+const detailsSidebarOpen = ref(true);
 const playback = computed<PlaybackTransport>(
   () =>
     props.transport ??
@@ -360,7 +359,12 @@ function toggleMetadataRefresh(): void {
 
 <template>
   <main
-    class="library-window relative grid h-screen min-h-0 grid-cols-[244px_minmax(0,1fr)_272px] grid-rows-[minmax(0,1fr)_64px] overflow-hidden bg-(--glass-window) text-(--text) backdrop-saturate-[1.2] max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[760px]:grid-cols-1"
+    class="library-window relative grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] overflow-hidden bg-(--glass-window) text-(--text) transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[760px]:grid-cols-1"
+    :class="
+      detailsSidebarOpen
+        ? 'grid-cols-[244px_minmax(0,1fr)_272px]'
+        : 'grid-cols-[244px_minmax(0,1fr)_0px]'
+    "
     aria-label="Music library"
   >
     <div
@@ -434,22 +438,8 @@ function toggleMetadataRefresh(): void {
       />
     </section>
 
-    <aside
-      v-if="queueSidebarOpen"
-      class="library-queue-sidebar col-start-3 row-start-1 min-h-0 overflow-y-auto border-l border-(--line) max-[1040px]:hidden"
-      data-library-queue-sidebar
-      aria-label="Play queue"
-    >
-      <QueueDrawer
-        :queue="allTracks"
-        :current-item-id="currentItem?.id"
-        :is-updating="isUpdating"
-        @move="(from, to) => emit('moveQueueItem', from, to)"
-      />
-    </aside>
-
     <LibraryInfoPanel
-      v-else
+      :is-open="detailsSidebarOpen"
       :selected-album="selectedAlbum"
       :selected-artist="selectedArtist"
       :selected-track="selectedTrack"
@@ -458,16 +448,17 @@ function toggleMetadataRefresh(): void {
     <LibraryPlaybackFooter
       :current-item="currentItem"
       :is-playing="isPlaying"
+      :is-starting="isStarting ?? false"
       :is-updating="isUpdating"
       :playback="playback"
-      :queue-open="queueSidebarOpen"
+      :details-open="detailsSidebarOpen"
       @next="emit('next')"
       @previous="emit('previous')"
       @seek="emit('seek', $event)"
       @set-volume="emit('setVolume', $event)"
       @toggle-mute="emit('toggleMute')"
       @toggle="emit('toggle')"
-      @toggle-queue="queueSidebarOpen = !queueSidebarOpen"
+      @toggle-details="detailsSidebarOpen = !detailsSidebarOpen"
     />
 
     <MetadataRefreshDrawer

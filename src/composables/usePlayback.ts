@@ -55,6 +55,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     totalTracks: 0,
   });
   const isUpdating = ref(false);
+  const isStarting = ref(false);
   let isSyncing = false;
   let isUpdatingVolume = false;
   let lastUnmutedVolume = 50;
@@ -93,6 +94,21 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       errorMessage.value = readErrorMessage(error);
     } finally {
       isUpdating.value = false;
+    }
+  }
+
+  async function startPlayback(
+    action: () => Promise<PlaybackSnapshot>,
+  ): Promise<void> {
+    if (isUpdating.value) {
+      return;
+    }
+
+    isStarting.value = true;
+    try {
+      await execute(action);
+    } finally {
+      isStarting.value = false;
     }
   }
 
@@ -204,9 +220,12 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function toggle(): Promise<void> {
-    await execute(() =>
-      snapshot.value?.status === "playing" ? client.pause() : client.play(),
-    );
+    if (snapshot.value?.status === "playing") {
+      await execute(client.pause);
+      return;
+    }
+
+    await startPlayback(client.play);
   }
 
   async function previous(): Promise<void> {
@@ -218,7 +237,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function playTrack(id: string): Promise<void> {
-    await execute(() => client.playTrack(id));
+    await startPlayback(() => client.playTrack(id));
   }
 
   async function seek(positionMs: number): Promise<void> {
@@ -274,6 +293,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     errorMessage,
     importProgress,
     isImporting,
+    isStarting,
     isUpdating,
     library,
     metadataRefreshes,

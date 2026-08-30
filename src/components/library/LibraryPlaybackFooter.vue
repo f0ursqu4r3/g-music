@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Heart,
+  LoaderCircle,
   PanelRightClose,
   PanelRightOpen,
   Pause,
@@ -13,21 +14,22 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-} from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+} from "lucide-vue-next";
+import { computed, ref } from "vue";
 
-import type { MediaItem, PlaybackTransport } from '@/api';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { formatDuration } from '@/lib/time';
-import YouTubeArtwork from '../YouTubeArtwork.vue';
+import type { MediaItem, PlaybackTransport } from "@/api";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { formatDuration } from "@/lib/time";
+import YouTubeArtwork from "../YouTubeArtwork.vue";
 
 const props = defineProps<{
   playback: PlaybackTransport;
   currentItem: MediaItem | null;
   isPlaying: boolean;
+  isStarting?: boolean;
   isUpdating: boolean;
-  queueOpen: boolean;
+  detailsOpen: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -37,7 +39,7 @@ const emit = defineEmits<{
   seek: [positionMs: number];
   setVolume: [percent: number];
   toggleMute: [];
-  toggleQueue: [];
+  toggleDetails: [];
 }>();
 
 const isFavorite = ref(false);
@@ -56,15 +58,15 @@ const volumeIcon = computed(() => {
 
 function emitVolume(values: number[] | undefined): void {
   const value = values?.[0];
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    emit('setVolume', value);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    emit("setVolume", value);
   }
 }
 
 function emitSeek(values: number[]): void {
   const value = values[0];
   if (Number.isFinite(value)) {
-    emit('seek', value);
+    emit("seek", value);
   }
 }
 </script>
@@ -88,12 +90,12 @@ function emitSeek(values: number[]): void {
         <p
           class="overflow-hidden text-[0.82rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
         >
-          {{ props.currentItem?.title ?? 'Nothing selected' }}
+          {{ props.currentItem?.title ?? "Nothing selected" }}
         </p>
         <span
           class="mt-0.5 block overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
         >
-          {{ props.currentItem?.artist ?? 'Choose a track' }}
+          {{ props.currentItem?.artist ?? "Choose a track" }}
         </span>
       </div>
     </div>
@@ -116,13 +118,30 @@ function emitSeek(values: number[]): void {
         <SkipBack aria-hidden="true" />
       </Button>
       <Button
-        :aria-label="props.isPlaying ? 'Pause' : 'Play'"
+        :aria-label="
+          props.isStarting
+            ? 'Starting playback'
+            : props.isPlaying
+              ? 'Pause'
+              : 'Play'
+        "
+        :aria-busy="props.isStarting ? 'true' : undefined"
         class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
         size="icon"
         :disabled="props.isUpdating"
         @click="emit('toggle')"
       >
-        <Pause v-if="props.isPlaying" aria-hidden="true" fill="currentColor" />
+        <LoaderCircle
+          v-if="props.isStarting"
+          class="animate-spin"
+          data-playback-starting
+          aria-hidden="true"
+        />
+        <Pause
+          v-else-if="props.isPlaying"
+          aria-hidden="true"
+          fill="currentColor"
+        />
         <Play v-else aria-hidden="true" fill="currentColor" />
       </Button>
       <Button
@@ -197,14 +216,16 @@ function emitSeek(values: number[]): void {
     </div>
 
     <Button
-      :aria-label="props.queueOpen ? 'Hide queue' : 'Show queue'"
-      :aria-pressed="props.queueOpen"
+      :aria-label="
+        props.detailsOpen ? 'Hide selection details' : 'Show selection details'
+      "
+      :aria-pressed="props.detailsOpen"
       size="icon-sm"
       variant="ghost"
-      data-playback-control="queue"
-      @click="emit('toggleQueue')"
+      data-playback-control="details"
+      @click="emit('toggleDetails')"
     >
-      <PanelRightClose v-if="props.queueOpen" aria-hidden="true" />
+      <PanelRightClose v-if="props.detailsOpen" aria-hidden="true" />
       <PanelRightOpen v-else aria-hidden="true" />
     </Button>
   </footer>

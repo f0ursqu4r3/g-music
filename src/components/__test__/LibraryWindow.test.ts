@@ -210,15 +210,13 @@ describe("LibraryWindow", () => {
     );
   });
 
-  it("keeps the whole sidebar scrollable when its content overflows", () => {
+  it("keeps the selected-item sidebar scrollable when its content overflows", () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
 
-    const sidebar = wrapper.get("[data-library-sidebar]");
-    const playlists = wrapper.get("[data-library-playlists]");
+    const sidebar = wrapper.get("[data-library-selected-sidebar]");
     expect(sidebar.classes()).toContain("overflow-y-auto");
-    expect(playlists.classes()).not.toContain("overflow-y-auto");
   });
 
   it("uses the compact reference-style library header and track table", () => {
@@ -547,6 +545,18 @@ describe("LibraryWindow", () => {
     expect(wrapper.emitted("setVolume")).toEqual([[72]]);
   });
 
+  it("shows a loading spinner in the main play button while playback starts", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isStarting: true, isUpdating: true, snapshot },
+    });
+
+    const playButton = wrapper.get('button[aria-label="Starting playback"]');
+    expect(playButton.attributes("aria-busy")).toBe("true");
+    expect(playButton.get("[data-playback-starting]").classes()).toContain(
+      "animate-spin",
+    );
+  });
+
   it("mutes and restores the prior library volume from its icon", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -577,7 +587,7 @@ describe("LibraryWindow", () => {
     expect(wrapper.emitted("seek")).toEqual([[119_000]]);
   });
 
-  it("keeps the complete playback footer inline and toggles the queue sidebar", async () => {
+  it("keeps selected-item details in an animated right sidebar", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
@@ -593,22 +603,30 @@ describe("LibraryWindow", () => {
       "favorite",
       "progress",
       "volume",
-      "settings",
-      "queue",
+      "details",
     ]);
 
-    const queueToggle = footer.get('button[aria-label="Show queue"]');
-    await queueToggle.trigger("click");
+    const sidebar = wrapper.get("[data-library-selected-sidebar]");
+    expect(sidebar.text()).toContain("YouTube Developers Live");
+    expect(sidebar.text()).not.toContain("Up next");
+    expect(sidebar.classes()).toContain("transition-all");
 
-    expect(wrapper.get("[data-library-queue-sidebar]").text()).toContain(
-      "Up next",
+    const detailsToggle = footer.get(
+      'button[aria-label="Hide selection details"]',
     );
-    expect(
-      footer.get('button[aria-label="Hide queue"]').attributes("aria-pressed"),
-    ).toBe("true");
+    await detailsToggle.trigger("click");
 
-    await footer.get('button[aria-label="Hide queue"]').trigger("click");
-    expect(wrapper.find("[data-library-queue-sidebar]").exists()).toBe(false);
+    expect(
+      footer
+        .get('button[aria-label="Show selection details"]')
+        .attributes("aria-pressed"),
+    ).toBe("false");
+    expect(sidebar.classes()).toContain("opacity-0");
+
+    await footer
+      .get('button[aria-label="Show selection details"]')
+      .trigger("click");
+    expect(sidebar.classes()).toContain("opacity-100");
   });
 
   it("toggles track favorites from the table", async () => {
@@ -626,15 +644,13 @@ describe("LibraryWindow", () => {
     expect(favorite.attributes("aria-pressed")).toBe("true");
   });
 
-  it("fills the sidebar with library and playlist shortcuts", () => {
+  it("keeps the left sidebar navigation controls", () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
 
-    expect(wrapper.get('[data-library-destination="playlists"]').text()).toBe(
-      "Playlists",
-    );
-    expect(wrapper.findAll('nav[aria-label="Playlists"] a')).toHaveLength(5);
+    expect(wrapper.findAll("[data-collection]")).toHaveLength(3);
+    expect(wrapper.get("[data-library-sidebar]").text()).toContain("Library");
   });
 
   it("opens Import Music from the plus button beside Library", async () => {

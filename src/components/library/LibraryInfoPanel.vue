@@ -7,6 +7,7 @@ import type { LibraryAlbum, LibraryArtist } from "./types";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
 const props = defineProps<{
+  isOpen: boolean;
   selectedTrack: MediaItem | null;
   selectedAlbum: LibraryAlbum | null;
   selectedArtist: LibraryArtist | null;
@@ -15,7 +16,12 @@ const props = defineProps<{
 
 <template>
   <aside
-    class="library-info-panel col-start-3 row-start-1 min-h-0 overflow-y-auto border-l border-(--line) p-5 max-[1040px]:hidden"
+    class="library-info-panel col-start-3 row-start-1 min-h-0 w-68 min-w-68 overflow-y-auto border-l border-(--line) p-5 transition-all duration-200 ease-out motion-reduce:transition-none max-[1040px]:hidden"
+    :class="
+      props.isOpen
+        ? 'translate-x-0 opacity-100'
+        : 'translate-x-3 pointer-events-none opacity-0'
+    "
     :data-library-info="
       props.selectedTrack
         ? 'track'
@@ -25,7 +31,10 @@ const props = defineProps<{
             ? 'artist'
             : 'empty'
     "
+    data-library-selected-sidebar
+    :aria-hidden="props.isOpen ? undefined : 'true'"
     aria-label="Selected library item details"
+    :inert="props.isOpen ? undefined : true"
   >
     <div v-if="props.selectedTrack" data-library-info="track">
       <div class="cover-art mb-5 aspect-square w-full rounded-xl">
