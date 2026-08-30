@@ -240,7 +240,11 @@ describe("LibraryWindow", () => {
     ).toHaveLength(2);
     expect(wrapper.findAll(".track-row-artwork")).toHaveLength(0);
     expect(wrapper.get(".track-playing-indicator")).toBeDefined();
-    expect(wrapper.findAll('[aria-label^="Favorite "]')).toHaveLength(2);
+    expect(
+      wrapper
+        .get("[data-library-track-list]")
+        .findAll('[aria-label^="Favorite "]'),
+    ).toHaveLength(2);
     expect(wrapper.text()).toContain("YouTube Developers Live");
     expect(wrapper.text()).toContain("Google for Developers");
     expect(wrapper.text()).toContain("API Sessions");
@@ -528,6 +532,40 @@ describe("LibraryWindow", () => {
 
     expect(wrapper.emitted("setVolume")).toEqual([[25]]);
     expect(wrapper.emitted("seek")).toEqual([[119_000]]);
+  });
+
+  it("keeps the complete playback footer inline and toggles the queue sidebar", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const footer = wrapper.get("[data-library-playback-footer]");
+
+    expect(
+      [...footer.element.children].map((element) =>
+        element.getAttribute("data-playback-control"),
+      ),
+    ).toEqual([
+      "now-playing",
+      "transport",
+      "favorite",
+      "progress",
+      "volume",
+      "settings",
+      "queue",
+    ]);
+
+    const queueToggle = footer.get('button[aria-label="Show queue"]');
+    await queueToggle.trigger("click");
+
+    expect(wrapper.get("[data-library-queue-sidebar]").text()).toContain(
+      "Up next",
+    );
+    expect(
+      footer.get('button[aria-label="Hide queue"]').attributes("aria-pressed"),
+    ).toBe("true");
+
+    await footer.get('button[aria-label="Hide queue"]').trigger("click");
+    expect(wrapper.find("[data-library-queue-sidebar]").exists()).toBe(false);
   });
 
   it("toggles track favorites from the table", async () => {

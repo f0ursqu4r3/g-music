@@ -241,6 +241,7 @@ onUnmounted(() => {
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
+      @move-queue-item="playback.moveQueueItem"
       @play-track="playback.playTrack"
       @seek="playback.seek"
       @set-volume="playback.setVolume"
