@@ -234,7 +234,7 @@ describe("LibraryWindow", () => {
     expect(
       wrapper.findAll('[aria-label="Library view options"] button'),
     ).toHaveLength(3);
-    expect(wrapper.findAll("thead th")).toHaveLength(5);
+    expect(wrapper.findAll("thead th")).toHaveLength(6);
     expect(
       wrapper.findAll('[data-library-track-virtualizer] [role="row"]'),
     ).toHaveLength(2);
@@ -456,14 +456,43 @@ describe("LibraryWindow", () => {
     expect(titleColumn.attributes("style")).not.toBe(initialWidth);
   });
 
-  it("selects a track for playback from its table row", async () => {
+  it("selects a track for metadata without starting playback", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
 
     await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
 
-    expect(wrapper.emitted("playTrack")).toEqual([["BaW_jenozKc"]]);
+    expect(wrapper.get('[data-library-info="track"]').text()).toContain(
+      "Creator Studio Session",
+    );
+    expect(wrapper.emitted("playTrack")).toBeUndefined();
+  });
+
+  it("plays a track immediately from its hover control or double click", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    const row = wrapper.get('[data-track-id="BaW_jenozKc"]');
+    const playButton = row.get(
+      'button[aria-label="Play Creator Studio Session"]',
+    );
+    expect(playButton.attributes("data-track-action")).toBe("play");
+    expect(playButton.classes()).toContain("opacity-0");
+    expect(playButton.classes()).toContain("group-hover:opacity-100");
+    expect(playButton.classes()).not.toContain("rounded-full");
+    expect(playButton.classes()).not.toContain(
+      "bg-[oklch(0.72_0.04_268/0.92)]",
+    );
+
+    await playButton.trigger("click");
+    await row.trigger("dblclick");
+
+    expect(wrapper.emitted("playTrack")).toEqual([
+      ["BaW_jenozKc"],
+      ["BaW_jenozKc"],
+    ]);
   });
 
   it("shows a spinning metadata refresh icon for tracks with incomplete metadata", () => {
@@ -514,8 +543,22 @@ describe("LibraryWindow", () => {
       .findAllComponents(Slider)
       .find((slider) => slider.attributes("aria-label") === "Volume");
     expect(volume).toBeDefined();
-    volume!.vm.$emit("valueCommit", [72]);
+    volume!.vm.$emit("update:modelValue", [72]);
     expect(wrapper.emitted("setVolume")).toEqual([[72]]);
+  });
+
+  it("mutes and restores the prior library volume from its icon", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('button[aria-label="Mute volume"]').trigger("click");
+    expect(wrapper.emitted("toggleMute")).toEqual([[]]);
+
+    await wrapper.setProps({ snapshot: { ...snapshot, volumePercent: 0 } });
+    await wrapper.get('button[aria-label="Unmute volume"]').trigger("click");
+
+    expect(wrapper.emitted("toggleMute")).toEqual([[], []]);
   });
 
   it("commits pointer drags from the progress and volume scrubbers", async () => {

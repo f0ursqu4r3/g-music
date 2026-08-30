@@ -44,7 +44,7 @@ describe("MiniPlayer", () => {
     expect(wrapper.emitted("next")).toHaveLength(1);
   });
 
-  it("uses shadcn sliders for seeking and volume commits", () => {
+  it("uses shadcn sliders for seeking and live volume updates", () => {
     const wrapper = mount(MiniPlayer, {
       props: { snapshot, isUpdating: false },
     });
@@ -72,11 +72,33 @@ describe("MiniPlayer", () => {
       );
     }
 
-    volume!.vm.$emit("valueCommit", [61]);
+    volume!.vm.$emit("update:modelValue", [61]);
     progress!.vm.$emit("valueCommit", [96_000]);
 
     expect(wrapper.emitted("setVolume")).toEqual([[61]]);
     expect(wrapper.emitted("seek")).toEqual([[96_000]]);
+  });
+
+  it("uses volume level icons and toggles mute", async () => {
+    const wrapper = mount(MiniPlayer, {
+      props: { snapshot, isUpdating: false },
+    });
+
+    expect(wrapper.get(".lucide-volume-2")).toBeDefined();
+    expect(wrapper.get('button[aria-label="Mute volume"]')).toBeDefined();
+    await wrapper.get('button[aria-label="Mute volume"]').trigger("click");
+    expect(wrapper.emitted("toggleMute")).toEqual([[]]);
+
+    await wrapper.setProps({ snapshot: { ...snapshot, volumePercent: 0 } });
+
+    expect(wrapper.get('button[aria-label="Unmute volume"]')).toBeDefined();
+    await wrapper.get('button[aria-label="Unmute volume"]').trigger("click");
+    expect(wrapper.emitted("toggleMute")).toEqual([[], []]);
+
+    await wrapper.setProps({ snapshot: { ...snapshot, volumePercent: 50 } });
+    expect(wrapper.get(".lucide-volume-1")).toBeDefined();
+    await wrapper.setProps({ snapshot: { ...snapshot, volumePercent: 20 } });
+    expect(wrapper.get(".lucide-volume")).toBeDefined();
   });
 
   it("commits pointer drags from the progress and volume scrubbers", async () => {

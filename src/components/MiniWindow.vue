@@ -22,6 +22,7 @@ const emit = defineEmits<{
   next: [];
   seek: [positionMs: number];
   setVolume: [volumePercent: number];
+  toggleMute: [];
   move: [from: number, to: number];
   toggleQueue: [];
   toggleTheme: [];
@@ -44,6 +45,7 @@ const emit = defineEmits<{
         @next="emit('next')"
         @seek="emit('seek', $event)"
         @set-volume="emit('setVolume', $event)"
+        @toggle-mute="emit('toggleMute')"
       />
       <QueueDrawer
         v-if="queueExpanded"

@@ -56,6 +56,9 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   });
   const isUpdating = ref(false);
   let isSyncing = false;
+  let isUpdatingVolume = false;
+  let lastUnmutedVolume = 50;
+  let pendingVolume: number | undefined;
   const isImporting = computed(() => {
     const phase = importProgress.value?.phase;
     return phase === "started" || phase === "resolving" || phase === "merging";
@@ -69,6 +72,9 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       status: nextSnapshot.status,
       volumePercent: nextSnapshot.volumePercent,
     };
+    if (nextSnapshot.volumePercent > 0) {
+      lastUnmutedVolume = nextSnapshot.volumePercent;
+    }
   }
 
   async function execute(
@@ -129,7 +135,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function sync(): Promise<void> {
-    if (isSyncing || isUpdating.value) {
+    if (isSyncing || isUpdating.value || isUpdatingVolume) {
       return;
     }
 
@@ -220,7 +226,44 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function setVolume(volumePercent: number): Promise<void> {
-    await execute(() => client.setVolume(volumePercent));
+    if (isUpdating.value && !isUpdatingVolume) {
+      return;
+    }
+
+    const nextVolume = Math.max(0, Math.min(100, Math.round(volumePercent)));
+    if (nextVolume > 0) {
+      lastUnmutedVolume = nextVolume;
+    }
+    pendingVolume = nextVolume;
+
+    if (isUpdatingVolume) {
+      return;
+    }
+
+    isUpdatingVolume = true;
+    errorMessage.value = "";
+    try {
+      while (pendingVolume !== undefined) {
+        const volume = pendingVolume;
+        pendingVolume = undefined;
+        applySnapshot(await client.setVolume(volume));
+      }
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdatingVolume = false;
+    }
+  }
+
+  async function toggleMute(): Promise<void> {
+    const currentVolume = snapshot.value?.volumePercent ?? 0;
+    if (currentVolume > 0) {
+      lastUnmutedVolume = currentVolume;
+      await setVolume(0);
+      return;
+    }
+
+    await setVolume(lastUnmutedVolume);
   }
 
   async function moveQueueItem(from: number, to: number): Promise<void> {
@@ -246,6 +289,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     snapshot,
     sync,
     toggle,
+    toggleMute,
     transport,
     updateImportProgress,
     updateMetadataRefreshes,

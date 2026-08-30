@@ -1,23 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref } from "vue";
 
 import type {
   MediaItem,
   MetadataRefreshSnapshot,
   PlaybackSnapshot,
   PlaybackTransport,
-} from '@/api';
-import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue';
-import QueueDrawer from './QueueDrawer.vue';
-import LibraryAlbumGrid from './library/LibraryAlbumGrid.vue';
-import LibraryArtistGrid from './library/LibraryArtistGrid.vue';
-import LibraryHeader from './library/LibraryHeader.vue';
-import LibraryInfoPanel from './library/LibraryInfoPanel.vue';
-import LibraryPlaybackFooter from './library/LibraryPlaybackFooter.vue';
-import LibrarySidebar from './library/LibrarySidebar.vue';
-import LibraryTrackGrid from './library/LibraryTrackGrid.vue';
-import LibraryTrackList from './library/LibraryTrackList.vue';
-import { buildLibraryArtists, groupItems } from './library/collections';
+} from "@/api";
+import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
+import QueueDrawer from "./QueueDrawer.vue";
+import LibraryAlbumGrid from "./library/LibraryAlbumGrid.vue";
+import LibraryArtistGrid from "./library/LibraryArtistGrid.vue";
+import LibraryHeader from "./library/LibraryHeader.vue";
+import LibraryInfoPanel from "./library/LibraryInfoPanel.vue";
+import LibraryPlaybackFooter from "./library/LibraryPlaybackFooter.vue";
+import LibrarySidebar from "./library/LibrarySidebar.vue";
+import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
+import LibraryTrackList from "./library/LibraryTrackList.vue";
+import { buildLibraryArtists, groupItems } from "./library/collections";
 import type {
   AlbumGroup,
   ArtistGroup,
@@ -29,12 +29,12 @@ import type {
   LibrarySortOption,
   TrackFilter,
   TrackGroup,
-} from './library/types';
+} from "./library/types";
 
 type SelectedLibraryItem =
-  | { id: string; kind: 'track' }
-  | { key: string; kind: 'album' }
-  | { kind: 'artist'; name: string };
+  | { id: string; kind: "track" }
+  | { key: string; kind: "album" }
+  | { kind: "artist"; name: string };
 
 interface Props {
   snapshot?: PlaybackSnapshot;
@@ -53,14 +53,15 @@ const emit = defineEmits<{
   next: [];
   seek: [positionMs: number];
   setVolume: [percent: number];
+  toggleMute: [];
   openImport: [];
   playTrack: [id: string];
   moveQueueItem: [from: number, to: number];
 }>();
 
-const activeCollection = ref<LibraryCollection>('tracks');
-const displayMode = ref<LibraryDisplayMode>('list');
-const groupBy = ref<LibraryGroupOption>('none');
+const activeCollection = ref<LibraryCollection>("tracks");
+const displayMode = ref<LibraryDisplayMode>("list");
+const groupBy = ref<LibraryGroupOption>("none");
 const gridItemSize = ref(176);
 const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
@@ -71,24 +72,24 @@ const playback = computed<PlaybackTransport>(
     props.snapshot ?? {
       currentItem: null,
       positionMs: 0,
-      status: 'paused',
+      status: "paused",
       volumePercent: 0,
-    }
+    },
 );
 const selectedLibraryItem = ref<SelectedLibraryItem | null>(
   playback.value.currentItem
-    ? { id: playback.value.currentItem.id, kind: 'track' }
-    : null
+    ? { id: playback.value.currentItem.id, kind: "track" }
+    : null,
 );
-const sortBy = ref<LibrarySortOption>('title-asc');
+const sortBy = ref<LibrarySortOption>("title-asc");
 const trackFilter = ref<TrackFilter | null>(null);
 
-const isPlaying = computed(() => playback.value.status === 'playing');
+const isPlaying = computed(() => playback.value.status === "playing");
 const currentItem = computed(() => playback.value.currentItem);
 const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? []);
 const selectedTrack = computed(() => {
   const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== 'track') {
+  if (!selection || selection.kind !== "track") {
     return null;
   }
 
@@ -97,18 +98,18 @@ const selectedTrack = computed(() => {
 const libraryTracks = computed(() => {
   const filteredTracks = trackFilter.value
     ? allTracks.value.filter((track) => {
-        if (trackFilter.value?.type === 'artist') {
+        if (trackFilter.value?.type === "artist") {
           return track.artist === trackFilter.value.value;
         }
 
         return (
-          `${track.artist}\u0000${track.album ?? ''}` ===
+          `${track.artist}\u0000${track.album ?? ""}` ===
           trackFilter.value?.value
         );
       })
     : allTracks.value;
 
-  return sortCollection(filteredTracks, sortBy.value, 'track');
+  return sortCollection(filteredTracks, sortBy.value, "track");
 });
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
   const albums = new Map<string, LibraryAlbum>();
@@ -133,18 +134,18 @@ const libraryAlbums = computed<LibraryAlbum[]>(() => {
     albums.set(key, album);
   }
 
-  return sortCollection(albums.values(), sortBy.value, 'album');
+  return sortCollection(albums.values(), sortBy.value, "album");
 });
 const libraryArtists = computed<LibraryArtist[]>(() => {
   return sortCollection(
     buildLibraryArtists(allTracks.value),
     sortBy.value,
-    'artist'
+    "artist",
   );
 });
 const selectedAlbum = computed(() => {
   const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== 'album') {
+  if (!selection || selection.kind !== "album") {
     return null;
   }
 
@@ -154,7 +155,7 @@ const selectedAlbum = computed(() => {
 });
 const selectedArtist = computed(() => {
   const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== 'artist') {
+  if (!selection || selection.kind !== "artist") {
     return null;
   }
 
@@ -164,39 +165,39 @@ const selectedArtist = computed(() => {
   );
 });
 const groupedTracks = computed<TrackGroup[]>(() => {
-  if (groupBy.value === 'none') {
-    return [{ items: libraryTracks.value, label: '' }];
+  if (groupBy.value === "none") {
+    return [{ items: libraryTracks.value, label: "" }];
   }
 
   return groupItems(libraryTracks.value, (track) =>
-    groupBy.value === 'artist'
+    groupBy.value === "artist"
       ? track.artist
-      : track.album?.trim() || 'Unknown album'
+      : track.album?.trim() || "Unknown album",
   );
 });
 const groupedAlbums = computed<AlbumGroup[]>(() =>
   groupCollection(libraryAlbums.value, (album) =>
-    groupBy.value === 'artist' ? album.artist : album.title
-  )
+    groupBy.value === "artist" ? album.artist : album.title,
+  ),
 );
 const groupedArtists = computed<ArtistGroup[]>(() =>
   groupCollection(libraryArtists.value, (artist) =>
-    groupBy.value === 'album' ? 'Artists' : artist.name
-  )
+    groupBy.value === "album" ? "Artists" : artist.name,
+  ),
 );
 const collectionTitle = computed(() => {
   const titles: Record<LibraryCollection, string> = {
-    albums: 'Albums',
-    artists: 'Artists',
-    tracks: 'Tracks',
+    albums: "Albums",
+    artists: "Artists",
+    tracks: "Tracks",
   };
 
   return titles[activeCollection.value];
 });
 const collectionSummary = computed(() => {
   const summaries: Record<LibraryCollection, string> = {
-    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? 'album' : 'albums'}`,
-    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? 'artist' : 'artists'}`,
+    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? "album" : "albums"}`,
+    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? "artist" : "artists"}`,
     tracks: trackCollectionSummary(libraryTracks.value),
   };
 
@@ -206,43 +207,43 @@ const metadataRefreshRemaining = computed(() =>
   Math.max(
     (props.metadataRefreshes?.totalTracks ?? 0) -
       (props.metadataRefreshes?.completedTracks ?? 0),
-    0
-  )
+    0,
+  ),
 );
 const hasActiveMetadataRefresh = computed(
   () =>
     metadataRefreshRemaining.value > 0 &&
     (props.metadataRefreshes?.jobs.some(
-      (job) => job.state === 'queued' || job.state === 'refreshing'
+      (job) => job.state === "queued" || job.state === "refreshing",
     ) ??
-      false)
+      false),
 );
 
 function trackCollectionSummary(tracks: MediaItem[]): string {
   const count = tracks.length;
   const totalMinutes = Math.round(
-    tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000
+    tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000,
   );
 
-  return `${count} ${count === 1 ? 'song' : 'songs'} · ${totalMinutes} min`;
+  return `${count} ${count === 1 ? "song" : "songs"} · ${totalMinutes} min`;
 }
 
 function sortCollection<T extends MediaItem | LibraryAlbum | LibraryArtist>(
   items: Iterable<T>,
   option: LibrarySortOption,
-  kind: 'album' | 'artist' | 'track'
+  kind: "album" | "artist" | "track",
 ): T[] {
   const sorted = [...items];
   const collator = new Intl.Collator(undefined, {
     numeric: true,
-    sensitivity: 'base',
+    sensitivity: "base",
   });
-  const direction = option.endsWith('desc') ? -1 : 1;
+  const direction = option.endsWith("desc") ? -1 : 1;
 
   sorted.sort((left, right) => {
     const leftValue = sortValue(left, option, kind);
     const rightValue = sortValue(right, option, kind);
-    if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+    if (typeof leftValue === "number" && typeof rightValue === "number") {
       return (leftValue - rightValue) * direction;
     }
 
@@ -255,35 +256,35 @@ function sortCollection<T extends MediaItem | LibraryAlbum | LibraryArtist>(
 function sortValue(
   item: MediaItem | LibraryAlbum | LibraryArtist,
   option: LibrarySortOption,
-  kind: 'album' | 'artist' | 'track'
+  kind: "album" | "artist" | "track",
 ): number | string {
-  if (kind === 'artist') {
-    return option.startsWith('duration')
+  if (kind === "artist") {
+    return option.startsWith("duration")
       ? (item as LibraryArtist).durationMs
       : (item as LibraryArtist).name;
   }
-  if (kind === 'album') {
+  if (kind === "album") {
     const album = item as LibraryAlbum;
-    return option.startsWith('artist')
+    return option.startsWith("artist")
       ? album.artist
-      : option.startsWith('duration')
+      : option.startsWith("duration")
         ? album.durationMs
         : album.title;
   }
 
   const track = item as MediaItem;
-  if (option.startsWith('artist')) return track.artist;
-  if (option.startsWith('album')) return track.album ?? '';
-  if (option.startsWith('duration')) return track.durationMs;
+  if (option.startsWith("artist")) return track.artist;
+  if (option.startsWith("album")) return track.album ?? "";
+  if (option.startsWith("duration")) return track.durationMs;
   return track.title;
 }
 
 function groupCollection<T>(
   items: T[],
-  getLabel: (item: T) => string
+  getLabel: (item: T) => string,
 ): Array<{ items: T[]; label: string }> {
-  if (groupBy.value === 'none') {
-    return [{ items, label: '' }];
+  if (groupBy.value === "none") {
+    return [{ items, label: "" }];
   }
 
   return groupItems(items, getLabel);
@@ -298,36 +299,40 @@ function setDisplayMode(mode: LibraryDisplayMode): void {
 }
 
 function selectTrack(track: MediaItem): void {
-  selectedLibraryItem.value = { id: track.id, kind: 'track' };
+  selectedLibraryItem.value = { id: track.id, kind: "track" };
+}
+
+function playTrack(track: MediaItem): void {
+  selectTrack(track);
   if (!props.isUpdating) {
-    emit('playTrack', track.id);
+    emit("playTrack", track.id);
   }
 }
 
 function selectAlbum(album: LibraryAlbum): void {
-  selectedLibraryItem.value = { key: album.key, kind: 'album' };
+  selectedLibraryItem.value = { key: album.key, kind: "album" };
 }
 
 function selectArtist(artist: LibraryArtist): void {
-  selectedLibraryItem.value = { kind: 'artist', name: artist.name };
+  selectedLibraryItem.value = { kind: "artist", name: artist.name };
 }
 
 function openAlbum(album: LibraryAlbum): void {
   selectAlbum(album);
-  trackFilter.value = { label: album.title, type: 'album', value: album.key };
-  activeCollection.value = 'tracks';
-  displayMode.value = 'list';
+  trackFilter.value = { label: album.title, type: "album", value: album.key };
+  activeCollection.value = "tracks";
+  displayMode.value = "list";
 }
 
 function openArtist(artist: LibraryArtist): void {
   selectArtist(artist);
   trackFilter.value = {
     label: artist.name,
-    type: 'artist',
+    type: "artist",
     value: artist.name,
   };
-  activeCollection.value = 'tracks';
-  displayMode.value = 'list';
+  activeCollection.value = "tracks";
+  displayMode.value = "list";
 }
 
 function setSort(option: LibrarySortOption): void {
@@ -399,6 +404,7 @@ function toggleMetadataRefresh(): void {
         :track-filter="trackFilter"
         :tracks="libraryTracks"
         @clear-track-filter="trackFilter = null"
+        @play-track="playTrack"
         @select-track="selectTrack"
       />
       <LibraryTrackGrid
@@ -459,6 +465,7 @@ function toggleMetadataRefresh(): void {
       @previous="emit('previous')"
       @seek="emit('seek', $event)"
       @set-volume="emit('setVolume', $event)"
+      @toggle-mute="emit('toggleMute')"
       @toggle="emit('toggle')"
       @toggle-queue="queueSidebarOpen = !queueSidebarOpen"
     />

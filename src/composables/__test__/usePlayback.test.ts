@@ -177,6 +177,69 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value).toEqual(selected);
   });
 
+  it("mutes and restores the prior non-zero volume", async () => {
+    const muted = { ...paused, volumePercent: 0 };
+    const restored = { ...paused, volumePercent: 70 };
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn().mockResolvedValue(paused),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi
+        .fn()
+        .mockResolvedValueOnce(muted)
+        .mockResolvedValueOnce(restored),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    await playback.toggleMute();
+    await playback.toggleMute();
+
+    expect(client.setVolume).toHaveBeenNthCalledWith(1, 0);
+    expect(client.setVolume).toHaveBeenNthCalledWith(2, 70);
+    expect(playback.snapshot.value?.volumePercent).toBe(70);
+  });
+
+  it("sends the latest volume reached during a drag", async () => {
+    let resolveInitialVolume: ((value: PlaybackSnapshot) => void) | undefined;
+    const initialVolume = new Promise<PlaybackSnapshot>((resolve) => {
+      resolveInitialVolume = resolve;
+    });
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn().mockResolvedValue(paused),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi
+        .fn()
+        .mockReturnValueOnce(initialVolume)
+        .mockResolvedValueOnce({ ...paused, volumePercent: 50 }),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    const firstUpdate = playback.setVolume(20);
+    const latestUpdate = playback.setVolume(50);
+    resolveInitialVolume?.({ ...paused, volumePercent: 20 });
+    await Promise.all([firstUpdate, latestUpdate]);
+
+    expect(client.setVolume).toHaveBeenNthCalledWith(1, 20);
+    expect(client.setVolume).toHaveBeenNthCalledWith(2, 50);
+    expect(playback.isUpdating.value).toBe(false);
+    expect(playback.snapshot.value?.volumePercent).toBe(50);
+  });
+
   it("preserves a structured Tauri command error message", async () => {
     const client = {
       inspect: vi.fn(),

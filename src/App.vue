@@ -245,6 +245,7 @@ onUnmounted(() => {
       @play-track="playback.playTrack"
       @seek="playback.seek"
       @set-volume="playback.setVolume"
+      @toggle-mute="playback.toggleMute"
       @open-import="openImportWindow"
     />
 
@@ -284,6 +285,7 @@ onUnmounted(() => {
       @next="playback.next"
       @seek="playback.seek"
       @set-volume="playback.setVolume"
+      @toggle-mute="playback.toggleMute"
       @move="playback.moveQueueItem"
       @toggle-queue="toggleQueue"
       @toggle-theme="cycleTheme"

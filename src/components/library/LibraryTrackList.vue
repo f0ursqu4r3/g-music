@@ -4,6 +4,7 @@ import {
   Heart,
   ListFilter,
   LoaderCircle,
+  Play,
   Volume2,
   X,
 } from "lucide-vue-next";
@@ -32,12 +33,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectTrack: [track: MediaItem];
+  playTrack: [track: MediaItem];
   clearTrackFilter: [];
 }>();
 
 const favoriteTrackIds = ref(new Set<string>());
-const columnWidths = ref([35, 25, 25, 9, 6]);
-const minimumColumnWidths = [18, 12, 12, 7, 5] as const;
+const columnWidths = ref([6, 29, 25, 25, 9, 6]);
+const minimumColumnWidths = [5, 18, 12, 12, 7, 5] as const;
 const trackList = ref<HTMLElement | null>(null);
 const trackRowHeight = 44;
 let stopColumnResize: (() => void) | undefined;
@@ -208,34 +210,24 @@ onBeforeUnmount(() => {
           v-for="(width, index) in columnWidths"
           :key="index"
           :data-column="
-            ['title', 'artist', 'album', 'duration', 'favorite'][index]
+            ['action', 'title', 'artist', 'album', 'duration', 'favorite'][
+              index
+            ]
           "
           :style="{ width: `${width}%` }"
         />
       </colgroup>
       <thead>
         <tr>
+          <th class="px-2 pb-1.5 text-center text-(--subtle-text)">
+            <span class="sr-only">Play</span>
+          </th>
           <th
             class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
           >
             Title
             <button
               aria-label="Resize Title column"
-              aria-orientation="vertical"
-              :aria-valuenow="columnWidths[0]"
-              class="column-resize-handle absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize border-0 bg-transparent p-0"
-              role="separator"
-              type="button"
-              @mousedown.stop="startColumnResize(0, $event)"
-              @keydown="resizeColumnWithKeyboard(0, $event)"
-            />
-          </th>
-          <th
-            class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
-          >
-            Artist
-            <button
-              aria-label="Resize Artist column"
               aria-orientation="vertical"
               :aria-valuenow="columnWidths[1]"
               class="column-resize-handle absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize border-0 bg-transparent p-0"
@@ -248,9 +240,9 @@ onBeforeUnmount(() => {
           <th
             class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
           >
-            Album
+            Artist
             <button
-              aria-label="Resize Album column"
+              aria-label="Resize Artist column"
               aria-orientation="vertical"
               :aria-valuenow="columnWidths[2]"
               class="column-resize-handle absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize border-0 bg-transparent p-0"
@@ -261,12 +253,11 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
-            class="relative px-2 pb-1.5 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
+            class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
           >
-            <span class="sr-only">Duration</span>
-            <Clock3 aria-hidden="true" />
+            Album
             <button
-              aria-label="Resize Duration column"
+              aria-label="Resize Album column"
               aria-orientation="vertical"
               :aria-valuenow="columnWidths[3]"
               class="column-resize-handle absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize border-0 bg-transparent p-0"
@@ -274,6 +265,22 @@ onBeforeUnmount(() => {
               type="button"
               @mousedown.stop="startColumnResize(3, $event)"
               @keydown="resizeColumnWithKeyboard(3, $event)"
+            />
+          </th>
+          <th
+            class="relative px-2 pb-1.5 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
+          >
+            <span class="sr-only">Duration</span>
+            <Clock3 aria-hidden="true" />
+            <button
+              aria-label="Resize Duration column"
+              aria-orientation="vertical"
+              :aria-valuenow="columnWidths[4]"
+              class="column-resize-handle absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize border-0 bg-transparent p-0"
+              role="separator"
+              type="button"
+              @mousedown.stop="startColumnResize(4, $event)"
+              @keydown="resizeColumnWithKeyboard(4, $event)"
             />
           </th>
           <th
@@ -300,7 +307,7 @@ onBeforeUnmount(() => {
         <div
           v-for="{ track, virtualItem } in virtualTracks"
           :key="String(virtualItem.key)"
-          :aria-label="`Play ${track.title}`"
+          :aria-label="`${track.title} by ${track.artist}`"
           class="group absolute left-0 grid h-10.5 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
           :data-current="track.id === props.currentItemId"
           :data-index="virtualItem.index"
@@ -312,20 +319,35 @@ onBeforeUnmount(() => {
             transform: `translateY(${virtualItem.start}px)`,
           }"
           @click="emit('selectTrack', track)"
+          @dblclick="emit('playTrack', track)"
           @keydown.enter.prevent="emit('selectTrack', track)"
           @keydown.space.prevent="emit('selectTrack', track)"
         >
           <div
-            class="overflow-hidden rounded-l-md px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            class="relative grid place-items-center rounded-l-md px-2 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            role="gridcell"
+          >
+            <Volume2
+              v-if="track.id === props.currentItemId"
+              class="track-playing-indicator size-3.75 text-(--text)"
+              aria-label="Currently playing"
+            />
+            <button
+              :aria-label="`Play ${track.title}`"
+              class="absolute grid size-7 cursor-pointer place-items-center border-0 bg-transparent p-0 text-(--muted-text) opacity-0 transition-[color,opacity] group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--text) focus-visible:opacity-100 [&>svg]:size-3.5"
+              data-track-action="play"
+              type="button"
+              @click.stop="emit('playTrack', track)"
+              @dblclick.stop
+            >
+              <Play aria-hidden="true" />
+            </button>
+          </div>
+          <div
+            class="overflow-hidden px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
             role="gridcell"
           >
             <span class="flex h-full min-w-0 items-center gap-2.5 font-medium">
-              <Volume2
-                v-if="track.id === props.currentItemId"
-                class="track-playing-indicator size-3.75 shrink-0 text-(--text)"
-                aria-label="Currently playing"
-              />
-              <span v-else class="size-3.75 shrink-0" aria-hidden="true" />
               <span
                 class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
               >

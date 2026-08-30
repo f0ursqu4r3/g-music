@@ -9,9 +9,12 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  Volume,
+  Volume1,
   Volume2,
+  VolumeX,
 } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import type { MediaItem, PlaybackTransport } from '@/api';
 import { Button } from '@/components/ui/button';
@@ -33,14 +36,27 @@ const emit = defineEmits<{
   next: [];
   seek: [positionMs: number];
   setVolume: [percent: number];
+  toggleMute: [];
   toggleQueue: [];
 }>();
 
 const isFavorite = ref(false);
+const volumeIcon = computed(() => {
+  if (props.playback.volumePercent === 0) {
+    return VolumeX;
+  }
+  if (props.playback.volumePercent <= 33) {
+    return Volume;
+  }
+  if (props.playback.volumePercent <= 66) {
+    return Volume1;
+  }
+  return Volume2;
+});
 
-function emitVolume(values: number[]): void {
-  const value = values[0];
-  if (Number.isFinite(value)) {
+function emitVolume(values: number[] | undefined): void {
+  const value = values?.[0];
+  if (typeof value === 'number' && Number.isFinite(value)) {
     emit('setVolume', value);
   }
 }
@@ -154,12 +170,21 @@ function emitSeek(values: number[]): void {
       </span>
     </div>
 
-    <label
+    <div
       class="flex w-36 shrink-0 items-center gap-2 text-(--muted-text) [&>svg]:size-4"
       data-playback-control="volume"
     >
-      <Volume2 aria-hidden="true" />
-      <span class="sr-only">Volume</span>
+      <Button
+        :aria-label="
+          props.playback.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'
+        "
+        size="icon-sm"
+        variant="ghost"
+        :disabled="props.isUpdating"
+        @click="emit('toggleMute')"
+      >
+        <component :is="volumeIcon" aria-hidden="true" />
+      </Button>
       <Slider
         aria-label="Volume"
         :min="0"
@@ -167,9 +192,9 @@ function emitSeek(values: number[]): void {
         :step="1"
         :model-value="[props.playback.volumePercent]"
         :disabled="props.isUpdating"
-        @value-commit="emitVolume"
+        @update:model-value="emitVolume"
       />
-    </label>
+    </div>
 
     <Button
       :aria-label="props.queueOpen ? 'Hide queue' : 'Show queue'"

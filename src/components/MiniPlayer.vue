@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-vue-next";
+import {
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume,
+  Volume1,
+  Volume2,
+  VolumeX,
+} from "lucide-vue-next";
 import { computed } from "vue";
 
 import type { PlaybackSnapshot } from "@/api";
@@ -21,6 +30,7 @@ const emit = defineEmits<{
   next: [];
   seek: [positionMs: number];
   setVolume: [volumePercent: number];
+  toggleMute: [];
 }>();
 
 const currentItem = computed(() => props.snapshot.currentItem);
@@ -35,6 +45,18 @@ const trackArtist = computed(
 const remainingMs = computed(() =>
   Math.max(durationMs.value - props.snapshot.positionMs, 0),
 );
+const volumeIcon = computed(() => {
+  if (props.snapshot.volumePercent === 0) {
+    return VolumeX;
+  }
+  if (props.snapshot.volumePercent <= 33) {
+    return Volume;
+  }
+  if (props.snapshot.volumePercent <= 66) {
+    return Volume1;
+  }
+  return Volume2;
+});
 
 function emitSeek(values: number[]): void {
   const value = values[0];
@@ -43,9 +65,9 @@ function emitSeek(values: number[]): void {
   }
 }
 
-function emitVolume(values: number[]): void {
-  const value = values[0];
-  if (Number.isFinite(value)) {
+function emitVolume(values: number[] | undefined): void {
+  const value = values?.[0];
+  if (typeof value === "number" && Number.isFinite(value)) {
     emit("setVolume", value);
   }
 }
@@ -155,11 +177,21 @@ function emitVolume(values: number[]): void {
           </Button>
         </nav>
 
-        <label
+        <div
           class="grid w-27.5 grid-cols-[14px_minmax(0,1fr)_20px] items-center gap-1.75 text-(--muted-text) max-[390px]:w-21.5"
         >
-          <Volume2 class="size-3.5" aria-hidden="true" />
-          <span class="sr-only">Volume</span>
+          <Button
+            :aria-label="
+              snapshot.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'
+            "
+            class="size-5 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
+            size="icon-xs"
+            variant="ghost"
+            :disabled="isUpdating"
+            @click="emit('toggleMute')"
+          >
+            <component :is="volumeIcon" aria-hidden="true" />
+          </Button>
           <Slider
             aria-label="Volume"
             :min="0"
@@ -167,14 +199,14 @@ function emitVolume(values: number[]): void {
             :step="1"
             :model-value="[snapshot.volumePercent]"
             :disabled="isUpdating"
-            @value-commit="emitVolume"
+            @update:model-value="emitVolume"
           />
           <span
             class="text-right text-[0.6rem] text-(--subtle-text) tabular-nums max-[390px]:hidden"
             aria-hidden="true"
             >{{ snapshot.volumePercent }}</span
           >
-        </label>
+        </div>
       </div>
 
       <div

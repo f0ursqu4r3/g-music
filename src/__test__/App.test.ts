@@ -167,11 +167,11 @@ describe("application landmarks", () => {
     ]);
   });
 
-  it("routes a selected Library track to the playback composable", async () => {
+  it("routes a double-clicked Library track to the playback composable", async () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.get('[data-track-id="night-drive"]').trigger("click");
+    await wrapper.get('[data-track-id="night-drive"]').trigger("dblclick");
 
     expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
   });
