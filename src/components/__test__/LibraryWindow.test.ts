@@ -173,6 +173,77 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("shows complete metadata and listening history for a selected track", async () => {
+    const detailedTrack: MediaItem = {
+      ...importedTracks[0],
+      albumArtist: "Google",
+      availability: "public",
+      categories: ["Science & Technology", "Music"],
+      channel: "Google Developers",
+      channelId: "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+      description: "A complete metadata fixture.",
+      discNumber: 1,
+      genres: ["Educational"],
+      isLive: false,
+      language: "en",
+      lastPlayedAtMs: 1_734_000_060_000,
+      likeCount: 7,
+      metadataDirty: false,
+      playCount: 2,
+      playHistoryMs: [1_734_000_000_000, 1_734_000_060_000],
+      provider: "youtube",
+      releaseDate: "2025-01-02",
+      sourceUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
+      tags: ["API", "Developers"],
+      thumbnailUrl: "https://i.ytimg.com/vi/M7lc1UVf-VE/maxresdefault.jpg",
+      trackNumber: 3,
+      uploadDate: "2025-01-03",
+      uploader: "Google for Developers",
+      uploaderId: "GoogleDevelopers",
+      viewCount: 42,
+    };
+    const detailedSnapshot = {
+      ...snapshot,
+      currentItem: detailedTrack,
+      queue: [detailedTrack, importedTracks[1]],
+    };
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot: detailedSnapshot },
+    });
+
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+
+    const sidebar = wrapper.get('[data-library-info="track"]');
+    for (const text of [
+      "Track number",
+      "Disc number",
+      "Uploaded",
+      "Description",
+      "Channel ID",
+      "Uploader",
+      "Uploader ID",
+      "Categories",
+      "Tags",
+      "Language",
+      "Availability",
+      "Views",
+      "Likes",
+      "Provider",
+      "Play count",
+      "Last played",
+      "Play history",
+    ]) {
+      expect(sidebar.text()).toContain(text);
+    }
+    expect(sidebar.get("[data-track-source]").attributes("href")).toBe(
+      detailedTrack.sourceUrl,
+    );
+    expect(sidebar.get("[data-track-thumbnail]").attributes("href")).toBe(
+      detailedTrack.thumbnailUrl,
+    );
+    expect(sidebar.findAll("[data-play-history] li")).toHaveLength(2);
+  });
+
   it("exposes a grid item size slider in grid view", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -210,13 +281,40 @@ describe("LibraryWindow", () => {
     );
   });
 
-  it("keeps the selected-item sidebar scrollable when its content overflows", () => {
+  it("uses shared scroll areas for library content surfaces", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
 
     const sidebar = wrapper.get("[data-library-selected-sidebar]");
-    expect(sidebar.classes()).toContain("overflow-y-auto");
+    expect(sidebar.find("[data-slot='scroll-area-viewport']").exists()).toBe(
+      true,
+    );
+    expect(
+      wrapper
+        .get("[data-library-sidebar]")
+        .find("[data-slot='scroll-area-viewport']")
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get("[data-library-track-list]")
+        .find("[data-slot='scroll-area-viewport']")
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get("[data-library-playback-footer]")
+        .element.parentElement?.parentElement?.getAttribute("data-slot"),
+    ).toBe("scroll-area-viewport");
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    expect(
+      wrapper
+        .get('[aria-label="Tracks grid"]')
+        .find("[data-slot='scroll-area-viewport']")
+        .exists(),
+    ).toBe(true);
   });
 
   it("uses the compact reference-style library header and track table", () => {
@@ -319,7 +417,9 @@ describe("LibraryWindow", () => {
         snapshot: { ...snapshot, queue: tracks },
       },
     });
-    const trackList = wrapper.get("[data-library-track-list]");
+    const trackList = wrapper.get(
+      "[data-library-track-list] [data-slot='scroll-area-viewport']",
+    );
 
     expect(wrapper.get("[data-library-track-header]").classes()).toContain(
       "shrink-0",
@@ -329,6 +429,9 @@ describe("LibraryWindow", () => {
       false,
     );
     expect(trackList.classes()).toContain("library-track-scroll");
+    expect(wrapper.find("[data-library-track-content-fade]").exists()).toBe(
+      false,
+    );
     expect(wrapper.findAll("tbody [data-track-id]").length).toBeLessThan(
       tracks.length,
     );
@@ -365,7 +468,9 @@ describe("LibraryWindow", () => {
         snapshot: { ...snapshot, queue: tracks },
       },
     });
-    const trackList = wrapper.get("[data-library-track-list]");
+    const trackList = wrapper.get(
+      "[data-library-track-list] [data-slot='scroll-area-viewport']",
+    );
 
     trackList.element.scrollTop = 44 * 100;
     await trackList.trigger("scroll");
@@ -397,7 +502,9 @@ describe("LibraryWindow", () => {
           snapshot: { ...snapshot, queue: tracks },
         },
       });
-      const trackList = wrapper.get("[data-library-track-list]");
+      const trackList = wrapper.get(
+        "[data-library-track-list] [data-slot='scroll-area-viewport']",
+      );
       Object.defineProperty(trackList.element, "clientHeight", {
         configurable: true,
         value: 0,

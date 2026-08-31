@@ -79,6 +79,9 @@ describe("ImportWindow", () => {
     expect(wrapper.get('[role="log"]').text()).toContain(
       "Resolved source 1 of 2; 12 track(s) found.",
     );
+    expect(wrapper.findAll("[data-slot='scroll-area-viewport']")).toHaveLength(
+      2,
+    );
     expect(wrapper.text()).toContain("3 members-only track(s) skipped");
     expect(wrapper.get("textarea").attributes("disabled")).toBeDefined();
   });

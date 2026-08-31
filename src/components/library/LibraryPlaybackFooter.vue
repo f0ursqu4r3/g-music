@@ -20,6 +20,7 @@ import { computed, ref } from "vue";
 import type { MediaItem, PlaybackTransport } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDuration } from "@/lib/time";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
@@ -72,163 +73,173 @@ function emitSeek(values: number[]): void {
 </script>
 
 <template>
-  <footer
-    class="col-span-3 row-start-2 flex min-w-0 items-center gap-4 overflow-y-hidden overflow-x-auto border-t border-(--line) pr-4 py-0 max-[760px]:col-span-1"
-    data-library-playback-footer
+  <ScrollArea
+    class="col-span-3 row-start-2 min-w-0 border-t border-(--line) max-[760px]:col-span-1"
+    orientation="horizontal"
   >
-    <div
-      class="flex min-w-48 flex-1 items-center gap-3"
-      data-playback-control="now-playing"
+    <footer
+      class="flex min-w-max items-center gap-4 pr-4 py-0"
+      data-library-playback-footer
     >
-      <div class="cover-art size-16 shrink-0">
-        <YouTubeArtwork
-          class="absolute inset-0 size-full object-cover"
-          :video-id="props.currentItem?.id"
-        />
+      <div
+        class="flex min-w-48 flex-1 items-center gap-3"
+        data-playback-control="now-playing"
+      >
+        <div class="cover-art size-16 shrink-0">
+          <YouTubeArtwork
+            class="absolute inset-0 size-full object-cover"
+            :video-id="props.currentItem?.id"
+          />
+        </div>
+        <div class="min-w-0">
+          <p
+            class="overflow-hidden text-[0.82rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+          >
+            {{ props.currentItem?.title ?? "Nothing selected" }}
+          </p>
+          <span
+            class="mt-0.5 block overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
+          >
+            {{ props.currentItem?.artist ?? "Choose a track" }}
+          </span>
+        </div>
       </div>
-      <div class="min-w-0">
-        <p
-          class="overflow-hidden text-[0.82rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+
+      <nav
+        class="flex shrink-0 items-center gap-1.5"
+        aria-label="Playback controls"
+        data-playback-control="transport"
+      >
+        <Button aria-label="Shuffle" size="icon-sm" variant="ghost">
+          <Shuffle aria-hidden="true" />
+        </Button>
+        <Button
+          aria-label="Previous track"
+          size="icon-sm"
+          variant="ghost"
+          :disabled="props.isUpdating"
+          @click="emit('previous')"
         >
-          {{ props.currentItem?.title ?? "Nothing selected" }}
-        </p>
-        <span
-          class="mt-0.5 block overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
+          <SkipBack aria-hidden="true" />
+        </Button>
+        <Button
+          :aria-label="
+            props.isStarting
+              ? 'Starting playback'
+              : props.isPlaying
+                ? 'Pause'
+                : 'Play'
+          "
+          :aria-busy="props.isStarting ? 'true' : undefined"
+          class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
+          size="icon"
+          :disabled="props.isUpdating"
+          @click="emit('toggle')"
         >
-          {{ props.currentItem?.artist ?? "Choose a track" }}
+          <LoaderCircle
+            v-if="props.isStarting"
+            class="animate-spin"
+            data-playback-starting
+            aria-hidden="true"
+          />
+          <Pause
+            v-else-if="props.isPlaying"
+            aria-hidden="true"
+            fill="currentColor"
+          />
+          <Play v-else aria-hidden="true" fill="currentColor" />
+        </Button>
+        <Button
+          aria-label="Next track"
+          size="icon-sm"
+          variant="ghost"
+          :disabled="props.isUpdating"
+          @click="emit('next')"
+        >
+          <SkipForward aria-hidden="true" />
+        </Button>
+        <Button aria-label="Repeat" size="icon-sm" variant="ghost">
+          <Repeat2 aria-hidden="true" />
+        </Button>
+      </nav>
+
+      <Button
+        aria-label="Favorite track"
+        :aria-pressed="isFavorite"
+        size="icon-sm"
+        variant="ghost"
+        data-playback-control="favorite"
+        @click="isFavorite = !isFavorite"
+      >
+        <Heart
+          :fill="isFavorite ? 'currentColor' : 'none'"
+          aria-hidden="true"
+        />
+      </Button>
+
+      <div
+        class="grid min-w-52 flex-2 grid-cols-[30px_minmax(8rem,1fr)_30px] items-center gap-2 text-[0.65rem] text-(--muted-text) tabular-nums"
+        aria-label="Track progress"
+        data-playback-control="progress"
+      >
+        <span>{{ formatDuration(props.playback.positionMs) }}</span>
+        <Slider
+          aria-label="Track progress"
+          :min="0"
+          :max="props.currentItem?.durationMs ?? 0"
+          :step="1000"
+          :model-value="[props.playback.positionMs]"
+          :disabled="props.isUpdating || !props.currentItem"
+          @value-commit="emitSeek"
+        />
+        <span class="text-right">
+          {{ formatDuration(props.currentItem?.durationMs ?? 0) }}
         </span>
       </div>
-    </div>
 
-    <nav
-      class="flex shrink-0 items-center gap-1.5"
-      aria-label="Playback controls"
-      data-playback-control="transport"
-    >
-      <Button aria-label="Shuffle" size="icon-sm" variant="ghost">
-        <Shuffle aria-hidden="true" />
-      </Button>
-      <Button
-        aria-label="Previous track"
-        size="icon-sm"
-        variant="ghost"
-        :disabled="props.isUpdating"
-        @click="emit('previous')"
+      <div
+        class="flex w-36 shrink-0 items-center gap-2 text-(--muted-text) [&>svg]:size-4"
+        data-playback-control="volume"
       >
-        <SkipBack aria-hidden="true" />
-      </Button>
+        <Button
+          :aria-label="
+            props.playback.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'
+          "
+          size="icon-sm"
+          variant="ghost"
+          :disabled="props.isUpdating"
+          @click="emit('toggleMute')"
+        >
+          <component :is="volumeIcon" aria-hidden="true" />
+        </Button>
+        <Slider
+          aria-label="Volume"
+          :min="0"
+          :max="100"
+          :step="1"
+          :model-value="[props.playback.volumePercent]"
+          :disabled="props.isUpdating"
+          @update:model-value="emitVolume"
+        />
+      </div>
+
       <Button
         :aria-label="
-          props.isStarting
-            ? 'Starting playback'
-            : props.isPlaying
-              ? 'Pause'
-              : 'Play'
+          props.detailsOpen
+            ? 'Hide selection details'
+            : 'Show selection details'
         "
-        :aria-busy="props.isStarting ? 'true' : undefined"
-        class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
-        size="icon"
-        :disabled="props.isUpdating"
-        @click="emit('toggle')"
-      >
-        <LoaderCircle
-          v-if="props.isStarting"
-          class="animate-spin"
-          data-playback-starting
-          aria-hidden="true"
-        />
-        <Pause
-          v-else-if="props.isPlaying"
-          aria-hidden="true"
-          fill="currentColor"
-        />
-        <Play v-else aria-hidden="true" fill="currentColor" />
-      </Button>
-      <Button
-        aria-label="Next track"
+        :aria-pressed="props.detailsOpen"
         size="icon-sm"
         variant="ghost"
-        :disabled="props.isUpdating"
-        @click="emit('next')"
+        data-playback-control="details"
+        @click="emit('toggleDetails')"
       >
-        <SkipForward aria-hidden="true" />
+        <PanelRightClose v-if="props.detailsOpen" aria-hidden="true" />
+        <PanelRightOpen v-else aria-hidden="true" />
       </Button>
-      <Button aria-label="Repeat" size="icon-sm" variant="ghost">
-        <Repeat2 aria-hidden="true" />
-      </Button>
-    </nav>
-
-    <Button
-      aria-label="Favorite track"
-      :aria-pressed="isFavorite"
-      size="icon-sm"
-      variant="ghost"
-      data-playback-control="favorite"
-      @click="isFavorite = !isFavorite"
-    >
-      <Heart :fill="isFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
-    </Button>
-
-    <div
-      class="grid min-w-52 flex-2 grid-cols-[30px_minmax(8rem,1fr)_30px] items-center gap-2 text-[0.65rem] text-(--muted-text) tabular-nums"
-      aria-label="Track progress"
-      data-playback-control="progress"
-    >
-      <span>{{ formatDuration(props.playback.positionMs) }}</span>
-      <Slider
-        aria-label="Track progress"
-        :min="0"
-        :max="props.currentItem?.durationMs ?? 0"
-        :step="1000"
-        :model-value="[props.playback.positionMs]"
-        :disabled="props.isUpdating || !props.currentItem"
-        @value-commit="emitSeek"
-      />
-      <span class="text-right">
-        {{ formatDuration(props.currentItem?.durationMs ?? 0) }}
-      </span>
-    </div>
-
-    <div
-      class="flex w-36 shrink-0 items-center gap-2 text-(--muted-text) [&>svg]:size-4"
-      data-playback-control="volume"
-    >
-      <Button
-        :aria-label="
-          props.playback.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'
-        "
-        size="icon-sm"
-        variant="ghost"
-        :disabled="props.isUpdating"
-        @click="emit('toggleMute')"
-      >
-        <component :is="volumeIcon" aria-hidden="true" />
-      </Button>
-      <Slider
-        aria-label="Volume"
-        :min="0"
-        :max="100"
-        :step="1"
-        :model-value="[props.playback.volumePercent]"
-        :disabled="props.isUpdating"
-        @update:model-value="emitVolume"
-      />
-    </div>
-
-    <Button
-      :aria-label="
-        props.detailsOpen ? 'Hide selection details' : 'Show selection details'
-      "
-      :aria-pressed="props.detailsOpen"
-      size="icon-sm"
-      variant="ghost"
-      data-playback-control="details"
-      @click="emit('toggleDetails')"
-    >
-      <PanelRightClose v-if="props.detailsOpen" aria-hidden="true" />
-      <PanelRightOpen v-else aria-hidden="true" />
-    </Button>
-  </footer>
+    </footer>
+  </ScrollArea>
 </template>
 
 <style scoped>

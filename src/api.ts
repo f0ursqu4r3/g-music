@@ -29,6 +29,9 @@ export interface MediaItem {
   likeCount?: number | null;
   durationMs: number;
   metadataDirty?: boolean;
+  playCount?: number;
+  lastPlayedAtMs?: number | null;
+  playHistoryMs?: number[];
 }
 
 export type PlaybackStatus = "paused" | "playing";

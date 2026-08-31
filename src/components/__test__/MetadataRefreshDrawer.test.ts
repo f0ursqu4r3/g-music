@@ -4,6 +4,22 @@ import { describe, expect, it } from "vitest";
 import MetadataRefreshDrawer from "../MetadataRefreshDrawer.vue";
 
 describe("MetadataRefreshDrawer", () => {
+  it("bounds the refresh drawer so its job list can scroll", () => {
+    const wrapper = mount(MetadataRefreshDrawer, {
+      props: {
+        refreshes: {
+          completedTracks: 0,
+          jobs: [],
+          totalTracks: 0,
+        },
+      },
+    });
+
+    expect(wrapper.get('[aria-label="Metadata refreshes"]').classes()).toEqual(
+      expect.arrayContaining(["top-0", "bottom-0"]),
+    );
+  });
+
   it("shows queued and active dirty-track refreshes", () => {
     const wrapper = mount(MetadataRefreshDrawer, {
       props: {
@@ -37,5 +53,8 @@ describe("MetadataRefreshDrawer", () => {
     expect(
       wrapper.get('[data-refresh-track-id="BaW_jenozKc"]').text(),
     ).toContain("Refreshing");
+    expect(wrapper.find("[data-slot='scroll-area-viewport']").exists()).toBe(
+      true,
+    );
   });
 });

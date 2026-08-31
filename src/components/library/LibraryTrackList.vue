@@ -23,6 +23,7 @@ import {
 
 import type { MediaItem } from "@/api";
 import { formatDuration } from "@/lib/time";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { TrackFilter } from "./types";
 
 const props = defineProps<{
@@ -67,7 +68,7 @@ const virtualizerOptions = computed(() => {
   return {
     count: props.tracks.length,
     estimateSize: () => trackRowHeight,
-    getScrollElement: () => scrollElement,
+    getScrollElement: () => scrollElement ?? trackList.value,
     initialRect: {
       height: viewportHeight(),
       width: 0,
@@ -293,10 +294,11 @@ onBeforeUnmount(() => {
       </thead>
     </table>
 
-    <div
-      class="library-track-scroll min-h-0 flex-1 overflow-auto"
+    <ScrollArea
+      class="min-h-0 flex-1"
       data-library-track-list
-      :ref="setTrackList"
+      viewport-class="library-track-scroll"
+      :viewport-ref="setTrackList"
     >
       <div
         class="relative min-w-0"
@@ -407,17 +409,13 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-    </div>
+    </ScrollArea>
   </div>
 </template>
 
 <style scoped>
 .library-track-scroll {
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 24px);
-  -webkit-mask-origin: content-box;
-  -webkit-mask-clip: content-box;
   mask-image: linear-gradient(to bottom, transparent, black 24px);
-  mask-origin: content-box;
-  mask-clip: content-box;
 }
 </style>

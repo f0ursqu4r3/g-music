@@ -4,6 +4,7 @@ import { computed, ref, watch } from "vue";
 
 import type { ImportProgress } from "@/api";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Props {
   isImporting: boolean;
@@ -105,112 +106,122 @@ function submitYouTubeUrls(): void {
         </span>
       </header>
 
-      <div class="min-h-0 overflow-auto px-5 py-5">
-        <p
-          v-if="errorMessage"
-          class="mb-4 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-sm text-red-300"
-          role="alert"
-        >
-          {{ errorMessage }}
-        </p>
-
-        <form
-          class="grid gap-4"
-          aria-label="Import music from YouTube"
-          @submit.prevent="submitYouTubeUrls"
-        >
-          <section
-            class="rounded-xl border border-(--line) bg-[oklch(0.22_0.025_258/0.25)] p-5"
+      <ScrollArea class="min-h-0 size-full" type="scroll">
+        <div class="px-5 py-5">
+          <p
+            v-if="errorMessage"
+            class="mb-4 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-sm text-red-300"
+            role="alert"
           >
-            <div class="flex items-start gap-4">
-              <span
-                class="grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.08_288/0.14)] text-accent [&>svg]:size-5"
-                aria-hidden="true"
+            {{ errorMessage }}
+          </p>
+
+          <form
+            class="grid gap-4"
+            aria-label="Import music from YouTube"
+            @submit.prevent="submitYouTubeUrls"
+          >
+            <section
+              class="rounded-xl border border-(--line) bg-[oklch(0.22_0.025_258/0.25)] p-5"
+            >
+              <div class="flex items-start gap-4">
+                <span
+                  class="grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.08_288/0.14)] text-accent [&>svg]:size-5"
+                  aria-hidden="true"
+                >
+                  <ArrowDownToLine />
+                </span>
+                <div>
+                  <h2 class="text-base font-semibold">Import from YouTube</h2>
+                  <p class="mt-1 text-[0.78rem] leading-5 text-(--muted-text)">
+                    Paste one link per line. Imports run in the background and
+                    do not interrupt playback.
+                  </p>
+                </div>
+              </div>
+
+              <label
+                class="mt-5 block text-[0.7rem] font-semibold tracking-[0.04em] text-(--muted-text) uppercase"
+                for="youtube-import-urls"
               >
-                <ArrowDownToLine />
-              </span>
-              <div>
-                <h2 class="text-base font-semibold">Import from YouTube</h2>
-                <p class="mt-1 text-[0.78rem] leading-5 text-(--muted-text)">
-                  Paste one link per line. Imports run in the background and do
-                  not interrupt playback.
+                YouTube URLs
+              </label>
+              <textarea
+                id="youtube-import-urls"
+                v-model="youtubeUrls"
+                aria-label="YouTube URLs"
+                class="mt-2 min-h-40 w-full resize-y rounded-lg border border-(--line-strong) bg-[oklch(0.16_0.02_258/0.42)] px-3.5 py-3 font-mono text-[0.76rem] leading-5 text-(--text) outline-none transition-colors placeholder:text-(--subtle-text) focus:border-(--focus-ring)"
+                placeholder="Paste one URL per line&#10;https://youtube.com/watch?v=…&#10;https://youtube.com/playlist?list=…&#10;https://youtube.com/@artist/videos"
+                :disabled="isImporting"
+                spellcheck="false"
+              />
+
+              <div class="mt-3 flex items-center justify-between gap-4">
+                <p class="text-[0.72rem] text-(--muted-text)">
+                  {{ importSources.length }}
+                  {{ importSources.length === 1 ? "source" : "sources" }} ready
                 </p>
+                <Button
+                  type="submit"
+                  :disabled="isImporting || importSources.length === 0"
+                >
+                  <ArrowDownToLine aria-hidden="true" />
+                  {{ isImporting ? "Importing…" : "Import to library" }}
+                </Button>
               </div>
-            </div>
+            </section>
 
-            <label
-              class="mt-5 block text-[0.7rem] font-semibold tracking-[0.04em] text-(--muted-text) uppercase"
-              for="youtube-import-urls"
+            <section
+              class="rounded-xl border border-(--line) bg-[oklch(0.16_0.02_258/0.34)] p-4"
+              aria-label="Import progress"
             >
-              YouTube URLs
-            </label>
-            <textarea
-              id="youtube-import-urls"
-              v-model="youtubeUrls"
-              aria-label="YouTube URLs"
-              class="mt-2 min-h-40 w-full resize-y rounded-lg border border-(--line-strong) bg-[oklch(0.16_0.02_258/0.42)] px-3.5 py-3 font-mono text-[0.76rem] leading-5 text-(--text) outline-none transition-colors placeholder:text-(--subtle-text) focus:border-(--focus-ring)"
-              placeholder="Paste one URL per line&#10;https://youtube.com/watch?v=…&#10;https://youtube.com/playlist?list=…&#10;https://youtube.com/@artist/videos"
-              :disabled="isImporting"
-              spellcheck="false"
-            />
-
-            <div class="mt-3 flex items-center justify-between gap-4">
-              <p class="text-[0.72rem] text-(--muted-text)">
-                {{ importSources.length }}
-                {{ importSources.length === 1 ? "source" : "sources" }} ready
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-2 text-[0.76rem] font-medium">
+                  <TerminalSquare
+                    class="size-4 text-accent"
+                    aria-hidden="true"
+                  />
+                  Import terminal
+                </div>
+                <span class="text-[0.7rem] text-(--muted-text)">
+                  {{ progress?.completedSources ?? 0 }} /
+                  {{ progress?.totalSources ?? 0 }} sources
+                </span>
+              </div>
+              <p class="mt-2 text-[0.7rem] text-(--muted-text)">
+                {{ progress?.importedTracks ?? 0 }} track(s) found
+                <template v-if="progress?.skippedMemberOnly">
+                  · {{ progress.skippedMemberOnly }} members-only track(s)
+                  skipped
+                </template>
               </p>
-              <Button
-                type="submit"
-                :disabled="isImporting || importSources.length === 0"
+              <progress
+                class="mt-3 h-1.5 w-full overflow-hidden rounded-full accent-accent"
+                :value="progressValue"
+                max="100"
               >
-                <ArrowDownToLine aria-hidden="true" />
-                {{ isImporting ? "Importing…" : "Import to library" }}
-              </Button>
-            </div>
-          </section>
-
-          <section
-            class="rounded-xl border border-(--line) bg-[oklch(0.16_0.02_258/0.34)] p-4"
-            aria-label="Import progress"
-          >
-            <div class="flex items-center justify-between gap-4">
-              <div class="flex items-center gap-2 text-[0.76rem] font-medium">
-                <TerminalSquare class="size-4 text-accent" aria-hidden="true" />
-                Import terminal
-              </div>
-              <span class="text-[0.7rem] text-(--muted-text)">
-                {{ progress?.completedSources ?? 0 }} /
-                {{ progress?.totalSources ?? 0 }} sources
-              </span>
-            </div>
-            <p class="mt-2 text-[0.7rem] text-(--muted-text)">
-              {{ progress?.importedTracks ?? 0 }} track(s) found
-              <template v-if="progress?.skippedMemberOnly">
-                · {{ progress.skippedMemberOnly }} members-only track(s) skipped
-              </template>
-            </p>
-            <progress
-              class="mt-3 h-1.5 w-full overflow-hidden rounded-full accent-accent"
-              :value="progressValue"
-              max="100"
-            >
-              {{ progressPercent }}%
-            </progress>
-            <output
-              class="mt-3 block max-h-36 min-h-24 overflow-auto rounded-lg border border-(--line) bg-black/30 p-3 font-mono text-[0.69rem] leading-5 text-[oklch(0.82_0.025_258)]"
-              role="log"
-              aria-live="polite"
-            >
-              <span
-                v-for="(log, index) in logs"
-                :key="`${index}-${log}`"
-                class="block"
-                >&gt; {{ log }}</span
+                {{ progressPercent }}%
+              </progress>
+              <ScrollArea
+                class="mt-3 max-h-36 min-h-24 rounded-lg border border-(--line) bg-black/30"
               >
-            </output>
-          </section>
-        </form>
-      </div>
+                <output
+                  class="block min-h-24 p-3 font-mono text-[0.69rem] leading-5 text-[oklch(0.82_0.025_258)]"
+                  role="log"
+                  aria-live="polite"
+                >
+                  <span
+                    v-for="(log, index) in logs"
+                    :key="`${index}-${log}`"
+                    class="block"
+                    >&gt; {{ log }}</span
+                  >
+                </output>
+              </ScrollArea>
+            </section>
+          </form>
+        </div>
+      </ScrollArea>
     </section>
   </main>
 </template>
