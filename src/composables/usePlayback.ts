@@ -290,6 +290,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   return {
+    applySnapshot,
     errorMessage,
     importProgress,
     isImporting,

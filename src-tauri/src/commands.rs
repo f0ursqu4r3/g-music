@@ -8,12 +8,12 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::playback::{
-    DirtyTrack, EditableTrackMetadata, LibrarySnapshot, PlaybackSnapshot, PlaybackTransport,
-    Playlist, YouTubePlaybackError, YouTubePlaybackProvider, discover_youtube_imports,
-    resolve_youtube_imports,
+    DirtyTrack, EditableTrackMetadata, LibrarySnapshot, PlaybackSnapshot, PlaybackStatus,
+    PlaybackTransport, Playlist, YouTubePlaybackError, YouTubePlaybackProvider,
+    discover_youtube_imports, resolve_youtube_imports,
 };
 use crate::{auth, windows};
 
@@ -297,6 +297,53 @@ fn with_playback<T>(
         Err(error) => {
             tracing::error!(operation = operation_name, %error, "playback command failed");
             Err(CommandError::from(error))
+        }
+    }
+}
+
+pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
+    if item_id == "help.keyboard-shortcuts" {
+        if let Err(error) = app.emit("show-keyboard-shortcuts", ()) {
+            tracing::error!(%error, "could not open keyboard shortcuts from the native menu");
+        }
+        return;
+    }
+
+    let Some(state) = app.try_state::<AppState>() else {
+        tracing::error!(
+            item_id,
+            "native menu action ran before application state was ready"
+        );
+        return;
+    };
+    let snapshot = match item_id {
+        "playback.toggle" => with_playback(&state, "menu_toggle_playback", |playback| {
+            if playback.transport()?.status == PlaybackStatus::Playing {
+                playback.pause()?;
+            } else {
+                playback.play()?;
+            }
+            playback.snapshot()
+        }),
+        "playback.previous" => with_playback(&state, "menu_previous_track", |playback| {
+            playback.previous_track()?;
+            playback.snapshot()
+        }),
+        "playback.next" => with_playback(&state, "menu_next_track", |playback| {
+            playback.next_track()?;
+            playback.snapshot()
+        }),
+        _ => return,
+    };
+
+    match snapshot {
+        Ok(snapshot) => {
+            if let Err(error) = app.emit("playback-updated", snapshot) {
+                tracing::error!(item_id, %error, "could not broadcast native menu playback update");
+            }
+        }
+        Err(error) => {
+            tracing::error!(item_id, %error.message, "native menu playback action failed")
         }
     }
 }

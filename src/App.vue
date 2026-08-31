@@ -10,6 +10,7 @@ import {
   windowApi,
 } from "@/api";
 import type { ThemeName } from "@/lib/theme";
+import { resolvePlaybackHotkey } from "@/lib/hotkeys";
 import { readTheme, themes } from "@/lib/theme";
 import { resolveMockWindowView } from "@/lib/window-view";
 import { playerDimensions } from "@/presentation";
@@ -25,6 +26,7 @@ import { usePlayback } from "@/composables/usePlayback";
 const playback = usePlayback();
 const view = resolveMockWindowView(window.location.search);
 const queueExpanded = ref(false);
+const keyboardShortcutsOpen = ref(false);
 const theme = ref<ThemeName>(
   readTheme(window.localStorage.getItem("gmusic-theme")),
 );
@@ -36,6 +38,8 @@ let playbackSyncInterval: number | undefined;
 let unlistenImportProgress: (() => void) | undefined;
 let unlistenLibraryUpdated: (() => void) | undefined;
 let unlistenMetadataRefreshProgress: (() => void) | undefined;
+let unlistenPlaybackUpdated: (() => void) | undefined;
+let unlistenKeyboardShortcuts: (() => void) | undefined;
 
 const statusMessage = computed(
   () =>
@@ -122,24 +126,45 @@ async function openImportWindow(): Promise<void> {
 }
 
 function handleKeyboard(event: KeyboardEvent): void {
-  if (
-    view !== "mini" ||
-    event.target instanceof HTMLInputElement ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.altKey
-  ) {
+  if (keyboardShortcutsOpen.value && event.key === "Escape") {
+    event.preventDefault();
+    keyboardShortcutsOpen.value = false;
     return;
   }
 
-  if (event.key === " ") {
+  const target = event.target;
+  const isTextEditing =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable);
+  const action = resolvePlaybackHotkey(
+    event.key,
+    isTextEditing,
+    event.metaKey || event.ctrlKey || event.altKey,
+  );
+
+  if (action === "toggle") {
     event.preventDefault();
     void playback.toggle();
-  } else if (event.key.toLowerCase() === "j") {
+  } else if (action === "previous") {
+    event.preventDefault();
     void playback.previous();
-  } else if (event.key.toLowerCase() === "k") {
+  } else if (action === "next") {
+    event.preventDefault();
     void playback.next();
-  } else if (event.key.toLowerCase() === "q") {
+  } else if (action === "toggleMute") {
+    event.preventDefault();
+    void playback.toggleMute();
+  } else if (
+    view === "mini" &&
+    !isTextEditing &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === "q"
+  ) {
+    event.preventDefault();
     void toggleQueue();
   }
 }
@@ -191,12 +216,29 @@ async function trackLibraryUpdates(): Promise<void> {
   });
 }
 
+async function trackPlaybackUpdates(): Promise<void> {
+  unlistenPlaybackUpdated = await listen<PlaybackSnapshot>(
+    "playback-updated",
+    ({ payload }) => {
+      playback.applySnapshot(payload);
+    },
+  );
+}
+
+async function trackKeyboardShortcuts(): Promise<void> {
+  unlistenKeyboardShortcuts = await listen("show-keyboard-shortcuts", () => {
+    keyboardShortcutsOpen.value = true;
+  });
+}
+
 onMounted(() => {
   isMounted = true;
   window.addEventListener("keydown", handleKeyboard);
   void trackLibraryUpdates().finally(() => {
     void playback.refresh();
   });
+  void trackPlaybackUpdates();
+  void trackKeyboardShortcuts();
   if (view !== "settings") {
     playbackSyncInterval = window.setInterval(() => {
       void playback.sync();
@@ -216,6 +258,8 @@ onUnmounted(() => {
   unlistenImportProgress?.();
   unlistenLibraryUpdated?.();
   unlistenMetadataRefreshProgress?.();
+  unlistenPlaybackUpdated?.();
+  unlistenKeyboardShortcuts?.();
   if (playbackSyncInterval !== undefined) {
     window.clearInterval(playbackSyncInterval);
   }
@@ -308,5 +352,49 @@ onUnmounted(() => {
     >
       {{ statusMessage }}
     </p>
+
+    <section
+      v-if="keyboardShortcutsOpen"
+      class="absolute inset-0 z-50 grid place-items-center bg-black/45 p-5 backdrop-blur-sm"
+      role="dialog"
+      aria-labelledby="keyboard-shortcuts-title"
+      aria-modal="true"
+      @click.self="keyboardShortcutsOpen = false"
+    >
+      <div
+        class="w-full max-w-92 rounded-2xl border border-(--line-strong) bg-(--glass-window) p-5 shadow-2xl"
+      >
+        <header class="flex items-center justify-between gap-4">
+          <h2
+            id="keyboard-shortcuts-title"
+            class="text-lg font-semibold text-(--text)"
+          >
+            Keyboard Shortcuts
+          </h2>
+          <button
+            class="rounded-md px-2 py-1 text-sm text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text)"
+            type="button"
+            aria-label="Close keyboard shortcuts"
+            @click="keyboardShortcutsOpen = false"
+          >
+            Esc
+          </button>
+        </header>
+        <dl class="mt-5 grid grid-cols-[1fr_auto] gap-x-6 gap-y-3 text-sm">
+          <dt class="text-(--muted-text)">Play or pause</dt>
+          <dd class="font-mono text-(--text)">Space</dd>
+          <dt class="text-(--muted-text)">Previous track</dt>
+          <dd class="font-mono text-(--text)">⌘ ← / J</dd>
+          <dt class="text-(--muted-text)">Next track</dt>
+          <dd class="font-mono text-(--text)">⌘ → / K</dd>
+          <dt class="text-(--muted-text)">Mute</dt>
+          <dd class="font-mono text-(--text)">M</dd>
+          <dt class="text-(--muted-text)">Import music</dt>
+          <dd class="font-mono text-(--text)">⌘ I</dd>
+          <dt class="text-(--muted-text)">Library windows</dt>
+          <dd class="font-mono text-(--text)">⌘ 1–4</dd>
+        </dl>
+      </div>
+    </section>
   </div>
 </template>

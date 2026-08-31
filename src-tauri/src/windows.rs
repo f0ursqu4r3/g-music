@@ -1,6 +1,6 @@
 use tauri::{
     AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    menu::{Menu, MenuBuilder, SubmenuBuilder},
+    menu::{Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,7 +109,9 @@ const SURFACES: &[WindowSpec] = &[
     },
 ];
 
-const MENU_TITLES: [&str; 6] = ["G Music", "File", "Edit", "View", "Window", "Help"];
+const MENU_TITLES: [&str; 7] = [
+    "G Music", "File", "Edit", "Playback", "View", "Window", "Help",
+];
 
 #[cfg(test)]
 fn all_surfaces() -> &'static [WindowSpec] {
@@ -117,10 +119,41 @@ fn all_surfaces() -> &'static [WindowSpec] {
 }
 
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let settings = MenuItemBuilder::with_id("window.settings", "Settings…")
+        .accelerator("CmdOrCtrl+,")
+        .build(app)?;
+    let import = MenuItemBuilder::with_id("window.import", "Import Music…")
+        .accelerator("CmdOrCtrl+I")
+        .build(app)?;
+    let toggle_playback = MenuItemBuilder::with_id("playback.toggle", "Play / Pause")
+        .accelerator("Space")
+        .build(app)?;
+    let previous_track = MenuItemBuilder::with_id("playback.previous", "Previous Track")
+        .accelerator("CmdOrCtrl+Left")
+        .build(app)?;
+    let next_track = MenuItemBuilder::with_id("playback.next", "Next Track")
+        .accelerator("CmdOrCtrl+Right")
+        .build(app)?;
+    let library = MenuItemBuilder::with_id("window.library", "Library")
+        .accelerator("CmdOrCtrl+1")
+        .build(app)?;
+    let artwork = MenuItemBuilder::with_id("window.artwork", "Artwork")
+        .accelerator("CmdOrCtrl+2")
+        .build(app)?;
+    let queue = MenuItemBuilder::with_id("window.queue", "Play Queue")
+        .accelerator("CmdOrCtrl+3")
+        .build(app)?;
+    let mini_player = MenuItemBuilder::with_id("window.mini", "Mini Player")
+        .accelerator("CmdOrCtrl+4")
+        .build(app)?;
+    let keyboard_shortcuts =
+        MenuItemBuilder::with_id("help.keyboard-shortcuts", "Keyboard Shortcuts…")
+            .accelerator("CmdOrCtrl+/")
+            .build(app)?;
     let application = SubmenuBuilder::new(app, MENU_TITLES[0])
         .about(None)
         .separator()
-        .text("window.settings", "Settings…")
+        .item(&settings)
         .separator()
         .services()
         .separator()
@@ -131,7 +164,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .quit()
         .build()?;
     let file = SubmenuBuilder::new(app, MENU_TITLES[1])
-        .text("window.import", "Import Music…")
+        .item(&import)
         .separator()
         .close_window()
         .build()?;
@@ -144,27 +177,36 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .paste()
         .select_all()
         .build()?;
-    let view = SubmenuBuilder::new(app, MENU_TITLES[3])
+    let playback = SubmenuBuilder::new(app, MENU_TITLES[3])
+        .item(&toggle_playback)
+        .separator()
+        .item(&previous_track)
+        .item(&next_track)
+        .build()?;
+    let view = SubmenuBuilder::new(app, MENU_TITLES[4])
         .fullscreen()
         .build()?;
-    let window = SubmenuBuilder::new(app, MENU_TITLES[4])
+    let window = SubmenuBuilder::new(app, MENU_TITLES[5])
         .minimize()
         .maximize()
         .separator()
-        .text("window.library", "Library")
-        .text("window.artwork", "Artwork")
-        .text("window.queue", "Play Queue")
+        .item(&library)
+        .item(&artwork)
+        .item(&queue)
         .separator()
-        .text("window.mini", "Mini Player")
+        .item(&mini_player)
         .separator()
         .bring_all_to_front()
         .build()?;
-    let help = SubmenuBuilder::new(app, MENU_TITLES[5]).build()?;
+    let help = SubmenuBuilder::new(app, MENU_TITLES[6])
+        .item(&keyboard_shortcuts)
+        .build()?;
 
     MenuBuilder::new(app)
         .item(&application)
         .item(&file)
         .item(&edit)
+        .item(&playback)
         .item(&view)
         .item(&window)
         .item(&help)
@@ -179,7 +221,10 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
         "window.mini" => show_surface(app, WindowSurface::Mini),
         "window.settings" => show_surface(app, WindowSurface::Settings),
         "window.import" => show_surface(app, WindowSurface::Import),
-        _ => return,
+        _ => {
+            crate::commands::handle_menu_event(app, item_id);
+            return;
+        }
     };
 
     if let Err(error) = result {
@@ -293,7 +338,9 @@ mod tests {
     fn native_menu_uses_standard_macos_sections() {
         assert_eq!(
             MENU_TITLES,
-            ["G Music", "File", "Edit", "View", "Window", "Help"]
+            [
+                "G Music", "File", "Edit", "Playback", "View", "Window", "Help"
+            ]
         );
     }
 

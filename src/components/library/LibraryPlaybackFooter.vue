@@ -95,7 +95,7 @@ function emitSeek(values: number[]): void {
           <p
             class="overflow-hidden text-[0.82rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
           >
-            {{ props.currentItem?.title ?? "Nothing selected" }}
+            {{ props.currentItem?.title ?? "Nothing playing" }}
           </p>
           <span
             class="mt-0.5 block overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-(--muted-text)"

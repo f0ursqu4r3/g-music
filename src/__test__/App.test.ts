@@ -7,10 +7,15 @@ import App from "../App.vue";
 import LibraryWindow from "../components/LibraryWindow.vue";
 
 const playbackMocks = vi.hoisted(() => ({
+  applySnapshot: vi.fn(),
   importYouTubeUrls: vi.fn(),
+  next: vi.fn(),
   playTrack: vi.fn(),
+  previous: vi.fn(),
   refresh: vi.fn(),
   sync: vi.fn(),
+  toggle: vi.fn(),
+  toggleMute: vi.fn(),
 }));
 const windowMocks = vi.hoisted(() => ({
   showImport: vi.fn(),
@@ -37,6 +42,7 @@ vi.mock("@/api", async (importOriginal) => {
 
 vi.mock("@/composables/usePlayback", () => ({
   usePlayback: () => ({
+    applySnapshot: playbackMocks.applySnapshot,
     snapshot: {
       value: {
         status: "paused",
@@ -93,9 +99,10 @@ vi.mock("@/composables/usePlayback", () => ({
     errorMessage: { value: "" },
     refresh: playbackMocks.refresh,
     sync: playbackMocks.sync,
-    toggle: vi.fn(),
-    previous: vi.fn(),
-    next: vi.fn(),
+    toggle: playbackMocks.toggle,
+    toggleMute: playbackMocks.toggleMute,
+    previous: playbackMocks.previous,
+    next: playbackMocks.next,
     seek: vi.fn(),
     setVolume: vi.fn(),
     moveQueueItem: vi.fn(),
@@ -108,10 +115,15 @@ vi.mock("@/composables/usePlayback", () => ({
 
 describe("application landmarks", () => {
   beforeEach(() => {
+    playbackMocks.applySnapshot.mockReset();
     playbackMocks.importYouTubeUrls.mockReset();
+    playbackMocks.next.mockReset();
     playbackMocks.playTrack.mockReset();
+    playbackMocks.previous.mockReset();
     playbackMocks.refresh.mockReset();
     playbackMocks.sync.mockReset();
+    playbackMocks.toggle.mockReset();
+    playbackMocks.toggleMute.mockReset();
     windowMocks.showImport.mockReset();
     eventMocks.listen.mockReset();
     eventMocks.listen.mockResolvedValue(vi.fn());
@@ -189,6 +201,60 @@ describe("application landmarks", () => {
     await vi.advanceTimersByTimeAsync(500);
 
     expect(playbackMocks.sync).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("routes keyboard playback controls outside editable fields", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "m" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+
+    expect(playbackMocks.previous).toHaveBeenCalled();
+    expect(playbackMocks.next).toHaveBeenCalled();
+    expect(playbackMocks.toggleMute).toHaveBeenCalled();
+    expect(playbackMocks.toggle).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("applies native menu playback updates and opens keyboard shortcuts", async () => {
+    let playbackUpdated: ((event: { payload: unknown }) => void) | undefined;
+    let showKeyboardShortcuts: (() => void) | undefined;
+    eventMocks.listen.mockImplementation(async (event, handler) => {
+      if (event === "playback-updated") {
+        playbackUpdated = handler as (event: { payload: unknown }) => void;
+      }
+      if (event === "show-keyboard-shortcuts") {
+        showKeyboardShortcuts = handler as () => void;
+      }
+      return vi.fn();
+    });
+    const wrapper = mount(App);
+    await flushPromises();
+
+    playbackUpdated?.({
+      payload: {
+        currentItem: null,
+        positionMs: 0,
+        queue: [],
+        status: "playing",
+        volumePercent: 50,
+      },
+    });
+    showKeyboardShortcuts?.();
+    await nextTick();
+
+    expect(playbackMocks.applySnapshot).toHaveBeenCalled();
+    expect(wrapper.get('[role="dialog"]').text()).toContain(
+      "Keyboard Shortcuts",
+    );
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await nextTick();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

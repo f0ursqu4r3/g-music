@@ -134,7 +134,10 @@ watch(
     <ScrollArea class="size-full">
       <div class="p-5">
         <div v-if="props.selectedTrack" data-library-info="track">
-          <div class="cover-art mb-5 aspect-square w-full rounded-xl">
+          <div
+            class="cover-art -mx-5 -mt-5 mb-5 aspect-square w-[calc(100%+2.5rem)] rounded-b-xl"
+            data-library-info-artwork
+          >
             <YouTubeArtwork
               class="absolute inset-0 size-full object-cover"
               :video-id="props.selectedTrack.id"
@@ -256,7 +259,10 @@ watch(
         </div>
 
         <div v-else-if="props.selectedAlbum" data-library-info="album">
-          <div class="cover-art mb-5 aspect-square w-full rounded-xl">
+          <div
+            class="cover-art -mx-5 -mt-5 mb-5 aspect-square w-[calc(100%+2.5rem)] rounded-b-xl"
+            data-library-info-artwork
+          >
             <YouTubeArtwork
               class="absolute inset-0 size-full object-cover"
               :video-id="props.selectedAlbum.videoId"
@@ -291,7 +297,8 @@ watch(
 
         <div v-else-if="props.selectedArtist" data-library-info="artist">
           <div
-            class="cover-art mb-5 grid aspect-square w-full place-items-center rounded-full [&>svg]:size-20 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+            class="cover-art -mx-5 -mt-5 mb-5 grid aspect-square w-[calc(100%+2.5rem)] place-items-center rounded-b-xl [&>svg]:size-20 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+            data-library-info-artwork
           >
             <Mic2 aria-hidden="true" />
             <YouTubeArtwork
