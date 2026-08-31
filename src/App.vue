@@ -34,6 +34,7 @@ let isMounted = false;
 let unlistenWindowFocus: (() => void) | undefined;
 let playbackSyncInterval: number | undefined;
 let unlistenImportProgress: (() => void) | undefined;
+let unlistenLibraryUpdated: (() => void) | undefined;
 let unlistenMetadataRefreshProgress: (() => void) | undefined;
 
 const statusMessage = computed(
@@ -184,10 +185,18 @@ async function trackMetadataRefreshProgress(): Promise<void> {
   );
 }
 
+async function trackLibraryUpdates(): Promise<void> {
+  unlistenLibraryUpdated = await listen("library-updated", () => {
+    void playback.refresh();
+  });
+}
+
 onMounted(() => {
   isMounted = true;
   window.addEventListener("keydown", handleKeyboard);
-  void playback.refresh();
+  void trackLibraryUpdates().finally(() => {
+    void playback.refresh();
+  });
   if (view !== "settings") {
     playbackSyncInterval = window.setInterval(() => {
       void playback.sync();
@@ -205,6 +214,7 @@ onUnmounted(() => {
   isMounted = false;
   unlistenWindowFocus?.();
   unlistenImportProgress?.();
+  unlistenLibraryUpdated?.();
   unlistenMetadataRefreshProgress?.();
   if (playbackSyncInterval !== undefined) {
     window.clearInterval(playbackSyncInterval);

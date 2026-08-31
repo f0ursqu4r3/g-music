@@ -11,7 +11,7 @@ use std::{
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
     commands::{AppState, CommandError},
@@ -167,7 +167,8 @@ fn parse_request(line: &str) -> Result<AgentRequest, CommandError> {
 
 fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandError> {
     let state = app.state::<AppState>();
-    let result = match request.method.as_str() {
+    let method = request.method.as_str();
+    let result = match method {
         "library.inspect" => serialize(state.library_snapshot()?),
         "track.update" => {
             let request: TrackUpdateRequest = decode_params(&request.params)?;
@@ -200,7 +201,24 @@ fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandErr
         }
         _ => Err(protocol_error(format!("unknown method {}", request.method))),
     }?;
+    if library_mutation_method(method) {
+        if let Err(error) = app.emit("library-updated", ()) {
+            tracing::debug!(%error, method, "could not deliver library update event");
+        }
+    }
     Ok(result)
+}
+
+fn library_mutation_method(method: &str) -> bool {
+    matches!(
+        method,
+        "track.update"
+            | "tracks.update"
+            | "track.remove"
+            | "playlist.upsert"
+            | "playlist.delete"
+            | "queue.move"
+    )
 }
 
 fn decode_params<T: DeserializeOwned>(params: &Value) -> Result<T, CommandError> {
@@ -222,12 +240,30 @@ fn protocol_error(message: String) -> CommandError {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_request;
+    use super::{library_mutation_method, parse_request};
 
     #[test]
     fn malformed_requests_return_a_structured_protocol_error() {
         let error = parse_request("not json").expect_err("invalid JSON is rejected");
 
         assert_eq!(error.code, "agent_protocol_failed");
+    }
+
+    #[test]
+    fn library_mutations_emit_refresh_events() {
+        for method in [
+            "track.update",
+            "tracks.update",
+            "track.remove",
+            "playlist.upsert",
+            "playlist.delete",
+            "queue.move",
+        ] {
+            assert!(
+                library_mutation_method(method),
+                "{method} must refresh windows"
+            );
+        }
+        assert!(!library_mutation_method("library.inspect"));
     }
 }

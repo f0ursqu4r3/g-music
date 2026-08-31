@@ -9,6 +9,7 @@ import LibraryWindow from "../components/LibraryWindow.vue";
 const playbackMocks = vi.hoisted(() => ({
   importYouTubeUrls: vi.fn(),
   playTrack: vi.fn(),
+  refresh: vi.fn(),
   sync: vi.fn(),
 }));
 const windowMocks = vi.hoisted(() => ({
@@ -90,7 +91,7 @@ vi.mock("@/composables/usePlayback", () => ({
       value: { completedTracks: 0, jobs: [], totalTracks: 0 },
     },
     errorMessage: { value: "" },
-    refresh: vi.fn(),
+    refresh: playbackMocks.refresh,
     sync: playbackMocks.sync,
     toggle: vi.fn(),
     previous: vi.fn(),
@@ -109,8 +110,11 @@ describe("application landmarks", () => {
   beforeEach(() => {
     playbackMocks.importYouTubeUrls.mockReset();
     playbackMocks.playTrack.mockReset();
+    playbackMocks.refresh.mockReset();
     playbackMocks.sync.mockReset();
     windowMocks.showImport.mockReset();
+    eventMocks.listen.mockReset();
+    eventMocks.listen.mockResolvedValue(vi.fn());
     window.history.replaceState({}, "", "/?view=library");
     window.localStorage.clear();
   });
@@ -185,6 +189,26 @@ describe("application landmarks", () => {
     await vi.advanceTimersByTimeAsync(500);
 
     expect(playbackMocks.sync).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("refreshes the library after a native metadata update", async () => {
+    let libraryUpdated: (() => void) | undefined;
+    eventMocks.listen.mockImplementation(async (event, handler) => {
+      if (event === "library-updated") {
+        libraryUpdated = handler as () => void;
+      }
+      return vi.fn();
+    });
+    const wrapper = mount(App);
+    await flushPromises();
+    playbackMocks.refresh.mockClear();
+
+    expect(libraryUpdated).toBeDefined();
+    libraryUpdated?.();
+    await flushPromises();
+
+    expect(playbackMocks.refresh).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
