@@ -244,6 +244,38 @@ describe("LibraryWindow", () => {
     expect(sidebar.findAll("[data-play-history] li")).toHaveLength(2);
   });
 
+  it("expands and collapses a long selected-track description", async () => {
+    const detailedTrack: MediaItem = {
+      ...importedTracks[0],
+      description: "Long description. ".repeat(30),
+    };
+    const detailedSnapshot = {
+      ...snapshot,
+      currentItem: detailedTrack,
+      queue: [detailedTrack, importedTracks[1]],
+    };
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot: detailedSnapshot },
+    });
+
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+
+    const description = wrapper.get("[data-track-description]");
+    const toggle = wrapper.get("[data-track-description-toggle]");
+    expect(description.classes()).toContain("line-clamp-6");
+    expect(toggle.text()).toBe("Show more");
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+
+    await toggle.trigger("click");
+    expect(description.classes()).not.toContain("line-clamp-6");
+    expect(toggle.text()).toBe("Show less");
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+
+    await toggle.trigger("click");
+    expect(description.classes()).toContain("line-clamp-6");
+    expect(toggle.text()).toBe("Show more");
+  });
+
   it("exposes a grid item size slider in grid view", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },

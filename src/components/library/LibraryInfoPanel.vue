@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ExternalLink, Mic2 } from "lucide-vue-next";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 
 import type { MediaItem } from "@/api";
 import { formatDuration } from "@/lib/time";
@@ -25,6 +25,10 @@ const timestampFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const isDescriptionExpanded = ref(false);
+const hasLongDescription = computed(
+  () => (props.selectedTrack?.description?.length ?? 0) > 280,
+);
 const trackDetails = computed<TrackDetail[]>(() => {
   const track = props.selectedTrack;
   if (!track) {
@@ -96,6 +100,13 @@ const trackDetails = computed<TrackDetail[]>(() => {
 function formatPlayHistory(timestampMs: number): string {
   return timestampFormat.format(new Date(timestampMs));
 }
+
+watch(
+  () => props.selectedTrack?.description,
+  () => {
+    isDescriptionExpanded.value = false;
+  },
+);
 </script>
 
 <template>
@@ -150,9 +161,27 @@ function formatPlayHistory(timestampMs: number): string {
             >
               Description
             </h3>
-            <p class="mt-2 text-sm leading-5 wrap-break-word text-(--text)">
+            <p
+              id="track-description"
+              class="mt-2 text-sm leading-5 wrap-break-word text-(--text)"
+              :class="{
+                'line-clamp-6': hasLongDescription && !isDescriptionExpanded,
+              }"
+              data-track-description
+            >
               {{ props.selectedTrack.description }}
             </p>
+            <button
+              v-if="hasLongDescription"
+              class="mt-2 cursor-pointer border-0 bg-transparent p-0 text-xs font-medium text-accent hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+              :aria-expanded="isDescriptionExpanded"
+              aria-controls="track-description"
+              data-track-description-toggle
+              type="button"
+              @click="isDescriptionExpanded = !isDescriptionExpanded"
+            >
+              {{ isDescriptionExpanded ? "Show less" : "Show more" }}
+            </button>
           </section>
           <dl class="mt-6 grid gap-3 border-t border-(--line) pt-4 text-xs">
             <div
