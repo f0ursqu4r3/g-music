@@ -13,7 +13,7 @@ const ARTWORK_CACHE_LIMIT: u64 = 512 * 1024 * 1024;
 const ARTWORK_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const QUALITIES: [&str; 2] = ["maxresdefault", "hqdefault"];
 
-pub(crate) fn resolve_youtube_artwork(
+pub(crate) async fn resolve_youtube_artwork(
     app: &AppHandle,
     video_id: &str,
 ) -> Result<Option<String>, String> {
@@ -24,7 +24,21 @@ pub(crate) fn resolve_youtube_artwork(
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?;
-    resolve_youtube_artwork_in(&application_directory, video_id)
+    let video_id = video_id.to_owned();
+
+    run_blocking_artwork_task(move || resolve_youtube_artwork_in(&application_directory, &video_id))
+        .await?
+}
+
+async fn run_blocking_artwork_task<T>(
+    task: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 fn resolve_youtube_artwork_in(
@@ -141,7 +155,9 @@ fn now_epoch_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_image_signature, is_youtube_video_id};
+    use std::thread;
+
+    use super::{is_image_signature, is_youtube_video_id, run_blocking_artwork_task};
 
     #[test]
     fn accepts_only_stable_youtube_video_ids() {
@@ -154,5 +170,15 @@ mod tests {
         assert!(is_image_signature(&[0xff, 0xd8, 0xff, 0xe0]));
         assert!(is_image_signature(b"\x89PNG\r\n\x1a\nimage"));
         assert!(!is_image_signature(b"not an image"));
+    }
+
+    #[test]
+    fn runs_artwork_work_off_the_calling_thread() {
+        let calling_thread = thread::current().id();
+        let worker_thread =
+            tauri::async_runtime::block_on(run_blocking_artwork_task(|| thread::current().id()))
+                .expect("artwork work completes");
+
+        assert_ne!(worker_thread, calling_thread);
     }
 }

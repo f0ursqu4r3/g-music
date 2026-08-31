@@ -266,7 +266,10 @@ fn with_playback<T>(
     operation_name: &'static str,
     operation: impl FnOnce(&mut YouTubePlaybackProvider) -> Result<T, YouTubePlaybackError>,
 ) -> Result<T, CommandError> {
-    if operation_name == "inspect_playback" {
+    if matches!(
+        operation_name,
+        "inspect_playback" | "inspect_playback_transport"
+    ) {
         tracing::trace!(operation = operation_name, "playback command started");
     } else {
         tracing::debug!(operation = operation_name, "playback command started");
@@ -281,7 +284,10 @@ fn with_playback<T>(
 
     match operation(&mut playback) {
         Ok(value) => {
-            if operation_name == "inspect_playback" {
+            if matches!(
+                operation_name,
+                "inspect_playback" | "inspect_playback_transport"
+            ) {
                 tracing::trace!(operation = operation_name, "playback command completed");
             } else {
                 tracing::debug!(operation = operation_name, "playback command completed");
@@ -441,14 +447,16 @@ pub fn inspect_library(state: State<'_, AppState>) -> Result<LibrarySnapshot, Co
 }
 
 #[tauri::command]
-pub fn resolve_youtube_artwork(
+pub async fn resolve_youtube_artwork(
     app: AppHandle,
     video_id: String,
 ) -> Result<Option<String>, CommandError> {
-    crate::artwork::resolve_youtube_artwork(&app, &video_id).map_err(|message| CommandError {
-        code: "artwork_unavailable",
-        message,
-    })
+    crate::artwork::resolve_youtube_artwork(&app, &video_id)
+        .await
+        .map_err(|message| CommandError {
+            code: "artwork_unavailable",
+            message,
+        })
 }
 
 #[tauri::command]
@@ -841,9 +849,76 @@ pub fn move_queue_item(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use tracing::{
+        Dispatch, Event, Id, Level, Metadata, Subscriber, dispatcher::with_default,
+        subscriber::Interest,
+    };
+
     use crate::playback::{EditableTrackMetadata, Playlist};
 
-    use super::AppState;
+    use super::{AppState, with_playback};
+
+    struct RecordingSubscriber {
+        levels: Arc<Mutex<Vec<Level>>>,
+    }
+
+    impl Subscriber for RecordingSubscriber {
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+
+        fn record(&self, _: &Id, _: &tracing::span::Record<'_>) {}
+
+        fn record_follows_from(&self, _: &Id, _: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            self.levels
+                .lock()
+                .expect("test recording mutex is available")
+                .push(*event.metadata().level());
+        }
+
+        fn enter(&self, _: &Id) {}
+
+        fn exit(&self, _: &Id) {}
+
+        fn register_callsite(&self, _: &'static Metadata<'static>) -> Interest {
+            Interest::always()
+        }
+    }
+
+    #[test]
+    fn transport_inspection_does_not_emit_debug_command_logs() {
+        let state = AppState::default();
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = RecordingSubscriber {
+            levels: Arc::clone(&levels),
+        };
+
+        with_default(&Dispatch::new(subscriber), || {
+            with_playback(
+                &state,
+                "inspect_playback_transport",
+                crate::playback::YouTubePlaybackProvider::transport,
+            )
+            .expect("transport inspection succeeds");
+        });
+
+        assert!(
+            levels
+                .lock()
+                .expect("test recording mutex is available")
+                .iter()
+                .all(|level| *level != Level::DEBUG),
+            "transport inspection must not emit debug command logs",
+        );
+    }
 
     #[test]
     fn agent_library_operations_return_durable_library_snapshots() {
