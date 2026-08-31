@@ -36,13 +36,15 @@ impl Default for AppState {
 }
 
 impl AppState {
-    pub fn from_library_path(path: std::path::PathBuf) -> Result<Self, YouTubePlaybackError> {
+    pub fn from_library_directory(
+        directory: std::path::PathBuf,
+    ) -> Result<Self, YouTubePlaybackError> {
         Ok(Self {
             import_in_progress: Arc::new(AtomicBool::new(false)),
             metadata_refreshes: Arc::new(Mutex::new(MetadataRefreshState::default())),
             next_import_id: AtomicU64::new(1),
-            playback: Arc::new(Mutex::new(YouTubePlaybackProvider::from_library_path(
-                path,
+            playback: Arc::new(Mutex::new(YouTubePlaybackProvider::from_library_directory(
+                directory,
             )?)),
         })
     }
@@ -80,6 +82,21 @@ impl AppState {
     ) -> Result<LibrarySnapshot, CommandError> {
         with_playback(self, "update_track_metadata", |playback| {
             playback.update_track_metadata(id, metadata)
+        })
+    }
+
+    pub fn update_tracks_metadata(
+        &self,
+        updates: Vec<(String, EditableTrackMetadata)>,
+    ) -> Result<LibrarySnapshot, CommandError> {
+        with_playback(self, "update_tracks_metadata", |playback| {
+            playback.update_tracks_metadata(updates)
+        })
+    }
+
+    pub fn remove_tracks(&self, ids: &[String]) -> Result<LibrarySnapshot, CommandError> {
+        with_playback(self, "remove_tracks", |playback| {
+            playback.remove_tracks(ids)
         })
     }
 
@@ -421,6 +438,17 @@ pub fn inspect_playback_transport(
 #[tauri::command]
 pub fn inspect_library(state: State<'_, AppState>) -> Result<LibrarySnapshot, CommandError> {
     state.library_snapshot()
+}
+
+#[tauri::command]
+pub fn resolve_youtube_artwork(
+    app: AppHandle,
+    video_id: String,
+) -> Result<Option<String>, CommandError> {
+    crate::artwork::resolve_youtube_artwork(&app, &video_id).map_err(|message| CommandError {
+        code: "artwork_unavailable",
+        message,
+    })
 }
 
 #[tauri::command]

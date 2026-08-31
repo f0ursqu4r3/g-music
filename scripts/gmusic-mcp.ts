@@ -223,6 +223,59 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_library_track_metadata_batch",
+  {
+    title: "Batch update gMusic track metadata",
+    description:
+      "Update the editable metadata for multiple known tracks in one library write. This is a write operation and requires current explicit user approval.",
+    inputSchema: {
+      confirmed: z.boolean(),
+      updates: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            title: z.string().min(1),
+            artist: z.string().min(1),
+            album: z.string().nullable().optional(),
+            label: z.string().nullable().optional(),
+            genres: z.array(z.string()).default([]),
+          }),
+        )
+        .min(1),
+    },
+  },
+  async ({ confirmed, updates }) => {
+    try {
+      requireConfirmation(confirmed);
+      return textResult(await invokeAgent("tracks.update", { updates }));
+    } catch (error) {
+      return toolError(error);
+    }
+  },
+);
+
+server.registerTool(
+  "remove_library_tracks",
+  {
+    title: "Remove gMusic library tracks",
+    description:
+      "Remove known tracks from the library and every playlist. This is a destructive write operation and requires current explicit user approval.",
+    inputSchema: {
+      confirmed: z.boolean(),
+      ids: z.array(z.string().min(1)).min(1),
+    },
+  },
+  async ({ confirmed, ids }) => {
+    try {
+      requireConfirmation(confirmed);
+      return textResult(await invokeAgent("track.remove", { ids }));
+    } catch (error) {
+      return toolError(error);
+    }
+  },
+);
+
+server.registerTool(
   "upsert_playlist",
   {
     title: "Create or replace a gMusic playlist",

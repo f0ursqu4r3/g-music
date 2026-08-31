@@ -1,7 +1,9 @@
 mod agent;
+mod artwork;
 mod auth;
 mod commands;
 mod diagnostics;
+mod persistence;
 pub mod playback;
 mod windows;
 
@@ -16,8 +18,8 @@ pub fn run() {
         .menu(windows::build_menu)
         .on_menu_event(|app, event| windows::handle_menu_event(app, event.id().as_ref()))
         .setup(|app| {
-            let library_path = app.path().app_data_dir()?.join("library.json");
-            let state = commands::AppState::from_library_path(library_path)?;
+            let library_directory = app.path().app_data_dir()?;
+            let state = commands::AppState::from_library_directory(library_directory)?;
             app.manage(state);
             if let Some(state) = app.try_state::<commands::AppState>() {
                 state.start_dirty_refresh(app.handle().clone());
@@ -49,6 +51,7 @@ pub fn run() {
             commands::seek,
             commands::set_volume,
             commands::move_queue_item,
+            commands::resolve_youtube_artwork,
         ])
         .build(tauri::generate_context!());
 

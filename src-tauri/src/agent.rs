@@ -45,6 +45,16 @@ struct TrackUpdateRequest {
 }
 
 #[derive(Deserialize)]
+struct TrackMetadataBatchRequest {
+    updates: Vec<TrackUpdateRequest>,
+}
+
+#[derive(Deserialize)]
+struct TrackRemovalRequest {
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
 struct PlaylistUpsertRequest {
     playlist: Playlist,
 }
@@ -162,6 +172,19 @@ fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandErr
         "track.update" => {
             let request: TrackUpdateRequest = decode_params(&request.params)?;
             serialize(state.update_track_metadata(&request.id, request.metadata)?)
+        }
+        "tracks.update" => {
+            let request: TrackMetadataBatchRequest = decode_params(&request.params)?;
+            let updates = request
+                .updates
+                .into_iter()
+                .map(|update| (update.id, update.metadata))
+                .collect();
+            serialize(state.update_tracks_metadata(updates)?)
+        }
+        "track.remove" => {
+            let request: TrackRemovalRequest = decode_params(&request.params)?;
+            serialize(state.remove_tracks(&request.ids)?)
         }
         "playlist.upsert" => {
             let request: PlaylistUpsertRequest = decode_params(&request.params)?;

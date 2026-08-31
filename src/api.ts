@@ -1,10 +1,32 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 export interface MediaItem {
   id: string;
+  provider?: string;
+  sourceUrl?: string | null;
   title: string;
   artist: string;
   album?: string | null;
+  albumArtist?: string | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  releaseDate?: string | null;
+  uploadDate?: string | null;
+  description?: string | null;
+  channel?: string | null;
+  channelId?: string | null;
+  uploader?: string | null;
+  uploaderId?: string | null;
+  thumbnailUrl?: string | null;
+  label?: string | null;
+  genres?: string[];
+  categories?: string[];
+  tags?: string[];
+  language?: string | null;
+  availability?: string | null;
+  isLive?: boolean;
+  viewCount?: number | null;
+  likeCount?: number | null;
   durationMs: number;
   metadataDirty?: boolean;
 }
@@ -92,6 +114,15 @@ export const playbackApi = {
     invoke<PlaybackSnapshot>("set_volume", { volumePercent }),
   moveQueueItem: (from: number, to: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("move_queue_item", { from, to }),
+};
+
+export const artworkApi = {
+  resolveYouTube: async (videoId: string): Promise<string | null> => {
+    const localPath = await invoke<string | null>("resolve_youtube_artwork", {
+      videoId,
+    });
+    return localPath ? convertFileSrc(localPath) : null;
+  },
 };
 
 export const windowApi = {

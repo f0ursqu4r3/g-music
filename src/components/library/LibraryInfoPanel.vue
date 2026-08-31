@@ -67,6 +67,51 @@ const props = defineProps<{
             {{ formatDuration(props.selectedTrack.durationMs) }}
           </dd>
         </div>
+        <div
+          v-if="props.selectedTrack.albumArtist"
+          class="flex items-start justify-between gap-3"
+        >
+          <dt class="text-(--muted-text)">Album artist</dt>
+          <dd class="m-0 text-right text-(--text)">
+            {{ props.selectedTrack.albumArtist }}
+          </dd>
+        </div>
+        <div
+          v-if="props.selectedTrack.releaseDate"
+          class="flex items-start justify-between gap-3"
+        >
+          <dt class="text-(--muted-text)">Released</dt>
+          <dd class="m-0 text-right text-(--text)">
+            {{ props.selectedTrack.releaseDate }}
+          </dd>
+        </div>
+        <div
+          v-if="props.selectedTrack.channel"
+          class="flex items-start justify-between gap-3"
+        >
+          <dt class="text-(--muted-text)">Channel</dt>
+          <dd class="m-0 text-right text-(--text)">
+            {{ props.selectedTrack.channel }}
+          </dd>
+        </div>
+        <div
+          v-if="props.selectedTrack.label"
+          class="flex items-start justify-between gap-3"
+        >
+          <dt class="text-(--muted-text)">Label</dt>
+          <dd class="m-0 text-right text-(--text)">
+            {{ props.selectedTrack.label }}
+          </dd>
+        </div>
+        <div
+          v-if="props.selectedTrack.genres?.length"
+          class="flex items-start justify-between gap-3"
+        >
+          <dt class="text-(--muted-text)">Genres</dt>
+          <dd class="m-0 text-right text-(--text)">
+            {{ props.selectedTrack.genres.join(", ") }}
+          </dd>
+        </div>
       </dl>
     </div>
 

@@ -1,41 +1,42 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
+import { artworkApi } from "@/api";
+
 const props = defineProps<{
   videoId: string | null | undefined;
 }>();
 
-type ThumbnailQuality = "maxresdefault" | "hqdefault";
-
-const quality = ref<ThumbnailQuality>("maxresdefault");
-const unavailable = ref(false);
+const source = ref<string | null>(null);
+let requestId = 0;
 const youtubeVideoId = computed(() => {
   const videoId = props.videoId?.trim() ?? "";
   return /^[A-Za-z0-9_-]{11}$/.test(videoId) ? videoId : null;
 });
-const source = computed(() => {
-  if (!youtubeVideoId.value || unavailable.value) {
-    return null;
-  }
-
-  return `https://i.ytimg.com/vi/${youtubeVideoId.value}/${quality.value}.jpg`;
-});
-
 watch(
-  () => props.videoId,
-  () => {
-    quality.value = "maxresdefault";
-    unavailable.value = false;
+  youtubeVideoId,
+  async (videoId) => {
+    const currentRequest = ++requestId;
+    source.value = null;
+    if (!videoId) {
+      return;
+    }
+    try {
+      const resolved = await artworkApi.resolveYouTube(videoId);
+      if (currentRequest === requestId) {
+        source.value = resolved;
+      }
+    } catch {
+      if (currentRequest === requestId) {
+        source.value = null;
+      }
+    }
   },
+  { immediate: true },
 );
 
-function useFallback(): void {
-  if (quality.value === "maxresdefault") {
-    quality.value = "hqdefault";
-    return;
-  }
-
-  unavailable.value = true;
+function clearBrokenImage(): void {
+  source.value = null;
 }
 </script>
 
@@ -47,6 +48,6 @@ function useFallback(): void {
     decoding="async"
     draggable="false"
     referrerpolicy="no-referrer"
-    @error="useFallback"
+    @error="clearBrokenImage"
   />
 </template>

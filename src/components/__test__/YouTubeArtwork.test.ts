@@ -1,31 +1,45 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
+const artworkMocks = vi.hoisted(() => ({
+  resolveYouTube: vi.fn(),
+}));
+
+vi.mock("@/api", () => ({
+  artworkApi: artworkMocks,
+}));
+
 describe("YouTubeArtwork", () => {
-  it("loads max-resolution artwork and falls back to the high-quality image", async () => {
-    const wrapper = mount(YouTubeArtwork, {
-      props: { videoId: "M7lc1UVf-VE" },
-    });
-
-    expect(wrapper.get("img").attributes("src")).toBe(
-      "https://i.ytimg.com/vi/M7lc1UVf-VE/maxresdefault.jpg",
-    );
-
-    await wrapper.get("img").trigger("error");
-
-    expect(wrapper.get("img").attributes("src")).toBe(
-      "https://i.ytimg.com/vi/M7lc1UVf-VE/hqdefault.jpg",
-    );
+  beforeEach(() => {
+    artworkMocks.resolveYouTube.mockReset();
   });
 
-  it("leaves the local artwork fallback visible when both CDN images fail", async () => {
+  it("uses the application artwork cache", async () => {
+    artworkMocks.resolveYouTube.mockResolvedValue(
+      "asset://localhost/cached-artwork.jpg",
+    );
     const wrapper = mount(YouTubeArtwork, {
       props: { videoId: "M7lc1UVf-VE" },
     });
+    await flushPromises();
 
-    await wrapper.get("img").trigger("error");
+    expect(wrapper.get("img").attributes("src")).toBe(
+      "asset://localhost/cached-artwork.jpg",
+    );
+    expect(artworkMocks.resolveYouTube).toHaveBeenCalledWith("M7lc1UVf-VE");
+  });
+
+  it("leaves the local artwork fallback visible when cached artwork is broken", async () => {
+    artworkMocks.resolveYouTube.mockResolvedValue(
+      "asset://localhost/broken.jpg",
+    );
+    const wrapper = mount(YouTubeArtwork, {
+      props: { videoId: "M7lc1UVf-VE" },
+    });
+    await flushPromises();
+
     await wrapper.get("img").trigger("error");
 
     expect(wrapper.find("img").exists()).toBe(false);
@@ -37,5 +51,6 @@ describe("YouTubeArtwork", () => {
     });
 
     expect(wrapper.find("img").exists()).toBe(false);
+    expect(artworkMocks.resolveYouTube).not.toHaveBeenCalled();
   });
 });

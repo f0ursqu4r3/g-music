@@ -2,10 +2,7 @@ use std::{
     collections::HashSet,
     env, fs,
     io::{BufRead, BufReader, Read, Write},
-    os::unix::{
-        fs::{OpenOptionsExt, PermissionsExt},
-        net::UnixStream,
-    },
+    os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::mpsc::{self, RecvTimeoutError},
@@ -74,9 +71,9 @@ pub enum YouTubePlaybackError {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-struct QueueEntry {
-    item: MediaItem,
-    source_url: String,
+pub(crate) struct QueueEntry {
+    pub(crate) item: MediaItem,
+    pub(crate) source_url: String,
 }
 
 pub(crate) struct ResolvedYouTubeImport {
@@ -139,6 +136,25 @@ impl YouTubePlaybackProvider {
             library.playlists,
             Some(path),
         ))
+    }
+
+    pub fn from_library_directory(directory: PathBuf) -> Result<Self, YouTubePlaybackError> {
+        let database_path = directory.join("library.sqlite3");
+        if !crate::persistence::database_exists(&database_path) {
+            let legacy_path = directory.join("library.json");
+            if legacy_path.is_file() {
+                let library = load_legacy_library(&legacy_path)?;
+                crate::persistence::save_library(
+                    &database_path,
+                    &library.entries,
+                    &library.playlists,
+                )
+                .map_err(YouTubePlaybackError::Library)?;
+                fs::rename(&legacy_path, directory.join("library.json.migrated"))
+                    .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
+            }
+        }
+        Self::from_library_path(database_path)
     }
 
     fn with_entries(entries: Vec<QueueEntry>, library_path: Option<PathBuf>) -> Self {
@@ -281,6 +297,109 @@ impl YouTubePlaybackProvider {
                 .iter()
                 .find(|entry| entry.item.id == id)
                 .map(|entry| entry.item.clone());
+        }
+        self.persist_library()?;
+        Ok(self.library_snapshot())
+    }
+
+    pub fn update_tracks_metadata(
+        &mut self,
+        updates: Vec<(String, EditableTrackMetadata)>,
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let updates = updates
+            .into_iter()
+            .map(|(id, metadata)| {
+                Ok((
+                    id,
+                    EditableTrackMetadata {
+                        title: required_metadata_value(metadata.title, "title")?,
+                        artist: required_metadata_value(metadata.artist, "artist")?,
+                        album: optional_metadata_value(metadata.album),
+                        label: optional_metadata_value(metadata.label),
+                        genres: normalize_genres(metadata.genres),
+                    },
+                ))
+            })
+            .collect::<Result<Vec<_>, YouTubePlaybackError>>()?;
+        let ids = updates
+            .iter()
+            .map(|(id, _)| id.as_str())
+            .collect::<HashSet<_>>();
+        if ids.len() != updates.len() {
+            return Err(YouTubePlaybackError::InvalidTrackMetadata(
+                "the batch contains duplicate track IDs".into(),
+            ));
+        }
+        if let Some(id) = ids
+            .iter()
+            .find(|id| !self.entries.iter().any(|entry| entry.item.id == ***id))
+        {
+            return Err(YouTubePlaybackError::TrackNotFound { id: (*id).into() });
+        }
+
+        for (id, metadata) in updates {
+            let entry = self
+                .entries
+                .iter_mut()
+                .find(|entry| entry.item.id == id)
+                .expect("batch IDs are checked against the library before mutation");
+            entry.item.title = metadata.title;
+            entry.item.artist = metadata.artist;
+            entry.item.album = metadata.album;
+            entry.item.label = metadata.label;
+            entry.item.genres = metadata.genres;
+        }
+        self.sync_queue();
+        if let Some(current_id) = self
+            .snapshot
+            .current_item
+            .as_ref()
+            .map(|item| item.id.as_str())
+        {
+            self.snapshot.current_item = self
+                .entries
+                .iter()
+                .find(|entry| entry.item.id == current_id)
+                .map(|entry| entry.item.clone());
+        }
+        self.persist_library()?;
+        Ok(self.library_snapshot())
+    }
+
+    pub fn remove_tracks(
+        &mut self,
+        track_ids: &[String],
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let track_ids = track_ids.iter().map(String::as_str).collect::<HashSet<_>>();
+        if track_ids.is_empty() {
+            return Err(YouTubePlaybackError::InvalidTrackMetadata(
+                "at least one track ID is required".into(),
+            ));
+        }
+        if let Some(id) = track_ids
+            .iter()
+            .find(|id| !self.entries.iter().any(|entry| entry.item.id == ***id))
+        {
+            return Err(YouTubePlaybackError::TrackNotFound { id: (*id).into() });
+        }
+
+        let removed_current_track = self
+            .snapshot
+            .current_item
+            .as_ref()
+            .is_some_and(|item| track_ids.contains(item.id.as_str()));
+        self.entries
+            .retain(|entry| !track_ids.contains(entry.item.id.as_str()));
+        for playlist in &mut self.playlists {
+            playlist
+                .track_ids
+                .retain(|id| !track_ids.contains(id.as_str()));
+        }
+        self.sync_queue();
+        if removed_current_track {
+            self.pause()?;
+            self.snapshot.current_item = None;
+            self.snapshot.position_ms = 0;
         }
         self.persist_library()?;
         Ok(self.library_snapshot())
@@ -573,8 +692,24 @@ struct YtDlpMetadata {
     track: Option<String>,
     artist: Option<String>,
     album: Option<String>,
+    album_artist: Option<String>,
+    track_number: Option<u32>,
+    disc_number: Option<u32>,
+    release_date: Option<String>,
+    upload_date: Option<String>,
+    description: Option<String>,
     channel: Option<String>,
+    channel_id: Option<String>,
     uploader: Option<String>,
+    uploader_id: Option<String>,
+    thumbnail: Option<String>,
+    categories: Option<Vec<String>>,
+    tags: Option<Vec<String>>,
+    language: Option<String>,
+    availability: Option<String>,
+    is_live: Option<bool>,
+    view_count: Option<u64>,
+    like_count: Option<u64>,
     duration: Option<f64>,
     webpage_url: Option<String>,
     entries: Option<Vec<Option<YtDlpMetadata>>>,
@@ -630,6 +765,18 @@ fn normalize_genres(genres: Vec<String>) -> Vec<String> {
     normalized
 }
 
+fn normalize_values(values: Option<Vec<String>>) -> Vec<String> {
+    normalize_genres(values.unwrap_or_default())
+}
+
+fn normalize_date(value: Option<String>) -> Option<String> {
+    let value = nonempty(value)?;
+    if value.len() == 8 && value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Some(format!("{}-{}-{}", &value[..4], &value[4..6], &value[6..]));
+    }
+    Some(value)
+}
+
 fn now_epoch_ms() -> Result<u64, YouTubePlaybackError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -646,10 +793,10 @@ fn is_youtube_video_id(value: &str) -> bool {
 
 fn metadata_entry(metadata: YtDlpMetadata, metadata_dirty: bool) -> Option<QueueEntry> {
     let id = nonempty(metadata.id).filter(|id| is_youtube_video_id(id))?;
-    let title = nonempty(metadata.track).or_else(|| nonempty(metadata.title))?;
-    let artist = nonempty(metadata.artist)
-        .or_else(|| nonempty(metadata.channel))
-        .or_else(|| nonempty(metadata.uploader))
+    let title = nonempty(metadata.track.clone()).or_else(|| nonempty(metadata.title.clone()))?;
+    let artist = nonempty(metadata.artist.clone())
+        .or_else(|| nonempty(metadata.channel.clone()))
+        .or_else(|| nonempty(metadata.uploader.clone()))
         .unwrap_or_else(|| "YouTube".into());
     let duration_ms = metadata
         .duration
@@ -664,11 +811,31 @@ fn metadata_entry(metadata: YtDlpMetadata, metadata_dirty: bool) -> Option<Queue
     Some(QueueEntry {
         item: MediaItem {
             id,
+            provider: "youtube".into(),
+            source_url: Some(source_url.clone()),
             title,
             artist,
             album: nonempty(metadata.album),
+            album_artist: nonempty(metadata.album_artist),
+            track_number: metadata.track_number,
+            disc_number: metadata.disc_number,
+            release_date: normalize_date(metadata.release_date),
+            upload_date: normalize_date(metadata.upload_date),
+            description: nonempty(metadata.description),
+            channel: nonempty(metadata.channel),
+            channel_id: nonempty(metadata.channel_id),
+            uploader: nonempty(metadata.uploader),
+            uploader_id: nonempty(metadata.uploader_id),
+            thumbnail_url: nonempty(metadata.thumbnail),
             label: None,
             genres: Vec::new(),
+            categories: normalize_values(metadata.categories),
+            tags: normalize_values(metadata.tags),
+            language: nonempty(metadata.language),
+            availability: nonempty(metadata.availability),
+            is_live: metadata.is_live.unwrap_or(false),
+            view_count: metadata.view_count,
+            like_count: metadata.like_count,
             duration_ms,
             metadata_dirty,
             play_count: 0,
@@ -749,14 +916,17 @@ struct StoredLibrary {
 }
 
 fn load_library(path: &Path) -> Result<StoredLibrary, YouTubePlaybackError> {
-    if !path.is_file() {
-        return Ok(StoredLibrary {
-            version: LIBRARY_VERSION,
-            entries: Vec::new(),
-            playlists: Vec::new(),
-        });
-    }
+    let (entries, playlists) =
+        crate::persistence::load_library(path).map_err(YouTubePlaybackError::Library)?;
+    validate_stored_playlists(&entries, &playlists)?;
+    Ok(StoredLibrary {
+        version: LIBRARY_VERSION,
+        entries,
+        playlists,
+    })
+}
 
+fn load_legacy_library(path: &Path) -> Result<StoredLibrary, YouTubePlaybackError> {
     let contents = fs::read_to_string(path)
         .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
     let library: StoredLibrary = serde_json::from_str(&contents)
@@ -812,34 +982,8 @@ fn write_library(
     entries: &[QueueEntry],
     playlists: &[Playlist],
 ) -> Result<(), YouTubePlaybackError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-    }
-    let temporary_path = path.with_extension("json.tmp");
-    let contents = serde_json::to_vec_pretty(&StoredLibrary {
-        version: LIBRARY_VERSION,
-        entries: entries.to_vec(),
-        playlists: playlists.to_vec(),
-    })
-    .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .mode(0o600)
-        .open(&temporary_path)
-        .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-    file.set_permissions(fs::Permissions::from_mode(0o600))
-        .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-    file.write_all(&contents)
-        .and_then(|()| file.flush())
-        .and_then(|()| file.sync_all())
-        .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-    fs::rename(&temporary_path, path)
-        .map_err(|error| YouTubePlaybackError::Library(error.to_string()))?;
-
-    Ok(())
+    crate::persistence::save_library(path, entries, playlists)
+        .map_err(YouTubePlaybackError::Library)
 }
 
 pub(crate) fn resolve_youtube_imports(
@@ -1530,11 +1674,11 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        YouTubePlaybackProvider, discovery_metadata_arguments, finish_metadata_resolution,
-        member_only_error_count, member_only_video_ids, merge_queue_entries, metadata_arguments,
-        metadata_error_message, mpv_arguments, parse_import_metadata,
-        parse_import_metadata_with_dirty_state, parse_streamed_metadata, resolve_metadata,
-        spawn_parent_exit_watchdog, validate_youtube_url,
+        LIBRARY_VERSION, StoredLibrary, YouTubePlaybackProvider, discovery_metadata_arguments,
+        finish_metadata_resolution, member_only_error_count, member_only_video_ids,
+        merge_queue_entries, metadata_arguments, metadata_error_message, mpv_arguments,
+        parse_import_metadata, parse_import_metadata_with_dirty_state, parse_streamed_metadata,
+        resolve_metadata, spawn_parent_exit_watchdog, validate_youtube_url,
     };
     use crate::playback::{EditableTrackMetadata, Playlist};
 
@@ -1607,7 +1751,7 @@ mod tests {
     #[test]
     fn parses_rich_yt_dlp_metadata_into_an_imported_track() {
         let tracks = parse_import_metadata(
-            r#"{"id":"M7lc1UVf-VE","title":"Video title","track":"YouTube Developers Live","artist":"Google for Developers","album":"API Sessions","channel":"Google Developers","duration":238.25,"webpage_url":"https://www.youtube.com/watch?v=M7lc1UVf-VE"}"#,
+            r#"{"id":"M7lc1UVf-VE","title":"Video title","track":"YouTube Developers Live","artist":"Google for Developers","album":"API Sessions","album_artist":"Google","track_number":3,"disc_number":1,"release_date":"20250102","upload_date":"20250103","description":"A complete metadata fixture.","channel":"Google Developers","channel_id":"UC_x5XG1OV2P6uZZ5FSM9Ttw","uploader":"Google for Developers","uploader_id":"GoogleDevelopers","thumbnail":"https://i.ytimg.com/vi/M7lc1UVf-VE/maxresdefault.jpg","categories":["Science & Technology","Music"],"tags":["API","Developers"],"language":"en","availability":"public","is_live":false,"view_count":42,"like_count":7,"duration":238.25,"webpage_url":"https://www.youtube.com/watch?v=M7lc1UVf-VE"}"#,
         )
         .expect("fixture metadata is valid");
         let track = tracks.first().expect("one track is imported");
@@ -1617,6 +1761,36 @@ mod tests {
         assert_eq!(track.item.title, "YouTube Developers Live");
         assert_eq!(track.item.artist, "Google for Developers");
         assert_eq!(track.item.album.as_deref(), Some("API Sessions"));
+        assert_eq!(track.item.album_artist.as_deref(), Some("Google"));
+        assert_eq!(track.item.track_number, Some(3));
+        assert_eq!(track.item.disc_number, Some(1));
+        assert_eq!(track.item.release_date.as_deref(), Some("2025-01-02"));
+        assert_eq!(track.item.upload_date.as_deref(), Some("2025-01-03"));
+        assert_eq!(
+            track.item.description.as_deref(),
+            Some("A complete metadata fixture.")
+        );
+        assert_eq!(track.item.channel.as_deref(), Some("Google Developers"));
+        assert_eq!(
+            track.item.channel_id.as_deref(),
+            Some("UC_x5XG1OV2P6uZZ5FSM9Ttw")
+        );
+        assert_eq!(
+            track.item.uploader.as_deref(),
+            Some("Google for Developers")
+        );
+        assert_eq!(track.item.uploader_id.as_deref(), Some("GoogleDevelopers"));
+        assert_eq!(
+            track.item.thumbnail_url.as_deref(),
+            Some("https://i.ytimg.com/vi/M7lc1UVf-VE/maxresdefault.jpg")
+        );
+        assert_eq!(track.item.categories, ["Science & Technology", "Music"]);
+        assert_eq!(track.item.tags, ["API", "Developers"]);
+        assert_eq!(track.item.language.as_deref(), Some("en"));
+        assert_eq!(track.item.availability.as_deref(), Some("public"));
+        assert!(!track.item.is_live);
+        assert_eq!(track.item.view_count, Some(42));
+        assert_eq!(track.item.like_count, Some(7));
         assert_eq!(track.item.duration_ms, 238_250);
         assert_eq!(
             track.source_url,
@@ -1676,6 +1850,47 @@ mod tests {
 
         assert!(snapshot.queue[0].metadata_dirty);
         fs::remove_file(path).expect("temporary library should be removable");
+    }
+
+    #[test]
+    fn migrates_a_legacy_json_library_to_sqlite_once() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "gmusic-library-migration-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).expect("temporary library directory should exist");
+        let legacy_path = directory.join("library.json");
+        fs::write(
+            &legacy_path,
+            serde_json::to_vec(&StoredLibrary {
+                version: LIBRARY_VERSION,
+                entries: parse_import_metadata(
+                    r#"{"id":"M7lc1UVf-VE","title":"Legacy track","channel":"Channel"}"#,
+                )
+                .expect("legacy fixture is valid"),
+                playlists: Vec::new(),
+            })
+            .expect("legacy fixture serializes"),
+        )
+        .expect("legacy library should write");
+
+        let provider = YouTubePlaybackProvider::from_library_directory(directory.clone())
+            .expect("legacy library should migrate");
+
+        assert_eq!(provider.library_snapshot().tracks[0].title, "Legacy track");
+        assert!(directory.join("library.sqlite3").is_file());
+        assert!(directory.join("library.json.migrated").is_file());
+        assert!(!legacy_path.exists());
+        drop(provider);
+
+        let restored = YouTubePlaybackProvider::from_library_directory(directory.clone())
+            .expect("existing SQLite library should load");
+        assert_eq!(restored.library_snapshot().tracks.len(), 1);
+        fs::remove_dir_all(directory).expect("temporary library directory should be removable");
     }
 
     #[test]
@@ -1862,6 +2077,72 @@ mod tests {
             track.source_url,
             "https://www.youtube.com/watch?v=M7lc1UVf-VE"
         );
+    }
+
+    #[test]
+    fn removes_tracks_from_the_library_queue_and_playlists() {
+        let mut provider = YouTubePlaybackProvider::new();
+        provider.entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        provider.sync_queue();
+        provider.playlists = vec![Playlist {
+            id: "focus".into(),
+            name: "Focus".into(),
+            track_ids: vec!["M7lc1UVf-VE".into(), "BaW_jenozKc".into()],
+        }];
+
+        provider
+            .remove_tracks(&["M7lc1UVf-VE".into()])
+            .expect("known tracks can be removed");
+
+        let library = provider.library_snapshot();
+        assert_eq!(library.tracks.len(), 1);
+        assert_eq!(library.tracks[0].id, "BaW_jenozKc");
+        assert_eq!(library.playlists[0].track_ids, ["BaW_jenozKc"]);
+        assert_eq!(provider.snapshot.queue.len(), 1);
+        assert_eq!(provider.snapshot.queue[0].id, "BaW_jenozKc");
+    }
+
+    #[test]
+    fn updates_multiple_tracks_metadata_in_one_library_operation() {
+        let mut provider = YouTubePlaybackProvider::new();
+        provider.entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+
+        provider
+            .update_tracks_metadata(vec![
+                (
+                    "M7lc1UVf-VE".into(),
+                    EditableTrackMetadata {
+                        title: "Updated first".into(),
+                        artist: "First artist".into(),
+                        album: None,
+                        label: Some("First label".into()),
+                        genres: vec!["Ambient".into()],
+                    },
+                ),
+                (
+                    "BaW_jenozKc".into(),
+                    EditableTrackMetadata {
+                        title: "Updated second".into(),
+                        artist: "Second artist".into(),
+                        album: Some("Second album".into()),
+                        label: Some("Second label".into()),
+                        genres: vec!["Electronic".into()],
+                    },
+                ),
+            ])
+            .expect("known tracks accept batch metadata updates");
+
+        let library = provider.library_snapshot();
+        assert_eq!(library.tracks[0].title, "Updated first");
+        assert_eq!(library.tracks[0].label.as_deref(), Some("First label"));
+        assert_eq!(library.tracks[1].title, "Updated second");
+        assert_eq!(library.tracks[1].album.as_deref(), Some("Second album"));
     }
 
     #[test]
