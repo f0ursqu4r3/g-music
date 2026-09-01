@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
   playbackApi,
@@ -43,6 +43,10 @@ describe("playbackApi", () => {
     await expect(playbackApi.importYouTubeUrls(urls)).resolves.toBeUndefined();
 
     expect(invoke).toHaveBeenCalledWith("import_youtube_urls", { urls });
+  });
+
+  it("uses a payload-free response for live volume updates", () => {
+    expectTypeOf(playbackApi.setVolume).returns.toEqualTypeOf<Promise<void>>();
   });
 
   it("plays a selected library track through the playback service", async () => {

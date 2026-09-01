@@ -65,17 +65,29 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     return phase === "started" || phase === "resolving" || phase === "merging";
   });
 
+  function applyTransport(nextTransport: PlaybackTransport): void {
+    transport.value = {
+      currentItem: nextTransport.currentItem,
+      positionMs: nextTransport.positionMs,
+      status: nextTransport.status,
+      volumePercent: nextTransport.volumePercent,
+    };
+    if (nextTransport.volumePercent > 0) {
+      lastUnmutedVolume = nextTransport.volumePercent;
+    }
+  }
+
   function applySnapshot(nextSnapshot: PlaybackSnapshot): void {
     library.value = { tracks: nextSnapshot.queue };
-    transport.value = {
-      currentItem: nextSnapshot.currentItem,
-      positionMs: nextSnapshot.positionMs,
-      status: nextSnapshot.status,
-      volumePercent: nextSnapshot.volumePercent,
-    };
-    if (nextSnapshot.volumePercent > 0) {
-      lastUnmutedVolume = nextSnapshot.volumePercent;
+    applyTransport(nextSnapshot);
+  }
+
+  function updateVolumeLocally(volumePercent: number): void {
+    if (!transport.value) {
+      return;
     }
+
+    transport.value = { ...transport.value, volumePercent };
   }
 
   async function execute(
@@ -254,6 +266,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       lastUnmutedVolume = nextVolume;
     }
     pendingVolume = nextVolume;
+    updateVolumeLocally(nextVolume);
 
     if (isUpdatingVolume) {
       return;
@@ -265,7 +278,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       while (pendingVolume !== undefined) {
         const volume = pendingVolume;
         pendingVolume = undefined;
-        applySnapshot(await client.setVolume(volume));
+        await client.setVolume(volume);
       }
     } catch (error) {
       errorMessage.value = readErrorMessage(error);

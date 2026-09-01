@@ -268,6 +268,53 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value?.volumePercent).toBe(50);
   });
 
+  it("updates volume locally without replacing the library during a drag", async () => {
+    const initial = {
+      ...paused,
+      queue: [
+        {
+          artist: "YouTube Creators",
+          durationMs: 207_000,
+          id: "BaW_jenozKc",
+          title: "Creator Studio Session",
+        },
+      ],
+    };
+    let resolveVolume: ((snapshot: PlaybackSnapshot) => void) | undefined;
+    const pendingVolume = new Promise<PlaybackSnapshot>((resolve) => {
+      resolveVolume = resolve;
+    });
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn().mockResolvedValue(initial),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn().mockReturnValue(pendingVolume),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    const loadedLibrary = playback.library.value;
+    const update = playback.setVolume(45);
+
+    expect(playback.snapshot.value?.volumePercent).toBe(45);
+    expect(playback.library.value).toBe(loadedLibrary);
+
+    resolveVolume?.({
+      ...initial,
+      volumePercent: 45,
+      queue: [...initial.queue],
+    });
+    await update;
+
+    expect(playback.library.value).toBe(loadedLibrary);
+  });
+
   it("preserves a structured Tauri command error message", async () => {
     const client = {
       inspect: vi.fn(),

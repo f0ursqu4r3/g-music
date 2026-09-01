@@ -1403,7 +1403,7 @@ impl MpvPlayer {
     }
 
     fn set_volume(&mut self, volume_percent: u8) -> Result<(), YouTubePlaybackError> {
-        self.send(json!(["set_property", "volume", volume_percent]))?;
+        self.send_without_reply(json!(["set_property", "volume", volume_percent]))?;
         Ok(())
     }
 
@@ -1579,6 +1579,38 @@ impl MpvPlayer {
         }
     }
 
+    fn send_without_reply(&mut self, command: Value) -> Result<(), YouTubePlaybackError> {
+        self.request_id += 1;
+        let request_id = self.request_id;
+        let command_name = command
+            .as_array()
+            .and_then(|parts| parts.first())
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        tracing::debug!(
+            request_id,
+            command = command_name,
+            "sending one-way mpv IPC command"
+        );
+        let mut stream = UnixStream::connect(&self.socket_path)
+            .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+        let request = json!({
+            "command": command,
+            "request_id": request_id,
+        });
+        serde_json::to_writer(&mut stream, &request)
+            .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+        stream
+            .write_all(b"\n")
+            .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+        tracing::debug!(
+            request_id,
+            command = command_name,
+            "one-way mpv IPC command sent"
+        );
+        Ok(())
+    }
+
     fn stop(&mut self) {
         if let Some(mut watchdog) = self.watchdog.take() {
             let _ = watchdog.kill();
@@ -1666,7 +1698,10 @@ fn playback_path() -> String {
 mod tests {
     use std::{
         fs,
+        io::{BufRead, BufReader, Write},
+        os::unix::net::UnixListener,
         process::{Command, Stdio},
+        sync::mpsc,
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
@@ -1674,11 +1709,12 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        LIBRARY_VERSION, StoredLibrary, YouTubePlaybackProvider, discovery_metadata_arguments,
-        finish_metadata_resolution, member_only_error_count, member_only_video_ids,
-        merge_queue_entries, metadata_arguments, metadata_error_message, mpv_arguments,
-        parse_import_metadata, parse_import_metadata_with_dirty_state, parse_streamed_metadata,
-        resolve_metadata, spawn_parent_exit_watchdog, validate_youtube_url,
+        LIBRARY_VERSION, MpvPlayer, StoredLibrary, YouTubePlaybackProvider,
+        discovery_metadata_arguments, finish_metadata_resolution, member_only_error_count,
+        member_only_video_ids, merge_queue_entries, metadata_arguments, metadata_error_message,
+        mpv_arguments, parse_import_metadata, parse_import_metadata_with_dirty_state,
+        parse_streamed_metadata, resolve_metadata, spawn_parent_exit_watchdog,
+        validate_youtube_url,
     };
     use crate::playback::{EditableTrackMetadata, Playlist};
 
@@ -1699,6 +1735,69 @@ mod tests {
             .expect_err("non-YouTube hosts must be rejected");
 
         assert_eq!(error.to_string(), "only YouTube URLs are supported");
+    }
+
+    #[test]
+    fn sends_volume_ipc_without_waiting_for_mpv_reply() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let socket_path = std::env::temp_dir().join(format!(
+            "gmusic-volume-ipc-{}-{unique}.sock",
+            std::process::id()
+        ));
+        let listener = UnixListener::bind(&socket_path).expect("volume test socket should bind");
+        let (request_tx, request_rx) = mpsc::channel();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("volume request should connect");
+            let mut reader = BufReader::new(stream);
+            let mut request = String::new();
+            reader
+                .read_line(&mut request)
+                .expect("volume request should be readable");
+            request_tx
+                .send(request)
+                .expect("volume request should be reported");
+            reply_rx.recv().expect("test should release mpv reply");
+            let mut stream = reader.into_inner();
+            let _ = stream.write_all(b"{\"request_id\":1,\"error\":\"success\"}\n");
+        });
+
+        let mut player = MpvPlayer::new();
+        player.socket_path = socket_path.clone();
+        let (result_tx, result_rx) = mpsc::channel();
+        thread::spawn(move || {
+            result_tx
+                .send(player.set_volume(45))
+                .expect("volume result should be reported");
+        });
+
+        let request = request_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("mpv should receive the volume command");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&request)
+                .expect("volume request should be JSON")["command"],
+            serde_json::json!(["set_property", "volume", 45])
+        );
+        let result_before_reply = result_rx.recv_timeout(Duration::from_millis(100)).ok();
+        let returned_before_reply = result_before_reply.is_some();
+        reply_tx.send(()).expect("mpv reply should be released");
+        let result = result_before_reply.unwrap_or_else(|| {
+            result_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("volume command should complete after the reply")
+        });
+        server.join().expect("volume IPC server should stop");
+        let _ = fs::remove_file(socket_path);
+
+        assert!(
+            returned_before_reply,
+            "volume command waited for the mpv IPC response"
+        );
+        result.expect("volume command should succeed");
     }
 
     #[test]

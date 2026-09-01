@@ -113,8 +113,8 @@ export const playbackApi = {
   next: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("next"),
   seek: (positionMs: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("seek", { positionMs }),
-  setVolume: (volumePercent: number): Promise<PlaybackSnapshot> =>
-    invoke<PlaybackSnapshot>("set_volume", { volumePercent }),
+  setVolume: (volumePercent: number): Promise<void> =>
+    invoke<void>("set_volume", { volumePercent }),
   moveQueueItem: (from: number, to: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("move_queue_item", { from, to }),
 };

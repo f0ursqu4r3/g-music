@@ -872,13 +872,9 @@ pub fn seek(
 }
 
 #[tauri::command]
-pub fn set_volume(
-    state: State<'_, AppState>,
-    volume_percent: u8,
-) -> Result<PlaybackSnapshot, CommandError> {
+pub fn set_volume(state: State<'_, AppState>, volume_percent: u8) -> Result<(), CommandError> {
     with_playback(&state, "set_volume", |playback| {
-        playback.set_volume(volume_percent)?;
-        playback.snapshot()
+        playback.set_volume(volume_percent)
     })
 }
 
