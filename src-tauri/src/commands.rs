@@ -7,7 +7,7 @@ use std::{
     thread,
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::playback::{
@@ -129,6 +129,13 @@ impl AppState {
 pub struct CommandError {
     pub code: &'static str,
     pub message: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackMetadataUpdate {
+    id: String,
+    metadata: EditableTrackMetadata,
 }
 
 #[derive(Clone, Serialize)]
@@ -747,6 +754,24 @@ pub fn show_import_window(app: AppHandle) -> Result<(), CommandError> {
         code: "import_window_failed",
         message: error.to_string(),
     })
+}
+
+#[tauri::command]
+pub fn update_tracks_metadata(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    updates: Vec<TrackMetadataUpdate>,
+) -> Result<LibrarySnapshot, CommandError> {
+    let snapshot = state.update_tracks_metadata(
+        updates
+            .into_iter()
+            .map(|update| (update.id, update.metadata))
+            .collect(),
+    )?;
+    if let Err(error) = app.emit("library-updated", ()) {
+        tracing::debug!(%error, "could not deliver library update event");
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]

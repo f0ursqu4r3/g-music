@@ -205,6 +205,63 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value).toEqual(selected);
   });
 
+  it("replaces the library after saving edited metadata without changing transport", async () => {
+    const library = {
+      tracks: [
+        {
+          album: "API Sessions",
+          artist: "Google for Developers",
+          durationMs: 238_000,
+          id: "M7lc1UVf-VE",
+          title: "YouTube Developers Live",
+        },
+      ],
+    };
+    const updatedLibrary = {
+      tracks: [{ ...library.tracks[0], title: "Renamed session" }],
+    };
+    const transport = {
+      currentItem: library.tracks[0],
+      positionMs: 4_000,
+      status: "playing" as const,
+      volumePercent: 70,
+    };
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn(),
+      inspectLibrary: vi.fn().mockResolvedValue(library),
+      inspectTransport: vi.fn().mockResolvedValue(transport),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      updateTracksMetadata: vi.fn().mockResolvedValue(updatedLibrary),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    await playback.updateTracksMetadata([
+      {
+        id: "M7lc1UVf-VE",
+        metadata: {
+          album: "API Sessions",
+          artist: "Google for Developers",
+          genres: [],
+          label: null,
+          title: "Renamed session",
+        },
+      },
+    ]);
+
+    expect(client.updateTracksMetadata).toHaveBeenCalledOnce();
+    expect(playback.library.value).toEqual(updatedLibrary);
+    expect(playback.transport.value).toEqual(transport);
+  });
+
   it("mutes and restores the prior non-zero volume", async () => {
     const muted = { ...paused, volumePercent: 0 };
     const restored = { ...paused, volumePercent: 70 };

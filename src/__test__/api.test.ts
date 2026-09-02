@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
   playbackApi,
+  type EditableTrackMetadata,
+  type LibrarySnapshot,
   type PlaybackSnapshot,
   windowApi,
   youtubeAuthApi,
@@ -59,6 +61,29 @@ describe("playbackApi", () => {
     expect(invoke).toHaveBeenCalledWith("play_track", {
       id: "M7lc1UVf-VE",
     });
+  });
+
+  it("updates selected library metadata through the batched command", async () => {
+    const library: LibrarySnapshot = { tracks: [] };
+    const updates: Array<{ id: string; metadata: EditableTrackMetadata }> = [
+      {
+        id: "M7lc1UVf-VE",
+        metadata: {
+          album: "API Sessions",
+          artist: "Google for Developers",
+          genres: ["Educational"],
+          label: null,
+          title: "YouTube Developers Live",
+        },
+      },
+    ];
+    vi.mocked(invoke).mockResolvedValue(library);
+
+    await expect(playbackApi.updateTracksMetadata(updates)).resolves.toEqual(
+      library,
+    );
+
+    expect(invoke).toHaveBeenCalledWith("update_tracks_metadata", { updates });
   });
 });
 

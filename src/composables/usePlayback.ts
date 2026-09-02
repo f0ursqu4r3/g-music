@@ -2,6 +2,7 @@ import { computed, ref, shallowRef } from "vue";
 
 import {
   playbackApi,
+  type TrackMetadataUpdate,
   type ImportProgress,
   type LibrarySnapshot,
   type MetadataRefreshSnapshot,
@@ -11,12 +12,18 @@ import {
 
 export type PlaybackClient = Omit<
   typeof playbackApi,
-  "inspectLibrary" | "inspectMetadataRefreshes" | "inspectTransport"
+  | "inspectLibrary"
+  | "inspectMetadataRefreshes"
+  | "inspectTransport"
+  | "updateTracksMetadata"
 > &
   Partial<
     Pick<
       typeof playbackApi,
-      "inspectLibrary" | "inspectMetadataRefreshes" | "inspectTransport"
+      | "inspectLibrary"
+      | "inspectMetadataRefreshes"
+      | "inspectTransport"
+      | "updateTracksMetadata"
     >
   >;
 
@@ -252,6 +259,24 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await startPlayback(() => client.playTrack(id));
   }
 
+  async function updateTracksMetadata(
+    updates: TrackMetadataUpdate[],
+  ): Promise<void> {
+    if (isUpdating.value || !client.updateTracksMetadata) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      library.value = await client.updateTracksMetadata(updates);
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
   async function seek(positionMs: number): Promise<void> {
     await execute(() => client.seek(positionMs));
   }
@@ -325,6 +350,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     toggle,
     toggleMute,
     transport,
+    updateTracksMetadata,
     updateImportProgress,
     updateMetadataRefreshes,
   };

@@ -43,6 +43,7 @@ pub fn run() {
             commands::disconnect_youtube,
             commands::import_youtube_urls,
             commands::show_import_window,
+            commands::update_tracks_metadata,
             commands::play,
             commands::pause,
             commands::previous,

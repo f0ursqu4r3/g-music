@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ExternalLink, Mic2 } from 'lucide-vue-next';
+import { ExternalLink, Mic2, Pencil } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 import type { MediaItem } from '@/api';
@@ -13,6 +13,12 @@ const props = defineProps<{
   selectedTrack: MediaItem | null;
   selectedAlbum: LibraryAlbum | null;
   selectedArtist: LibraryArtist | null;
+}>();
+
+const emit = defineEmits<{
+  editTrack: [track: MediaItem];
+  editAlbum: [album: LibraryAlbum];
+  editArtist: [artist: LibraryArtist];
 }>();
 
 interface TrackDetail {
@@ -154,6 +160,15 @@ watch(
           <p class="mt-1 text-sm text-(--muted-text)">
             {{ props.selectedTrack.artist }}
           </p>
+          <button
+            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+            :aria-label="`Edit track ${props.selectedTrack.title}`"
+            type="button"
+            @click="emit('editTrack', props.selectedTrack)"
+          >
+            <Pencil aria-hidden="true" />
+            Edit metadata
+          </button>
           <section
             v-if="props.selectedTrack.description"
             class="mt-5 border-t border-(--line) pt-4"
@@ -279,6 +294,15 @@ watch(
           <p class="mt-1 text-sm text-(--muted-text)">
             {{ props.selectedAlbum.artist }}
           </p>
+          <button
+            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+            :aria-label="`Edit album ${props.selectedAlbum.title}`"
+            type="button"
+            @click="emit('editAlbum', props.selectedAlbum)"
+          >
+            <Pencil aria-hidden="true" />
+            Edit metadata
+          </button>
           <dl class="mt-6 grid gap-3 border-t border-(--line) pt-4 text-xs">
             <div class="flex items-start justify-between gap-3">
               <dt class="text-(--muted-text)">Tracks</dt>
@@ -297,7 +321,7 @@ watch(
 
         <div v-else-if="props.selectedArtist" data-library-info="artist">
           <div
-            class="cover-art -mx-5 -mt-5 mb-5 grid aspect-square w-[calc(100%+2.5rem)] place-items-center rounded-b-xl [&>svg]:size-20 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+            class="cover-art -mx-5 -mt-5 mb-5 grid aspect-square w-[calc(100%+2.5rem)] place-items-center [&>svg]:size-20 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
             data-library-info-artwork
           >
             <Mic2 aria-hidden="true" />
@@ -314,6 +338,15 @@ watch(
           <h2 class="m-0 text-lg font-semibold text-(--text)">
             {{ props.selectedArtist.name }}
           </h2>
+          <button
+            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+            :aria-label="`Edit artist ${props.selectedArtist.name}`"
+            type="button"
+            @click="emit('editArtist', props.selectedArtist)"
+          >
+            <Pencil aria-hidden="true" />
+            Edit metadata
+          </button>
           <dl class="mt-6 grid gap-3 border-t border-(--line) pt-4 text-xs">
             <div class="flex items-start justify-between gap-3">
               <dt class="text-(--muted-text)">Albums</dt>

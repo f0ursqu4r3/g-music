@@ -299,6 +299,151 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("edits the selected track metadata in a modal", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+    await wrapper
+      .get('[aria-label="Edit track YouTube Developers Live"]')
+      .trigger("click");
+    expect(wrapper.get('[role="dialog"]').text()).toContain("Edit Track");
+
+    await wrapper
+      .get('[data-metadata-field="title"]')
+      .setValue("Renamed session");
+    await wrapper.get('[role="dialog"] form').trigger("submit");
+
+    expect(wrapper.emitted("updateTracksMetadata")).toEqual([
+      [
+        [
+          {
+            id: "M7lc1UVf-VE",
+            metadata: {
+              album: "API Sessions",
+              artist: "Google for Developers",
+              genres: [],
+              label: null,
+              title: "Renamed session",
+            },
+          },
+        ],
+      ],
+    ]);
+  });
+
+  it("edits album metadata across its tracks without changing their titles", async () => {
+    const albumTracks: MediaItem[] = [
+      { ...importedTracks[0], album: "Shared", id: "shared-1", title: "First" },
+      {
+        ...importedTracks[0],
+        album: "Shared",
+        id: "shared-2",
+        title: "Second",
+      },
+    ];
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: {
+          ...snapshot,
+          currentItem: albumTracks[0],
+          queue: albumTracks,
+        },
+      },
+    });
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    await wrapper.get(".album-tile").trigger("click");
+    await wrapper.get('[aria-label="Edit album Shared"]').trigger("click");
+    await wrapper
+      .get('[data-metadata-field="album"]')
+      .setValue("Renamed album");
+    await wrapper.get('[role="dialog"] form').trigger("submit");
+
+    expect(wrapper.emitted("updateTracksMetadata")).toEqual([
+      [
+        [
+          {
+            id: "shared-1",
+            metadata: {
+              album: "Renamed album",
+              artist: "Google for Developers",
+              genres: [],
+              label: null,
+              title: "First",
+            },
+          },
+          {
+            id: "shared-2",
+            metadata: {
+              album: "Renamed album",
+              artist: "Google for Developers",
+              genres: [],
+              label: null,
+              title: "Second",
+            },
+          },
+        ],
+      ],
+    ]);
+  });
+
+  it("edits artist metadata across that artist's tracks", async () => {
+    const artistTracks: MediaItem[] = [
+      { ...importedTracks[0], id: "artist-1", title: "First" },
+      { ...importedTracks[0], id: "artist-2", title: "Second" },
+    ];
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: {
+          ...snapshot,
+          currentItem: artistTracks[0],
+          queue: artistTracks,
+        },
+      },
+    });
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    await wrapper.get(".artist-tile").trigger("click");
+    await wrapper
+      .get('[aria-label="Edit artist Google for Developers"]')
+      .trigger("click");
+    await wrapper
+      .get('[data-metadata-field="artist"]')
+      .setValue("Renamed artist");
+    await wrapper.get('[role="dialog"] form').trigger("submit");
+
+    expect(wrapper.emitted("updateTracksMetadata")).toEqual([
+      [
+        [
+          {
+            id: "artist-1",
+            metadata: {
+              album: "API Sessions",
+              artist: "Renamed artist",
+              genres: [],
+              label: null,
+              title: "First",
+            },
+          },
+          {
+            id: "artist-2",
+            metadata: {
+              album: "API Sessions",
+              artist: "Renamed artist",
+              genres: [],
+              label: null,
+              title: "Second",
+            },
+          },
+        ],
+      ],
+    ]);
+  });
+
   it("shows complete metadata and listening history for a selected track", async () => {
     const detailedTrack: MediaItem = {
       ...importedTracks[0],

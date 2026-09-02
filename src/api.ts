@@ -55,6 +55,19 @@ export interface LibrarySnapshot {
   tracks: MediaItem[];
 }
 
+export interface EditableTrackMetadata {
+  title: string;
+  artist: string;
+  album: string | null;
+  label: string | null;
+  genres: string[];
+}
+
+export interface TrackMetadataUpdate {
+  id: string;
+  metadata: EditableTrackMetadata;
+}
+
 export type ImportProgressPhase =
   "started" | "resolving" | "merging" | "completed" | "failed";
 
@@ -102,6 +115,10 @@ export const playbackApi = {
     invoke<PlaybackTransport>("inspect_playback_transport"),
   inspectMetadataRefreshes: (): Promise<MetadataRefreshSnapshot> =>
     invoke<MetadataRefreshSnapshot>("inspect_metadata_refreshes"),
+  updateTracksMetadata: (
+    updates: TrackMetadataUpdate[],
+  ): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("update_tracks_metadata", { updates }),
   importYouTubeUrls: (urls: string[]): Promise<void> =>
     invoke<void>("import_youtube_urls", { urls }),
   play: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("play"),

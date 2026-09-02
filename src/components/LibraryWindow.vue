@@ -6,12 +6,16 @@ import type {
   MetadataRefreshSnapshot,
   PlaybackSnapshot,
   PlaybackTransport,
+  TrackMetadataUpdate,
 } from "@/api";
 import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
 import LibraryAlbumGrid from "./library/LibraryAlbumGrid.vue";
 import LibraryArtistGrid from "./library/LibraryArtistGrid.vue";
 import LibraryHeader from "./library/LibraryHeader.vue";
 import LibraryInfoPanel from "./library/LibraryInfoPanel.vue";
+import LibraryMetadataEditor, {
+  type MetadataEditTarget,
+} from "./library/LibraryMetadataEditor.vue";
 import LibraryPlaybackFooter from "./library/LibraryPlaybackFooter.vue";
 import LibrarySidebar from "./library/LibrarySidebar.vue";
 import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
@@ -56,6 +60,7 @@ const emit = defineEmits<{
   toggleMute: [];
   openImport: [];
   playTrack: [id: string];
+  updateTracksMetadata: [updates: TrackMetadataUpdate[]];
 }>();
 
 const activeCollection = ref<LibraryCollection>("tracks");
@@ -64,6 +69,7 @@ const groupBy = ref<LibraryGroupOption>("none");
 const gridItemSize = ref(176);
 const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
+const metadataEditorTarget = ref<MetadataEditTarget | null>(null);
 const detailsSidebarOpen = ref(true);
 const playback = computed<PlaybackTransport>(
   () =>
@@ -320,6 +326,38 @@ function selectArtist(artist: LibraryArtist): void {
   selectedLibraryItem.value = { kind: "artist", name: artist.name };
 }
 
+function openTrackMetadataEditor(track: MediaItem): void {
+  metadataEditorTarget.value = {
+    kind: "track",
+    name: track.title,
+    tracks: [track],
+  };
+}
+
+function openAlbumMetadataEditor(album: LibraryAlbum): void {
+  metadataEditorTarget.value = {
+    kind: "album",
+    name: album.title,
+    tracks: allTracks.value.filter(
+      (track) =>
+        track.artist === album.artist && track.album?.trim() === album.title,
+    ),
+  };
+}
+
+function openArtistMetadataEditor(artist: LibraryArtist): void {
+  metadataEditorTarget.value = {
+    kind: "artist",
+    name: artist.name,
+    tracks: allTracks.value.filter((track) => track.artist === artist.name),
+  };
+}
+
+function saveMetadata(updates: TrackMetadataUpdate[]): void {
+  metadataEditorTarget.value = null;
+  emit("updateTracksMetadata", updates);
+}
+
 function openAlbum(album: LibraryAlbum): void {
   selectAlbum(album);
   trackFilter.value = { label: album.title, type: "album", value: album.key };
@@ -453,6 +491,9 @@ function toggleMetadataRefresh(): void {
       :selected-album="selectedAlbum"
       :selected-artist="selectedArtist"
       :selected-track="selectedTrack"
+      @edit-album="openAlbumMetadataEditor"
+      @edit-artist="openArtistMetadataEditor"
+      @edit-track="openTrackMetadataEditor"
     />
 
     <LibraryPlaybackFooter
@@ -478,6 +519,13 @@ function toggleMetadataRefresh(): void {
         metadataRefreshes
       "
       :refreshes="metadataRefreshes"
+    />
+
+    <LibraryMetadataEditor
+      v-if="metadataEditorTarget"
+      :target="metadataEditorTarget"
+      @cancel="metadataEditorTarget = null"
+      @save="saveMetadata"
     />
   </main>
 </template>

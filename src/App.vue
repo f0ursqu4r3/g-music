@@ -301,6 +301,7 @@ onUnmounted(() => {
       @set-volume="playback.setVolume"
       @toggle-mute="playback.toggleMute"
       @open-import="openImportWindow"
+      @update-tracks-metadata="playback.updateTracksMetadata"
     />
 
     <ImportWindow
