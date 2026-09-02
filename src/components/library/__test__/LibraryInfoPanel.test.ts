@@ -26,12 +26,8 @@ describe("LibraryInfoPanel", () => {
     const artwork = wrapper.get("[data-library-info-artwork]");
 
     expect(artwork.classes()).toEqual(
-      expect.arrayContaining([
-        "-mx-5",
-        "-mt-5",
-        "w-[calc(100%+2.5rem)]",
-        "rounded-b-xl",
-      ]),
+      expect.arrayContaining(["-mx-5", "-mt-5", "w-[calc(100%+2.5rem)]"]),
     );
+    expect(artwork.classes()).not.toContain("rounded-b-xl");
   });
 });
