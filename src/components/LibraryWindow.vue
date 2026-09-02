@@ -258,17 +258,21 @@ function sortValue(
   kind: "album" | "artist" | "track",
 ): number | string {
   if (kind === "artist") {
-    return option.startsWith("duration")
-      ? (item as LibraryArtist).durationMs
-      : (item as LibraryArtist).name;
+    const artist = item as LibraryArtist;
+    if (option.startsWith("album-count")) return artist.albumCount;
+    if (option.startsWith("track-count")) return artist.trackCount;
+    if (option.startsWith("duration")) return artist.durationMs;
+    return artist.name;
   }
   if (kind === "album") {
     const album = item as LibraryAlbum;
     return option.startsWith("artist")
       ? album.artist
-      : option.startsWith("duration")
-        ? album.durationMs
-        : album.title;
+      : option.startsWith("track-count")
+        ? album.trackCount
+        : option.startsWith("duration")
+          ? album.durationMs
+          : album.title;
   }
 
   const track = item as MediaItem;
@@ -405,11 +409,13 @@ function toggleMetadataRefresh(): void {
       <LibraryTrackList
         v-if="activeCollection === 'tracks' && displayMode === 'list'"
         :current-item-id="currentItem?.id"
+        :sort-by="sortBy"
         :track-filter="trackFilter"
         :tracks="libraryTracks"
         @clear-track-filter="trackFilter = null"
         @play-track="playTrack"
         @select-track="selectTrack"
+        @set-sort="setSort"
       />
       <LibraryTrackGrid
         v-else-if="activeCollection === 'tracks'"
@@ -426,6 +432,8 @@ function toggleMetadataRefresh(): void {
         :selected-album-key="selectedAlbum?.key"
         @open-album="openAlbum"
         @select-album="selectAlbum"
+        @set-sort="setSort"
+        :sort-by="sortBy"
       />
       <LibraryArtistGrid
         v-else
@@ -435,6 +443,8 @@ function toggleMetadataRefresh(): void {
         :selected-artist-name="selectedArtist?.name"
         @open-artist="openArtist"
         @select-artist="selectArtist"
+        @set-sort="setSort"
+        :sort-by="sortBy"
       />
     </section>
 

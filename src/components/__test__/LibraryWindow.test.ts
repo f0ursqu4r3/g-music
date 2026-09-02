@@ -70,12 +70,22 @@ describe("LibraryWindow", () => {
 
     await wrapper.get('[data-collection="albums"]').trigger("click");
     expect(wrapper.get("h1").text()).toBe("Albums");
-    expect(wrapper.findAll(".album-tile")).toHaveLength(2);
+    const albumTable = wrapper.get("[data-library-album-list]");
+    expect(albumTable.text()).toContain("Album");
+    expect(albumTable.text()).toContain("Artist");
+    expect(albumTable.text()).toContain("Tracks");
+    expect(albumTable.text()).toContain("Duration");
+    expect(albumTable.findAll("tbody .album-tile")).toHaveLength(2);
     expect(wrapper.text()).toContain("API Sessions");
 
     await wrapper.get('[data-collection="artists"]').trigger("click");
     expect(wrapper.get("h1").text()).toBe("Artists");
-    expect(wrapper.findAll(".artist-tile")).toHaveLength(2);
+    const artistTable = wrapper.get("[data-library-artist-list]");
+    expect(artistTable.text()).toContain("Artist");
+    expect(artistTable.text()).toContain("Albums");
+    expect(artistTable.text()).toContain("Tracks");
+    expect(artistTable.text()).toContain("Duration");
+    expect(artistTable.findAll("tbody .artist-tile")).toHaveLength(2);
     expect(wrapper.text()).toContain("Google for Developers");
   });
 
@@ -116,6 +126,122 @@ describe("LibraryWindow", () => {
     await wrapper.get('button[aria-label="Grid view"]').trigger("click");
     expect(wrapper.get(".track-grid .track-tile").text()).toContain(
       "YouTube Developers Live",
+    );
+  });
+
+  it("sorts tracks from table column headers", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    const titleHeader = wrapper.get('[data-sort-column="title"]');
+    expect(titleHeader.attributes("aria-sort")).toBe("ascending");
+
+    await titleHeader.get("button").trigger("click");
+
+    expect(titleHeader.attributes("aria-sort")).toBe("descending");
+    expect(
+      wrapper.get('[data-track-id="M7lc1UVf-VE"] .track-title').text(),
+    ).toBe("YouTube Developers Live");
+
+    for (const column of ["artist", "album", "duration"] as const) {
+      const header = wrapper.get(`[data-sort-column="${column}"]`);
+
+      await header.get("button").trigger("click");
+
+      expect(header.attributes("aria-sort")).toBe("ascending");
+    }
+  });
+
+  it("sorts album and artist tables from every data column header", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    for (const [column, direction] of [
+      ["title", "descending"],
+      ["artist", "ascending"],
+      ["track-count", "ascending"],
+      ["duration", "ascending"],
+    ] as const) {
+      const header = wrapper
+        .get("[data-library-album-list]")
+        .get(`[data-sort-column="${column}"]`);
+
+      await header.get("button").trigger("click");
+
+      expect(header.attributes("aria-sort")).toBe(direction);
+    }
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    for (const column of [
+      "title",
+      "album-count",
+      "track-count",
+      "duration",
+    ] as const) {
+      const header = wrapper
+        .get("[data-library-artist-list]")
+        .get(`[data-sort-column="${column}"]`);
+
+      await header.get("button").trigger("click");
+
+      expect(header.attributes("aria-sort")).toBe("ascending");
+    }
+  });
+
+  it("orders album and artist rows by their count columns", async () => {
+    const countTracks: MediaItem[] = [
+      { ...importedTracks[0], album: "Big", artist: "Band A", id: "big-1" },
+      { ...importedTracks[0], album: "Big", artist: "Band A", id: "big-2" },
+      { ...importedTracks[1], album: "Small", artist: "Band B", id: "small-1" },
+      {
+        ...importedTracks[0],
+        album: "Medium",
+        artist: "Band A",
+        id: "medium-1",
+      },
+    ];
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: {
+          ...snapshot,
+          currentItem: countTracks[0],
+          queue: countTracks,
+        },
+      },
+    });
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    const albumTable = wrapper.get("[data-library-album-list]");
+    await albumTable
+      .get('[data-sort-column="track-count"] button')
+      .trigger("click");
+    expect(albumTable.findAll("tbody .album-tile")[0]!.text()).toContain(
+      "Small",
+    );
+
+    await albumTable
+      .get('[data-sort-column="track-count"] button')
+      .trigger("click");
+    expect(albumTable.findAll("tbody .album-tile")[0]!.text()).toContain("Big");
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    const artistTable = wrapper.get("[data-library-artist-list]");
+    await artistTable
+      .get('[data-sort-column="album-count"] button')
+      .trigger("click");
+    expect(artistTable.findAll("tbody .artist-tile")[0]!.text()).toContain(
+      "Band B",
+    );
+
+    await artistTable
+      .get('[data-sort-column="album-count"] button')
+      .trigger("click");
+    expect(artistTable.findAll("tbody .artist-tile")[0]!.text()).toContain(
+      "Band A",
     );
   });
 

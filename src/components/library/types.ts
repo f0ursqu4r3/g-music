@@ -4,9 +4,15 @@ export type LibraryCollection = "tracks" | "albums" | "artists";
 export type LibraryDisplayMode = "grid" | "list";
 export type LibrarySortOption =
   | "album-asc"
+  | "album-desc"
+  | "album-count-asc"
+  | "album-count-desc"
   | "artist-asc"
+  | "artist-desc"
   | "duration-asc"
   | "duration-desc"
+  | "track-count-asc"
+  | "track-count-desc"
   | "title-asc"
   | "title-desc";
 export type LibraryGroupOption = "album" | "artist" | "none";

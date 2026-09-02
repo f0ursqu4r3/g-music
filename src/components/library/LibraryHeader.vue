@@ -38,7 +38,9 @@ const sortOptions: ReadonlyArray<readonly [LibrarySortOption, string]> = [
   ["title-asc", "Title"],
   ["title-desc", "Title (Z–A)"],
   ["artist-asc", "Artist"],
+  ["artist-desc", "Artist (Z–A)"],
   ["album-asc", "Album"],
+  ["album-desc", "Album (Z–A)"],
   ["duration-desc", "Longest first"],
   ["duration-asc", "Shortest first"],
 ];

@@ -7,28 +7,31 @@ import {
   Play,
   Volume2,
   X,
-} from 'lucide-vue-next';
+} from "lucide-vue-next";
 import {
   observeElementRect,
   type Rect,
   useVirtualizer,
   type Virtualizer,
-} from '@tanstack/vue-virtual';
+} from "@tanstack/vue-virtual";
 import {
   type ComponentPublicInstance,
   computed,
   onBeforeUnmount,
   ref,
-} from 'vue';
+} from "vue";
 
-import type { MediaItem } from '@/api';
-import { formatDuration } from '@/lib/time';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import type { TrackFilter } from './types';
+import type { MediaItem } from "@/api";
+import { formatDuration } from "@/lib/time";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import type { LibrarySortOption, TrackFilter } from "./types";
+
+type TrackSortColumn = "album" | "artist" | "duration" | "title";
 
 const props = defineProps<{
   tracks: MediaItem[];
   currentItemId: string | undefined;
+  sortBy: LibrarySortOption;
   trackFilter: TrackFilter | null;
 }>();
 
@@ -36,6 +39,7 @@ const emit = defineEmits<{
   selectTrack: [track: MediaItem];
   playTrack: [track: MediaItem];
   clearTrackFilter: [];
+  setSort: [option: LibrarySortOption];
 }>();
 
 const favoriteTrackIds = ref(new Set<string>());
@@ -46,7 +50,7 @@ const trackRowHeight = 36;
 let stopColumnResize: (() => void) | undefined;
 
 function viewportHeight(): number {
-  return typeof window === 'undefined' ? 600 : window.innerHeight || 600;
+  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
 }
 
 function setTrackList(element: Element | ComponentPublicInstance | null): void {
@@ -55,7 +59,7 @@ function setTrackList(element: Element | ComponentPublicInstance | null): void {
 
 function observeTrackListRect(
   instance: Virtualizer<HTMLElement, Element>,
-  callback: (rect: Rect) => void
+  callback: (rect: Rect) => void,
 ): (() => void) | undefined {
   return observeElementRect(instance, (rect) => {
     callback(rect.height > 0 ? rect : { ...rect, height: viewportHeight() });
@@ -83,13 +87,13 @@ const virtualTracks = computed(() =>
     const track = props.tracks[virtualItem.index];
 
     return track ? [{ track, virtualItem }] : [];
-  })
+  }),
 );
 const trackGridTemplateColumns = computed(() =>
-  columnWidths.value.map((width) => `${width}%`).join(' ')
+  columnWidths.value.map((width) => `${width}%`).join(" "),
 );
 const virtualTrackHeight = computed(
-  () => `${trackVirtualizer.value.getTotalSize()}px`
+  () => `${trackVirtualizer.value.getTotalSize()}px`,
 );
 
 function isFavorite(trackId: string): boolean {
@@ -108,10 +112,44 @@ function toggleFavorite(trackId: string): void {
   favoriteTrackIds.value = nextFavorites;
 }
 
+function sortDirection(
+  column: TrackSortColumn,
+): "ascending" | "descending" | "none" {
+  if (!props.sortBy.startsWith(`${column}-`)) {
+    return "none";
+  }
+
+  return props.sortBy.endsWith("-desc") ? "descending" : "ascending";
+}
+
+function sortIndicator(column: TrackSortColumn): string {
+  const direction = sortDirection(column);
+
+  return direction === "ascending"
+    ? "↑"
+    : direction === "descending"
+      ? "↓"
+      : "";
+}
+
+function sortButtonLabel(column: TrackSortColumn, label: string): string {
+  const direction = sortDirection(column);
+  const nextDirection = direction === "ascending" ? "descending" : "ascending";
+
+  return `Sort by ${label}, ${nextDirection}`;
+}
+
+function toggleSort(column: TrackSortColumn): void {
+  const direction = sortDirection(column);
+  const nextDirection = direction === "ascending" ? "desc" : "asc";
+
+  emit("setSort", `${column}-${nextDirection}` as LibrarySortOption);
+}
+
 function resizeColumnBoundary(
   boundaryIndex: number,
   requestedDelta: number,
-  initialWidths = columnWidths.value
+  initialWidths = columnWidths.value,
 ): void {
   const leftWidth = initialWidths[boundaryIndex];
   const rightWidth = initialWidths[boundaryIndex + 1];
@@ -128,7 +166,7 @@ function resizeColumnBoundary(
 
   const delta = Math.min(
     Math.max(requestedDelta, minimumLeftWidth - leftWidth),
-    rightWidth - minimumRightWidth
+    rightWidth - minimumRightWidth,
   );
   const nextWidths = [...initialWidths];
   nextWidths[boundaryIndex] = leftWidth + delta;
@@ -145,7 +183,7 @@ function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
   stopColumnResize?.();
   const startX = event.clientX;
   const initialWidths = [...columnWidths.value];
-  const table = (event.currentTarget as HTMLElement).closest('table');
+  const table = (event.currentTarget as HTMLElement).closest("table");
 
   const handleMouseMove = (moveEvent: MouseEvent): void => {
     const tableWidth = table?.getBoundingClientRect().width ?? 0;
@@ -157,26 +195,26 @@ function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
     resizeColumnBoundary(boundaryIndex, delta, initialWidths);
   };
   const handleMouseUp = (): void => {
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', handleMouseUp);
+    window.removeEventListener("mousemove", handleMouseMove);
+    window.removeEventListener("mouseup", handleMouseUp);
     stopColumnResize = undefined;
   };
 
   stopColumnResize = handleMouseUp;
-  window.addEventListener('mousemove', handleMouseMove);
-  window.addEventListener('mouseup', handleMouseUp);
+  window.addEventListener("mousemove", handleMouseMove);
+  window.addEventListener("mouseup", handleMouseUp);
 }
 
 function resizeColumnWithKeyboard(
   boundaryIndex: number,
-  event: KeyboardEvent
+  event: KeyboardEvent,
 ): void {
-  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
     return;
   }
 
   event.preventDefault();
-  resizeColumnBoundary(boundaryIndex, event.key === 'ArrowRight' ? 1 : -1);
+  resizeColumnBoundary(boundaryIndex, event.key === "ArrowRight" ? 1 : -1);
 }
 
 onBeforeUnmount(() => {
@@ -224,9 +262,21 @@ onBeforeUnmount(() => {
             <span class="sr-only">Play</span>
           </th>
           <th
+            :aria-sort="sortDirection('title')"
             class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
+            data-sort-column="title"
           >
-            Title
+            <button
+              :aria-label="sortButtonLabel('title', 'Title')"
+              class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text) focus-visible:text-(--text) focus-visible:outline-none"
+              type="button"
+              @click="toggleSort('title')"
+            >
+              Title
+              <span v-if="sortIndicator('title')" aria-hidden="true">
+                {{ sortIndicator("title") }}
+              </span>
+            </button>
             <button
               aria-label="Resize Title column"
               aria-orientation="vertical"
@@ -239,9 +289,21 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
+            :aria-sort="sortDirection('artist')"
             class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
+            data-sort-column="artist"
           >
-            Artist
+            <button
+              :aria-label="sortButtonLabel('artist', 'Artist')"
+              class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text) focus-visible:text-(--text) focus-visible:outline-none"
+              type="button"
+              @click="toggleSort('artist')"
+            >
+              Artist
+              <span v-if="sortIndicator('artist')" aria-hidden="true">
+                {{ sortIndicator("artist") }}
+              </span>
+            </button>
             <button
               aria-label="Resize Artist column"
               aria-orientation="vertical"
@@ -254,9 +316,21 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
+            :aria-sort="sortDirection('album')"
             class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
+            data-sort-column="album"
           >
-            Album
+            <button
+              :aria-label="sortButtonLabel('album', 'Album')"
+              class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text) focus-visible:text-(--text) focus-visible:outline-none"
+              type="button"
+              @click="toggleSort('album')"
+            >
+              Album
+              <span v-if="sortIndicator('album')" aria-hidden="true">
+                {{ sortIndicator("album") }}
+              </span>
+            </button>
             <button
               aria-label="Resize Album column"
               aria-orientation="vertical"
@@ -269,10 +343,22 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
-            class="relative px-1.5 pb-1 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
+            :aria-sort="sortDirection('duration')"
+            class="relative px-1.5 pb-1 text-center text-(--subtle-text)"
+            data-sort-column="duration"
           >
-            <span class="sr-only">Duration</span>
-            <Clock3 aria-hidden="true" />
+            <button
+              :aria-label="sortButtonLabel('duration', 'Duration')"
+              class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text) focus-visible:text-(--text) focus-visible:outline-none [&>svg]:size-3.75"
+              type="button"
+              @click="toggleSort('duration')"
+            >
+              <span class="sr-only">Duration</span>
+              <Clock3 aria-hidden="true" />
+              <span v-if="sortIndicator('duration')" aria-hidden="true">
+                {{ sortIndicator("duration") }}
+              </span>
+            </button>
             <button
               aria-label="Resize Duration column"
               aria-orientation="vertical"
@@ -382,7 +468,7 @@ onBeforeUnmount(() => {
             <span
               class="track-album flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
             >
-              {{ track.album || '—' }}
+              {{ track.album || "—" }}
             </span>
           </div>
           <div
