@@ -334,12 +334,6 @@ describe("LibraryWindow", () => {
         .find("[data-slot='scroll-area-viewport']")
         .exists(),
     ).toBe(true);
-    expect(
-      wrapper
-        .get("[data-library-playback-footer]")
-        .element.parentElement?.parentElement?.getAttribute("data-slot"),
-    ).toBe("scroll-area-viewport");
-
     await wrapper.get('button[aria-label="Grid view"]').trigger("click");
     expect(
       wrapper
@@ -347,6 +341,18 @@ describe("LibraryWindow", () => {
         .find("[data-slot='scroll-area-viewport']")
         .exists(),
     ).toBe(true);
+  });
+
+  it("keeps playback footer controls within the smallest library window", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const footer = wrapper.get("[data-library-playback-footer]");
+
+    expect(footer.classes()).toContain("min-w-0");
+    expect(footer.classes()).toContain("max-[920px]:grid");
+    expect(footer.classes()).not.toContain("min-w-max");
+    expect(footer.element.closest("[data-slot='scroll-area']")).toBeNull();
   });
 
   it("uses the compact reference-style library header and track table", () => {
@@ -468,7 +474,7 @@ describe("LibraryWindow", () => {
       tracks.length,
     );
 
-    trackList.element.scrollTop = 44 * 100;
+    trackList.element.scrollTop = 36 * 100;
     await trackList.trigger("scroll");
 
     expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
@@ -504,7 +510,7 @@ describe("LibraryWindow", () => {
       "[data-library-track-list] [data-slot='scroll-area-viewport']",
     );
 
-    trackList.element.scrollTop = 44 * 100;
+    trackList.element.scrollTop = 36 * 100;
     await trackList.trigger("scroll");
     expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
 
@@ -630,6 +636,22 @@ describe("LibraryWindow", () => {
       ["BaW_jenozKc"],
       ["BaW_jenozKc"],
     ]);
+  });
+
+  it("uses dense square-corner track rows", () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+    const row = wrapper.get('[data-track-id="BaW_jenozKc"]');
+
+    expect(row.classes()).toContain("h-9");
+    expect(
+      row.get(".track-title").element.closest('[role="gridcell"]')?.classList,
+    ).toContain("px-3");
+    for (const cell of row.findAll('[role="gridcell"]')) {
+      expect(cell.classes()).not.toContain("rounded-l-md");
+      expect(cell.classes()).not.toContain("rounded-r-md");
+    }
   });
 
   it("shows a spinning metadata refresh icon for tracks with incomplete metadata", () => {

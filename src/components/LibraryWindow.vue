@@ -359,7 +359,7 @@ function toggleMetadataRefresh(): void {
 
 <template>
   <main
-    class="library-window relative grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] overflow-hidden bg-(--glass-window) text-(--text) transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[760px]:grid-cols-1"
+    class="library-window relative grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] overflow-hidden bg-(--glass-window) text-(--text) transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
     :class="
       detailsSidebarOpen
         ? 'grid-cols-[244px_minmax(0,1fr)_272px]'

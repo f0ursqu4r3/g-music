@@ -20,7 +20,6 @@ import { computed, ref } from "vue";
 import type { MediaItem, PlaybackTransport } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDuration } from "@/lib/time";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
@@ -73,19 +72,16 @@ function emitSeek(values: number[]): void {
 </script>
 
 <template>
-  <ScrollArea
-    class="col-span-3 row-start-2 min-w-0 border-t border-(--line) max-[760px]:col-span-1"
-    orientation="horizontal"
-  >
+  <div class="col-span-3 row-start-2 min-w-0 max-[760px]:col-span-1">
     <footer
-      class="flex min-w-max items-center gap-4 pr-4 py-0"
+      class="flex h-full min-w-0 items-center gap-4 overflow-hidden border-t border-(--line) py-0 pr-4 max-[920px]:grid max-[920px]:grid-cols-[minmax(10rem,1fr)_auto_auto] max-[920px]:grid-rows-2 max-[920px]:gap-x-2 max-[920px]:gap-y-1 max-[920px]:px-3 max-[920px]:py-1.5"
       data-library-playback-footer
     >
       <div
-        class="flex min-w-48 flex-1 items-center gap-3"
+        class="flex min-w-48 flex-1 items-center gap-3 max-[920px]:min-w-0 max-[920px]:gap-2"
         data-playback-control="now-playing"
       >
-        <div class="cover-art size-16 shrink-0">
+        <div class="cover-art size-16 shrink-0 max-[920px]:size-10">
           <YouTubeArtwork
             class="absolute inset-0 size-full object-cover"
             :video-id="props.currentItem?.id"
@@ -106,7 +102,7 @@ function emitSeek(values: number[]): void {
       </div>
 
       <nav
-        class="flex shrink-0 items-center gap-1.5"
+        class="flex shrink-0 items-center gap-1.5 max-[920px]:gap-1"
         aria-label="Playback controls"
         data-playback-control="transport"
       >
@@ -178,7 +174,7 @@ function emitSeek(values: number[]): void {
       </Button>
 
       <div
-        class="grid min-w-52 flex-2 grid-cols-[30px_minmax(8rem,1fr)_30px] items-center gap-2 text-[0.65rem] text-(--muted-text) tabular-nums"
+        class="grid min-w-52 flex-2 grid-cols-[30px_minmax(8rem,1fr)_30px] items-center gap-2 text-[0.65rem] text-(--muted-text) tabular-nums max-[920px]:min-w-0"
         aria-label="Track progress"
         data-playback-control="progress"
       >
@@ -239,7 +235,7 @@ function emitSeek(values: number[]): void {
         <PanelRightOpen v-else aria-hidden="true" />
       </Button>
     </footer>
-  </ScrollArea>
+  </div>
 </template>
 
 <style scoped>

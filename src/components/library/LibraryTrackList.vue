@@ -7,24 +7,24 @@ import {
   Play,
   Volume2,
   X,
-} from "lucide-vue-next";
+} from 'lucide-vue-next';
 import {
   observeElementRect,
   type Rect,
   useVirtualizer,
   type Virtualizer,
-} from "@tanstack/vue-virtual";
+} from '@tanstack/vue-virtual';
 import {
   type ComponentPublicInstance,
   computed,
   onBeforeUnmount,
   ref,
-} from "vue";
+} from 'vue';
 
-import type { MediaItem } from "@/api";
-import { formatDuration } from "@/lib/time";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import type { TrackFilter } from "./types";
+import type { MediaItem } from '@/api';
+import { formatDuration } from '@/lib/time';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import type { TrackFilter } from './types';
 
 const props = defineProps<{
   tracks: MediaItem[];
@@ -42,11 +42,11 @@ const favoriteTrackIds = ref(new Set<string>());
 const columnWidths = ref([6, 29, 25, 25, 9, 6]);
 const minimumColumnWidths = [5, 18, 12, 12, 7, 5] as const;
 const trackList = ref<HTMLElement | null>(null);
-const trackRowHeight = 44;
+const trackRowHeight = 36;
 let stopColumnResize: (() => void) | undefined;
 
 function viewportHeight(): number {
-  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
+  return typeof window === 'undefined' ? 600 : window.innerHeight || 600;
 }
 
 function setTrackList(element: Element | ComponentPublicInstance | null): void {
@@ -55,7 +55,7 @@ function setTrackList(element: Element | ComponentPublicInstance | null): void {
 
 function observeTrackListRect(
   instance: Virtualizer<HTMLElement, Element>,
-  callback: (rect: Rect) => void,
+  callback: (rect: Rect) => void
 ): (() => void) | undefined {
   return observeElementRect(instance, (rect) => {
     callback(rect.height > 0 ? rect : { ...rect, height: viewportHeight() });
@@ -83,13 +83,13 @@ const virtualTracks = computed(() =>
     const track = props.tracks[virtualItem.index];
 
     return track ? [{ track, virtualItem }] : [];
-  }),
+  })
 );
 const trackGridTemplateColumns = computed(() =>
-  columnWidths.value.map((width) => `${width}%`).join(" "),
+  columnWidths.value.map((width) => `${width}%`).join(' ')
 );
 const virtualTrackHeight = computed(
-  () => `${trackVirtualizer.value.getTotalSize()}px`,
+  () => `${trackVirtualizer.value.getTotalSize()}px`
 );
 
 function isFavorite(trackId: string): boolean {
@@ -111,7 +111,7 @@ function toggleFavorite(trackId: string): void {
 function resizeColumnBoundary(
   boundaryIndex: number,
   requestedDelta: number,
-  initialWidths = columnWidths.value,
+  initialWidths = columnWidths.value
 ): void {
   const leftWidth = initialWidths[boundaryIndex];
   const rightWidth = initialWidths[boundaryIndex + 1];
@@ -128,7 +128,7 @@ function resizeColumnBoundary(
 
   const delta = Math.min(
     Math.max(requestedDelta, minimumLeftWidth - leftWidth),
-    rightWidth - minimumRightWidth,
+    rightWidth - minimumRightWidth
   );
   const nextWidths = [...initialWidths];
   nextWidths[boundaryIndex] = leftWidth + delta;
@@ -145,7 +145,7 @@ function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
   stopColumnResize?.();
   const startX = event.clientX;
   const initialWidths = [...columnWidths.value];
-  const table = (event.currentTarget as HTMLElement).closest("table");
+  const table = (event.currentTarget as HTMLElement).closest('table');
 
   const handleMouseMove = (moveEvent: MouseEvent): void => {
     const tableWidth = table?.getBoundingClientRect().width ?? 0;
@@ -157,26 +157,26 @@ function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
     resizeColumnBoundary(boundaryIndex, delta, initialWidths);
   };
   const handleMouseUp = (): void => {
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
     stopColumnResize = undefined;
   };
 
   stopColumnResize = handleMouseUp;
-  window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mouseup", handleMouseUp);
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
 }
 
 function resizeColumnWithKeyboard(
   boundaryIndex: number,
-  event: KeyboardEvent,
+  event: KeyboardEvent
 ): void {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
     return;
   }
 
   event.preventDefault();
-  resizeColumnBoundary(boundaryIndex, event.key === "ArrowRight" ? 1 : -1);
+  resizeColumnBoundary(boundaryIndex, event.key === 'ArrowRight' ? 1 : -1);
 }
 
 onBeforeUnmount(() => {
@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col py-2.5 pl-2">
+  <div class="flex min-h-0 flex-col py-1.5">
     <div
       v-if="props.trackFilter"
       class="mx-5 mb-2 flex items-center gap-2 rounded-md bg-[oklch(0.72_0.03_268/0.13)] px-3 py-1.5 text-xs text-(--text)"
@@ -220,11 +220,11 @@ onBeforeUnmount(() => {
       </colgroup>
       <thead>
         <tr>
-          <th class="px-2 pb-1.5 text-center text-(--subtle-text)">
+          <th class="px-1.5 pb-1 text-center text-(--subtle-text)">
             <span class="sr-only">Play</span>
           </th>
           <th
-            class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
+            class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
           >
             Title
             <button
@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
-            class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
+            class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
           >
             Artist
             <button
@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
-            class="relative px-4 pb-1.5 text-[0.66rem] font-medium text-(--subtle-text)"
+            class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
           >
             Album
             <button
@@ -269,7 +269,7 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
-            class="relative px-2 pb-1.5 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
+            class="relative px-1.5 pb-1 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
           >
             <span class="sr-only">Duration</span>
             <Clock3 aria-hidden="true" />
@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
             />
           </th>
           <th
-            class="px-2 pb-1.5 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
+            class="px-1.5 pb-1 text-center text-(--subtle-text) [&>svg]:mx-auto [&>svg]:size-3.75"
           >
             <span class="sr-only">Favorite</span>
             <Heart aria-hidden="true" />
@@ -310,7 +310,7 @@ onBeforeUnmount(() => {
           v-for="{ track, virtualItem } in virtualTracks"
           :key="String(virtualItem.key)"
           :aria-label="`${track.title} by ${track.artist}`"
-          class="group absolute left-0 grid h-10.5 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+          class="group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
           :data-current="track.id === props.currentItemId"
           :data-index="virtualItem.index"
           :data-track-id="track.id"
@@ -326,7 +326,7 @@ onBeforeUnmount(() => {
           @keydown.space.prevent="emit('selectTrack', track)"
         >
           <div
-            class="relative grid place-items-center rounded-l-md px-2 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
             role="gridcell"
           >
             <Volume2
@@ -335,6 +335,7 @@ onBeforeUnmount(() => {
               aria-label="Currently playing"
             />
             <button
+              v-else
               :aria-label="`Play ${track.title}`"
               class="absolute grid size-7 cursor-pointer place-items-center border-0 bg-transparent p-0 text-(--muted-text) opacity-0 transition-[color,opacity] group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--text) focus-visible:opacity-100 [&>svg]:size-3.5"
               data-track-action="play"
@@ -346,7 +347,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div
-            class="overflow-hidden px-4 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            class="overflow-hidden px-3 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
             role="gridcell"
           >
             <span class="flex h-full min-w-0 items-center gap-2.5 font-medium">
@@ -365,33 +366,33 @@ onBeforeUnmount(() => {
             </span>
           </div>
           <div
-            class="overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+            class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
             role="gridcell"
           >
             <span
-              class="track-artist block overflow-hidden text-ellipsis whitespace-nowrap leading-10.5"
+              class="track-artist flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
             >
               {{ track.artist }}
             </span>
           </div>
           <div
-            class="overflow-hidden px-4 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+            class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
             role="gridcell"
           >
             <span
-              class="track-album block overflow-hidden text-ellipsis whitespace-nowrap leading-10.5"
+              class="track-album flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
             >
-              {{ track.album || "—" }}
+              {{ track.album || '—' }}
             </span>
           </div>
           <div
-            class="px-2 text-center text-[0.78rem] leading-10.5 text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+            class="grid place-items-center px-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
             role="gridcell"
           >
             {{ formatDuration(track.durationMs) }}
           </div>
           <div
-            class="grid place-items-center rounded-r-md px-2 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            class="grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
             role="gridcell"
           >
             <button
