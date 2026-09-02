@@ -23,6 +23,10 @@
   --artwork-b: oklch(0.43 0.13 270);
   --artwork-c: oklch(0.24 0.065 258);
   --focus-ring: oklch(0.82 0.14 300 / 0.9);
+  --danger: oklch(0.69 0.17 27);
+  --danger-soft: oklch(0.69 0.17 27 / 0.1);
+  --warning: oklch(0.8 0.13 82);
+  --warning-soft: oklch(0.8 0.13 82 / 0.1);
   --background: var(--canvas);
   --foreground: var(--text);
   --card: var(--surface);
@@ -41,6 +45,8 @@
   --ring: var(--focus-ring);
   --border: var(--line);
   --radius: 0.9rem;
+  --text-primary: var(--text);
+  --border-subtle: var(--line);
   color: var(--text);
   background: transparent;
   font-family:
@@ -122,6 +128,92 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+@utility window-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+@utility window-surface {
+  background: var(--glass-window);
+  color: var(--text);
+  backdrop-filter: saturate(1.18);
+}
+
+@utility window-drag-region {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3.25rem;
+}
+
+@utility window-header {
+  display: flex;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem 1.5rem 0;
+}
+
+@utility window-kicker {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--subtle-text);
+  text-transform: uppercase;
+}
+
+@utility window-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  color: var(--text);
+}
+
+@utility window-copy {
+  font-size: 0.77rem;
+  color: var(--muted-text);
+}
+
+@utility window-status {
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted-text);
+}
+
+@utility window-panel {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: color-mix(in oklch, var(--surface), transparent 42%);
+}
+
+@utility window-panel-muted {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: color-mix(in oklch, var(--glass-control), transparent 12%);
+}
+
+@utility window-alert-danger {
+  border: 1px solid color-mix(in oklch, var(--danger), transparent 72%);
+  border-radius: 0.5rem;
+  background: var(--danger-soft);
+  color: color-mix(in oklch, var(--danger), var(--text) 38%);
+}
+
+@utility window-alert-warning {
+  border: 1px solid color-mix(in oklch, var(--warning), transparent 72%);
+  border-radius: 0.75rem;
+  background: var(--warning-soft);
+  color: var(--muted-text);
 }
 
 @layer base {

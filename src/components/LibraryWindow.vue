@@ -401,7 +401,7 @@ function toggleMetadataRefresh(): void {
 
 <template>
   <main
-    class="library-window relative grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] overflow-hidden bg-(--glass-window) text-(--text) transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
+    class="library-window window-shell window-surface grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
     :class="
       detailsSidebarOpen
         ? 'grid-cols-[244px_minmax(0,1fr)_272px]'
@@ -410,7 +410,7 @@ function toggleMetadataRefresh(): void {
     aria-label="Music library"
   >
     <div
-      class="application-drag-region absolute top-0 right-0 left-0 z-10 h-13"
+      class="application-drag-region window-drag-region"
       data-tauri-drag-region
       aria-hidden="true"
     />
@@ -422,7 +422,7 @@ function toggleMetadataRefresh(): void {
     />
 
     <section
-      class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[104px_minmax(0,1fr)] border-l border-(--line) max-[760px]:col-start-1"
+      class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[88px_minmax(0,1fr)] border-l border-(--line) max-[760px]:col-start-1"
     >
       <LibraryHeader
         :collection-title="collectionTitle"

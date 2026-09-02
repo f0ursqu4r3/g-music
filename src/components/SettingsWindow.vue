@@ -63,26 +63,20 @@ onMounted(() => {
 <template>
   <main
     aria-label="Settings"
-    class="min-h-screen bg-(--glass-window) px-8 pt-8 pb-10 text-(--text-primary)"
+    class="window-shell window-surface px-8 pt-6 pb-10"
   >
     <div class="mx-auto grid max-w-2xl gap-6">
       <header class="grid gap-1">
-        <p
-          class="m-0 text-[0.68rem] font-semibold tracking-[0.14em] text-(--subtle-text) uppercase"
-        >
-          Accounts
-        </p>
-        <h1 class="m-0 text-2xl font-semibold tracking-[-0.025em]">
-          YouTube playback
-        </h1>
-        <p class="m-0 max-w-xl text-sm leading-6 text-(--muted-text)">
+        <p class="window-kicker m-0 tracking-[0.14em]">Accounts</p>
+        <h1 class="window-title m-0 tracking-[-0.025em]">YouTube playback</h1>
+        <p class="window-copy m-0 max-w-xl text-sm leading-6">
           Connect a dedicated YouTube session for age-restricted, private, and
           account-only audio.
         </p>
       </header>
 
       <section
-        class="overflow-hidden rounded-2xl border border-(--border-subtle) bg-(--surface-raised) shadow-sm"
+        class="window-panel overflow-hidden rounded-2xl shadow-sm"
         aria-labelledby="youtube-account-heading"
       >
         <div class="flex items-start gap-4 p-5">
@@ -132,7 +126,7 @@ onMounted(() => {
 
         <div
           v-if="!status.connected"
-          class="grid gap-4 border-t border-(--border-subtle) p-5"
+          class="grid gap-4 border-t border-(--line) p-5"
         >
           <ol class="m-0 grid list-none gap-3 p-0 text-sm text-(--muted-text)">
             <li class="flex items-start gap-3">
@@ -178,7 +172,7 @@ onMounted(() => {
       </section>
 
       <aside
-        class="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/8 p-4 text-sm leading-5 text-(--muted-text)"
+        class="window-alert-warning flex items-start gap-3 p-4 text-sm leading-5"
       >
         <CircleAlert
           class="mt-0.5 size-4 shrink-0 text-amber-500"
@@ -193,7 +187,7 @@ onMounted(() => {
 
       <p
         v-if="errorMessage"
-        class="m-0 rounded-xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-400"
+        class="window-alert-danger m-0 px-4 py-3 text-sm"
         role="alert"
       >
         {{ errorMessage }}

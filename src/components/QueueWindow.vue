@@ -15,21 +15,15 @@ defineProps<Props>();
 
 <template>
   <main
-    class="queue-window min-h-screen bg-[linear-gradient(140deg,oklch(0.31_0.045_246/0.12),transparent_38%),var(--glass-window)] px-4.5 pb-5.5 text-(--text) backdrop-saturate-[1.16]"
+    class="queue-window window-shell window-surface px-4.5 pb-5.5"
     aria-labelledby="queue-window-heading"
   >
-    <header
-      class="flex items-end justify-between gap-5 border-b border-(--line) px-2 pt-8.5 pb-6"
-    >
+    <header class="window-header items-end gap-5 px-2 pt-6 pb-4">
       <div>
-        <p
-          class="text-[0.58rem] font-[720] tracking-widest text-(--subtle-text) uppercase"
-        >
-          Listening order
-        </p>
+        <p class="window-kicker text-[0.58rem] font-[720]">Listening order</p>
         <h1
           id="queue-window-heading"
-          class="mt-0.75 text-2xl font-bold tracking-[-0.045em] text-(--text)"
+          class="window-title mt-0.75 font-bold tracking-[-0.045em]"
         >
           Play queue
         </h1>

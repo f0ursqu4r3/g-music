@@ -33,7 +33,7 @@ const emit = defineEmits<{
 <template>
   <main class="mini-window-shell min-h-43.5 w-full">
     <section
-      class="player-frame relative overflow-hidden rounded-[22px] bg-(--glass-panel) text-(--text) backdrop-saturate-[1.18]"
+      class="player-frame window-panel relative overflow-hidden rounded-[22px] bg-(--glass-panel) text-(--text) backdrop-saturate-[1.18]"
       :class="queueExpanded ? 'min-h-105' : ''"
       :data-queue-expanded="queueExpanded"
     >

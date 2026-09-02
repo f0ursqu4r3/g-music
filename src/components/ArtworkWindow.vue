@@ -47,7 +47,7 @@ function emitSeek(values: number[]): void {
 
 <template>
   <main
-    class="artwork-window relative flex h-screen min-h-0 flex-col overflow-hidden bg-(--canvas) text-(--text)"
+    class="artwork-window window-shell relative flex h-screen min-h-0 flex-col overflow-hidden bg-(--canvas) text-(--text)"
     aria-label="Current artwork"
   >
     <div

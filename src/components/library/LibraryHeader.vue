@@ -59,11 +59,9 @@ function emitGridItemSize(values: number[]): void {
 </script>
 
 <template>
-  <header
-    class="flex items-center justify-between gap-6 border-b border-(--line) px-8 pt-3"
-  >
+  <header class="window-header gap-6">
     <div>
-      <h1 class="text-2xl font-semibold tracking-[-0.035em] text-(--text)">
+      <h1 class="window-title">
         {{ collectionTitle }}
       </h1>
       <div
