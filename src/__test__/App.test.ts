@@ -5,10 +5,12 @@ import { nextTick } from "vue";
 
 import App from "../App.vue";
 import LibraryWindow from "../components/LibraryWindow.vue";
+import QueueWindow from "../components/QueueWindow.vue";
 
 const playbackMocks = vi.hoisted(() => ({
   applySnapshot: vi.fn(),
   importYouTubeUrls: vi.fn(),
+  moveQueueItem: vi.fn(),
   next: vi.fn(),
   playTrack: vi.fn(),
   previous: vi.fn(),
@@ -105,7 +107,7 @@ vi.mock("@/composables/usePlayback", () => ({
     next: playbackMocks.next,
     seek: vi.fn(),
     setVolume: vi.fn(),
-    moveQueueItem: vi.fn(),
+    moveQueueItem: playbackMocks.moveQueueItem,
     playTrack: playbackMocks.playTrack,
     importYouTubeUrls: playbackMocks.importYouTubeUrls,
     updateImportProgress: vi.fn(),
@@ -117,6 +119,7 @@ describe("application landmarks", () => {
   beforeEach(() => {
     playbackMocks.applySnapshot.mockReset();
     playbackMocks.importYouTubeUrls.mockReset();
+    playbackMocks.moveQueueItem.mockReset();
     playbackMocks.next.mockReset();
     playbackMocks.playTrack.mockReset();
     playbackMocks.previous.mockReset();
@@ -191,6 +194,19 @@ describe("application landmarks", () => {
     await wrapper.get('[data-track-id="night-drive"]').trigger("dblclick");
 
     expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
+  });
+
+  it("routes queue playback and reorder actions to the playback composable", async () => {
+    window.history.replaceState({}, "", "/?view=queue");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    await wrapper.get('button[aria-label="Play Night Drive"]').trigger("click");
+    wrapper.getComponent(QueueWindow).vm.$emit("move", 0, 1);
+
+    expect(wrapper.getComponent(QueueWindow).props("status")).toBe("paused");
+    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
+    expect(playbackMocks.moveQueueItem).toHaveBeenCalledWith(0, 1);
   });
 
   it("synchronizes live playback while the window is mounted", async () => {

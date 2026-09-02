@@ -327,6 +327,15 @@ onUnmounted(() => {
       v-else-if="view === 'queue'"
       :queue="playbackSnapshot.queue"
       :current-item-id="playbackSnapshot.currentItem?.id"
+      :status="playbackSnapshot.status"
+      :position-ms="playbackSnapshot.positionMs"
+      :is-starting="playback.isStarting.value"
+      :is-updating="playback.isUpdating.value"
+      @toggle="playback.toggle"
+      @previous="playback.previous"
+      @next="playback.next"
+      @play-track="playback.playTrack"
+      @move="playback.moveQueueItem"
     />
 
     <MiniWindow

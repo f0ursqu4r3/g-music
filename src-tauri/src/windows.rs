@@ -65,8 +65,8 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
-        overlay_titlebar: false,
-        hidden_title: false,
+        overlay_titlebar: true,
+        hidden_title: true,
     },
     WindowSpec {
         kind: WindowSurface::Mini,
@@ -389,6 +389,18 @@ mod tests {
         assert!(artwork.overlay_titlebar);
         assert!(artwork.hidden_title);
         assert!(artwork.decorations);
+    }
+
+    #[test]
+    fn queue_uses_a_hidden_overlay_titlebar() {
+        let queue = all_surfaces()
+            .iter()
+            .find(|surface| surface.kind == WindowSurface::Queue)
+            .expect("queue surface");
+
+        assert!(queue.overlay_titlebar);
+        assert!(queue.hidden_title);
+        assert!(queue.decorations);
     }
 
     #[test]

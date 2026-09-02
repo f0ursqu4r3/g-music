@@ -50,6 +50,7 @@ describe("desktop window capabilities", () => {
     expect(draggingCapability.windows).toEqual([
       "main",
       "artwork",
+      "queue",
       "mini-player",
     ]);
     expect(draggingCapability.permissions).toContain(
