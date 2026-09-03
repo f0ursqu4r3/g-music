@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ellipsis, Grid2X2, List, LoaderCircle, Play } from "lucide-vue-next";
+import { Ellipsis, Grid2X2, List, Loader, Play } from "lucide-vue-next";
 
 import { Slider } from "@/components/ui/slider";
 import type {
@@ -73,7 +73,7 @@ function emitGridItemSize(values: number[]): void {
           v-if="playlistName"
           :aria-label="`Play ${playlistName}`"
           :disabled="isUpdating || !canPlayPlaylist"
-          class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-(--line-strong) bg-transparent px-2.5 text-xs font-medium text-(--muted-text) transition-colors hover:border-(--accent) hover:text-(--text) disabled:cursor-default disabled:opacity-40 [&>svg]:size-3.5"
+          class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-(--line-strong) bg-transparent px-2.5 text-xs font-medium text-(--muted-text) transition-colors hover:border-accent hover:text-(--text) disabled:cursor-default disabled:opacity-40 [&>svg]:size-3.5"
           data-play-selected-playlist
           type="button"
           @click="emit('playPlaylist')"
@@ -86,18 +86,20 @@ function emitGridItemSize(values: number[]): void {
         class="mt-1 flex items-center gap-2 text-[0.77rem] text-(--muted-text)"
       >
         <span data-library-summary>{{ collectionSummary }}</span>
-        <button
-          v-if="hasActiveMetadataRefresh"
-          :aria-expanded="metadataRefreshDrawerOpen"
-          :aria-label="`${metadataRefreshRemaining} metadata refreshes remaining`"
-          class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text)"
-          data-metadata-refresh-remaining
-          type="button"
-          @click="emit('toggleMetadataRefresh')"
-        >
-          <LoaderCircle class="size-3 animate-spin" aria-hidden="true" />
-          {{ metadataRefreshRemaining }}
-        </button>
+        <template v-if="hasActiveMetadataRefresh">
+          ·
+          <button
+            :aria-expanded="metadataRefreshDrawerOpen"
+            :aria-label="`${metadataRefreshRemaining} metadata refreshes remaining`"
+            class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text)"
+            data-metadata-refresh-remaining
+            type="button"
+            @click="emit('toggleMetadataRefresh')"
+          >
+            <Loader class="size-3 animate-spin" aria-hidden="true" />
+            {{ metadataRefreshRemaining }}
+          </button>
+        </template>
       </div>
     </div>
 
