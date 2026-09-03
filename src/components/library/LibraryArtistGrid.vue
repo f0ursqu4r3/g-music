@@ -192,10 +192,10 @@ function toggleSort(column: ArtistSortColumn): void {
                     <div
                       class="cover-art grid size-8 place-items-center rounded-full [&>svg]:size-4 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
                     >
-                      <Mic2 aria-hidden="true" />
                       <YouTubeArtwork
-                        class="absolute inset-0 size-full object-cover"
+                        class="absolute inset-0 size-full object-cover [&_svg]:size-4 [&_svg]:text-[oklch(0.98_0.01_90/0.76)]"
                         :video-id="artist.videoId"
+                        :missing-icon="Mic2"
                       />
                     </div>
                   </td>
@@ -274,7 +274,7 @@ function toggleSort(column: ArtistSortColumn): void {
                     :class="'aspect-square w-full'"
                   >
                     <YouTubeArtwork
-                      class="absolute inset-0 size-full object-cover"
+                      class="absolute inset-0 size-full object-cover [&_svg]:size-6 [&_svg]:text-[oklch(0.98_0.01_90/0.76)]"
                       :video-id="artist.videoId"
                       :missing-icon="Mic2"
                     />

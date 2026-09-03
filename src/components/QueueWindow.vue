@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  Disc3,
   ListMusic,
   LoaderCircle,
   Pause,
@@ -428,6 +429,7 @@ watch(
         <YouTubeArtwork
           class="absolute inset-0 size-full object-cover"
           :video-id="currentItem.id"
+          :missing-icon="Disc3"
         />
       </div>
       <div class="min-w-0">

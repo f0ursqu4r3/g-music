@@ -80,7 +80,7 @@ function selectTrack(track: MediaItem): void {
                   class="cover-art grid aspect-square w-full place-items-center rounded-lg [&>svg]:size-[28%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
                 >
                   <YouTubeArtwork
-                    class="absolute inset-0 size-full object-cover"
+                    class="absolute inset-0 size-full object-cover [&_svg]:size-[28%] [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
                     :video-id="track.id"
                     :missing-icon="Disc3"
                   />

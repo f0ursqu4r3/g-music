@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ExternalLink, ListPlus, Mic2, Pencil, Play } from "lucide-vue-next";
+import {
+  Disc3,
+  ExternalLink,
+  ListPlus,
+  Mic2,
+  Pencil,
+  Play,
+} from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 
 import type { MediaItem } from "@/api";
@@ -149,6 +156,7 @@ watch(
             <YouTubeArtwork
               class="absolute inset-0 size-full object-cover"
               :video-id="props.selectedTrack.id"
+              :missing-icon="Disc3"
             />
           </div>
           <p
@@ -303,6 +311,7 @@ watch(
             <YouTubeArtwork
               class="absolute inset-0 size-full object-cover"
               :video-id="props.selectedAlbum.videoId"
+              :missing-icon="Disc3"
             />
           </div>
           <p
@@ -346,10 +355,10 @@ watch(
             class="cover-art -mx-5 -mt-5 mb-5 grid aspect-square w-[calc(100%+2.5rem)] place-items-center [&>svg]:size-20 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
             data-library-info-artwork
           >
-            <Mic2 aria-hidden="true" />
             <YouTubeArtwork
-              class="absolute inset-0 size-full object-cover"
+              class="absolute inset-0 size-full object-cover [&_svg]:size-20 [&_svg]:text-[oklch(0.98_0.01_90/0.76)]"
               :video-id="props.selectedArtist.videoId"
+              :missing-icon="Mic2"
             />
           </div>
           <p

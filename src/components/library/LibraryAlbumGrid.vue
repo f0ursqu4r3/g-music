@@ -192,10 +192,10 @@ function toggleSort(column: AlbumSortColumn): void {
                     <div
                       class="cover-art grid size-8 place-items-center rounded-md [&>svg]:size-4 [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
                     >
-                      <Disc3 aria-hidden="true" />
                       <YouTubeArtwork
-                        class="absolute inset-0 size-full object-cover"
+                        class="absolute inset-0 size-full object-cover [&_svg]:size-4 [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
                         :video-id="album.videoId"
+                        :missing-icon="Disc3"
                       />
                     </div>
                   </td>
@@ -278,7 +278,7 @@ function toggleSort(column: AlbumSortColumn): void {
                     :class="'aspect-square w-full'"
                   >
                     <YouTubeArtwork
-                      class="absolute inset-0 size-full object-cover"
+                      class="absolute inset-0 size-full object-cover [&_svg]:size-[34%] [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
                       :video-id="album.videoId"
                       :missing-icon="Disc3"
                     />

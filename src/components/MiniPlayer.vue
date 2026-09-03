@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  Disc3,
   Pause,
   Play,
   SkipBack,
@@ -92,6 +93,7 @@ function emitVolume(values: number[] | undefined): void {
       <YouTubeArtwork
         class="absolute inset-0 size-full object-cover"
         :video-id="currentItem?.id"
+        :missing-icon="Disc3"
       />
     </div>
 

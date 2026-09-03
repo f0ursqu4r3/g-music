@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  Disc3,
   Heart,
   LoaderCircle,
   PanelRightClose,
@@ -85,6 +86,7 @@ function emitSeek(values: number[]): void {
           <YouTubeArtwork
             class="absolute inset-0 size-full object-cover"
             :video-id="props.currentItem?.id"
+            :missing-icon="Disc3"
           />
         </div>
         <div class="min-w-0">
