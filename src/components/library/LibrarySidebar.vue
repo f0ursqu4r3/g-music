@@ -201,21 +201,14 @@ watch(
                 ? 'page'
                 : undefined
             "
-            class="flex min-h-8.5 w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left text-[0.82rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
+            class="-mx-4 flex min-h-8.5 w-[calc(100%+2rem)] cursor-pointer items-center gap-2.5 rounded-none border-0 bg-transparent px-6.5 text-left text-[0.82rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
             :data-collection="collection[0]"
             type="button"
             @click="emit('selectCollection', collection[0])"
           >
-            <component :is="collection[1]" aria-hidden="true" />{{
-              collection[2]
-            }}
+            <component :is="collection[1]" aria-hidden="true" />
+            {{ collection[2] }}
           </button>
-          <span
-            class="flex min-h-8.5 items-center gap-2.5 rounded-md px-2.5 text-[0.82rem] text-(--muted-text) [&>svg]:size-4"
-            data-library-destination="playlists"
-          >
-            <ListMusic aria-hidden="true" />Playlists
-          </span>
         </nav>
 
         <nav
@@ -248,13 +241,15 @@ watch(
           >
             <ContextMenuTrigger as-child>
               <div
-                class="flex min-h-8 items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text)"
+                :data-current="props.activePlaylistId === playlist.id"
+                :data-default-playlist-row="playlist.id"
+                class="group -mx-4 flex min-h-8 w-[calc(100%+2rem)] items-center gap-1 rounded-none text-[0.79rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) data-[current=true]:bg-[oklch(0.7_0.03_262/0.15)] data-[current=true]:text-(--text)"
               >
                 <button
                   :aria-current="
                     props.activePlaylistId === playlist.id ? 'page' : undefined
                   "
-                  class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) [&>svg]:size-4"
+                  class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-none border-0 bg-transparent px-6.5 text-left aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
                   :data-playlist-id="playlist.id"
                   type="button"
                   @click="emit('selectPlaylist', playlist.id)"
@@ -298,8 +293,9 @@ watch(
                   :on-drag-start="() => startPlaylistReorder(playlist.id)"
                   :transition="playlistReorderTransition"
                   :value="playlist"
+                  :data-current="props.activePlaylistId === playlist.id"
                   :data-playlist-reorder-item="playlist.id"
-                  class="group flex min-h-8 cursor-grab items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text) active:cursor-grabbing"
+                  class="group -mx-4 flex min-h-8 w-[calc(100%+2rem)] cursor-grab items-center gap-1 rounded-none pr-4 text-[0.79rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) active:cursor-grabbing data-[current=true]:bg-[oklch(0.7_0.03_262/0.15)] data-[current=true]:text-(--text)"
                 >
                   <button
                     :aria-current="
@@ -307,7 +303,7 @@ watch(
                         ? 'page'
                         : undefined
                     "
-                    class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) [&>svg]:size-4"
+                    class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-none border-0 bg-transparent px-6.5 text-left aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
                     :data-playlist-id="playlist.id"
                     type="button"
                     @click="emit('selectPlaylist', playlist.id)"
@@ -373,7 +369,7 @@ watch(
           </ReorderGroup>
           <form
             v-if="props.isCreatingPlaylist"
-            class="flex min-h-8 items-center gap-2 rounded-md bg-[oklch(0.7_0.03_262/0.15)] px-2.5"
+            class="-mx-4 flex min-h-8 w-[calc(100%+2rem)] items-center gap-2 rounded-none bg-[oklch(0.7_0.03_262/0.15)] px-6.5"
             data-new-playlist-editor
             @submit.prevent="saveNewPlaylist"
           >

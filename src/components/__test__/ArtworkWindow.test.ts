@@ -149,4 +149,23 @@ describe("ArtworkWindow", () => {
     );
     expect(controls.classes()).not.toContain("h-0.5");
   });
+
+  it("shows track progress along the panel bottom while controls are hidden", async () => {
+    const wrapper = mount(ArtworkWindow, {
+      props: { snapshot, isUpdating: false, isWindowFocused: true },
+    });
+
+    expect(wrapper.find(".artwork-unfocused-progress").exists()).toBe(false);
+
+    await wrapper.setProps({ isWindowFocused: false });
+
+    const progress = wrapper.get(".artwork-unfocused-progress");
+    expect(progress.element.tagName).toBe("PROGRESS");
+    expect(progress.attributes("aria-label")).toBe("Track progress");
+    expect(progress.attributes("value")).toBe("57000");
+    expect(progress.attributes("max")).toBe("238000");
+    expect(progress.classes()).toEqual(
+      expect.arrayContaining(["absolute", "right-0", "bottom-0", "left-0"]),
+    );
+  });
 });

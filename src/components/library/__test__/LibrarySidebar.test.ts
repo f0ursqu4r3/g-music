@@ -23,6 +23,98 @@ const playlists: Playlist[] = [
 ];
 
 describe("LibrarySidebar", () => {
+  it("colors the selected playlist icon with the accent color", async () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: {
+        activeCollection: "tracks",
+        activePlaylistId: "focus",
+        playlists,
+      },
+    });
+
+    expect(wrapper.get('[data-playlist-id="focus"]').classes()).toContain(
+      "aria-[current=page]:[&>svg]:text-accent",
+    );
+
+    await wrapper.setProps({ activePlaylistId: "favorites" });
+
+    expect(wrapper.get('[data-playlist-id="favorites"]').classes()).toContain(
+      "aria-[current=page]:[&>svg]:text-accent",
+    );
+  });
+
+  it("uses square full-bleed highlights for every sidebar destination", () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: {
+        activeCollection: "tracks",
+        activePlaylistId: "focus",
+        isCreatingPlaylist: true,
+        playlists,
+      },
+    });
+
+    const collection = wrapper.get('[data-collection="tracks"]');
+    expect(collection.classes()).toEqual(
+      expect.arrayContaining(["-mx-4", "w-[calc(100%+2rem)]", "rounded-none"]),
+    );
+    expect(collection.classes()).not.toContain("rounded-md");
+
+    const defaultPlaylist = wrapper.get(
+      '[data-default-playlist-row="favorites"]',
+    );
+    expect(defaultPlaylist.classes()).toEqual(
+      expect.arrayContaining([
+        "-mx-4",
+        "w-[calc(100%+2rem)]",
+        "rounded-none",
+        "data-[current=true]:bg-[oklch(0.7_0.03_262/0.15)]",
+      ]),
+    );
+    expect(defaultPlaylist.classes()).not.toContain("rounded-md");
+
+    const customPlaylist = wrapper.get('[data-playlist-reorder-item="focus"]');
+    expect(customPlaylist.attributes("data-current")).toBe("true");
+    expect(customPlaylist.classes()).toEqual(
+      expect.arrayContaining([
+        "-mx-4",
+        "w-[calc(100%+2rem)]",
+        "rounded-none",
+        "data-[current=true]:bg-[oklch(0.7_0.03_262/0.15)]",
+      ]),
+    );
+    expect(customPlaylist.classes()).not.toContain("rounded-md");
+
+    expect(wrapper.get("[data-new-playlist-editor]").classes()).toEqual(
+      expect.arrayContaining(["-mx-4", "w-[calc(100%+2rem)]", "rounded-none"]),
+    );
+  });
+
+  it("uses full-bleed square highlights in context menus", async () => {
+    const wrapper = mount(LibrarySidebar, {
+      attachTo: document.body,
+      props: {
+        activeCollection: "tracks",
+        activePlaylistId: "focus",
+        playlists,
+      },
+    });
+
+    await wrapper.get('[data-playlist-id="focus"]').trigger("contextmenu");
+
+    const menu = document.body.querySelector<HTMLElement>(
+      "[data-playlist-context-menu]",
+    );
+    const item = menu?.querySelector<HTMLElement>(
+      '[data-slot="context-menu-item"]',
+    );
+    expect(menu?.classList).toContain("py-1.5");
+    expect(menu?.classList).not.toContain("p-1.5");
+    expect(item?.classList).toContain("rounded-none");
+    expect(item?.classList).not.toContain("rounded-md");
+
+    wrapper.unmount();
+  });
+
   it("commits a dragged user playlist title order", async () => {
     const wrapper = mount(LibrarySidebar, {
       props: {

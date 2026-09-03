@@ -2,7 +2,6 @@
 import {
   Disc3,
   Heart,
-  MoreHorizontal,
   Pause,
   Play,
   Repeat2,
@@ -44,6 +43,10 @@ const emit = defineEmits<{
 
 const isPlaying = computed(() => props.snapshot.status === "playing");
 const currentItem = computed(() => props.snapshot.currentItem);
+const compactProgressMs = computed(() => {
+  const durationMs = currentItem.value?.durationMs ?? 0;
+  return Math.min(Math.max(props.snapshot.positionMs, 0), durationMs);
+});
 
 function emitSeek(values: number[]): void {
   const value = values[0];
@@ -123,14 +126,6 @@ function emitSeek(values: number[]): void {
               @click="currentItem && emit('toggleFavorite', currentItem.id)"
             >
               <Heart aria-hidden="true" />
-            </Button>
-            <Button
-              class="text-[oklch(0.94_0.012_270/0.74)] hover:bg-[oklch(0.94_0.012_270/0.1)] hover:text-(--text)"
-              aria-label="More actions"
-              size="icon-sm"
-              variant="ghost"
-            >
-              <MoreHorizontal aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -218,6 +213,14 @@ function emitSeek(values: number[]): void {
         </div>
       </div>
     </section>
+
+    <progress
+      v-if="!isWindowFocused && currentItem && currentItem.durationMs > 0"
+      class="artwork-unfocused-progress pointer-events-none absolute right-0 bottom-0 left-0 z-30 block h-0.5 w-full overflow-hidden border-0"
+      aria-label="Track progress"
+      :value="compactProgressMs"
+      :max="currentItem.durationMs"
+    />
   </main>
 </template>
 
@@ -248,5 +251,24 @@ function emitSeek(values: number[]): void {
 
 .artwork-controls {
   text-shadow: 0 1px 12px oklch(0.05 0.02 260 / 0.45);
+}
+
+.artwork-unfocused-progress {
+  appearance: none;
+  border-radius: 0 0 12px 12px;
+  background: transparent;
+  color: var(--accent);
+}
+
+.artwork-unfocused-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.artwork-unfocused-progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.artwork-unfocused-progress::-moz-progress-bar {
+  background: var(--accent);
 }
 </style>
