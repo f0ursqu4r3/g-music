@@ -22,6 +22,8 @@ export type PlaybackClient = Omit<
   | "deletePlaylist"
   | "playNext"
   | "addToQueue"
+  | "removeTracks"
+  | "removeQueueItem"
 > &
   Partial<
     Pick<
@@ -35,6 +37,8 @@ export type PlaybackClient = Omit<
       | "deletePlaylist"
       | "playNext"
       | "addToQueue"
+      | "removeTracks"
+      | "removeQueueItem"
     >
   >;
 
@@ -355,6 +359,22 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     }
   }
 
+  async function removeTracks(ids: string[]): Promise<void> {
+    if (isUpdating.value || !client.removeTracks) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      library.value = await client.removeTracks(ids);
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
   async function setVolume(volumePercent: number): Promise<void> {
     if (isUpdating.value && !isUpdatingVolume) {
       return;
@@ -401,6 +421,12 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await execute(() => client.moveQueueItem(from, to));
   }
 
+  async function removeQueueItem(index: number): Promise<void> {
+    if (client.removeQueueItem) {
+      await execute(() => client.removeQueueItem!(index));
+    }
+  }
+
   return {
     addToQueue,
     applySnapshot,
@@ -420,6 +446,8 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     previous,
     refresh,
     refreshMetadataRefreshes,
+    removeQueueItem,
+    removeTracks,
     seek,
     setVolume,
     snapshot,

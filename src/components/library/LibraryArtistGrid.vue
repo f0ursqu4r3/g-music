@@ -2,6 +2,13 @@
 import { Mic2 } from "lucide-vue-next";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { formatDuration } from "@/lib/time";
 import type {
   ArtistGroup,
@@ -22,6 +29,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  editArtist: [artist: LibraryArtist];
+  playArtist: [artist: LibraryArtist];
   selectArtist: [artist: LibraryArtist];
   openArtist: [artist: LibraryArtist];
   setSort: [option: LibrarySortOption];
@@ -165,52 +174,70 @@ function toggleSort(column: ArtistSortColumn): void {
             v-for="group in props.groups"
             :key="group.label || 'all-artists'"
           >
-            <tr
+            <ContextMenu
               v-for="artist in group.items"
               :key="artist.name"
-              class="artist-tile cursor-pointer outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:bg-[oklch(0.72_0.03_268/0.13)] data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-              :data-selected="props.selectedArtistName === artist.name"
-              tabindex="0"
-              @click="emit('selectArtist', artist)"
-              @dblclick="emit('openArtist', artist)"
-              @keydown.enter.prevent="emit('openArtist', artist)"
+              @update:open="(isOpen) => isOpen && emit('selectArtist', artist)"
             >
-              <td class="px-3 py-1.5">
-                <div
-                  class="cover-art grid size-8 place-items-center rounded-full [&>svg]:size-4 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+              <ContextMenuTrigger as-child>
+                <tr
+                  class="artist-tile cursor-pointer outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:bg-[oklch(0.72_0.03_268/0.13)] data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                  :data-selected="props.selectedArtistName === artist.name"
+                  tabindex="0"
+                  @click="emit('selectArtist', artist)"
+                  @dblclick="emit('openArtist', artist)"
+                  @keydown.enter.prevent="emit('openArtist', artist)"
                 >
-                  <Mic2 aria-hidden="true" />
-                  <YouTubeArtwork
-                    class="absolute inset-0 size-full object-cover"
-                    :video-id="artist.videoId"
-                  />
-                </div>
-              </td>
-              <td
-                class="overflow-hidden px-3 py-1.5 text-[0.82rem] font-medium text-(--text)"
-              >
-                <span
-                  class="block overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {{ artist.name }}
-                </span>
-              </td>
-              <td
-                class="px-3 py-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums"
-              >
-                {{ artist.albumCount }}
-              </td>
-              <td
-                class="px-3 py-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums"
-              >
-                {{ artist.trackCount }}
-              </td>
-              <td
-                class="px-3 py-1.5 text-right text-[0.78rem] text-(--muted-text) tabular-nums"
-              >
-                {{ formatDuration(artist.durationMs) }}
-              </td>
-            </tr>
+                  <td class="px-3 py-1.5">
+                    <div
+                      class="cover-art grid size-8 place-items-center rounded-full [&>svg]:size-4 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+                    >
+                      <Mic2 aria-hidden="true" />
+                      <YouTubeArtwork
+                        class="absolute inset-0 size-full object-cover"
+                        :video-id="artist.videoId"
+                      />
+                    </div>
+                  </td>
+                  <td
+                    class="overflow-hidden px-3 py-1.5 text-[0.82rem] font-medium text-(--text)"
+                  >
+                    <span
+                      class="block overflow-hidden text-ellipsis whitespace-nowrap"
+                    >
+                      {{ artist.name }}
+                    </span>
+                  </td>
+                  <td
+                    class="px-3 py-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums"
+                  >
+                    {{ artist.albumCount }}
+                  </td>
+                  <td
+                    class="px-3 py-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums"
+                  >
+                    {{ artist.trackCount }}
+                  </td>
+                  <td
+                    class="px-3 py-1.5 text-right text-[0.78rem] text-(--muted-text) tabular-nums"
+                  >
+                    {{ formatDuration(artist.durationMs) }}
+                  </td>
+                </tr>
+              </ContextMenuTrigger>
+              <ContextMenuContent data-artist-context-menu>
+                <ContextMenuItem @select="emit('playArtist', artist)">
+                  Play artist
+                </ContextMenuItem>
+                <ContextMenuItem @select="emit('openArtist', artist)">
+                  Open tracks
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="emit('editArtist', artist)">
+                  Edit metadata
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </template>
         </tbody>
       </table>
@@ -228,37 +255,55 @@ function toggleSort(column: ArtistSortColumn): void {
             {{ group.label }}
           </h2>
           <div class="library-grid">
-            <article
+            <ContextMenu
               v-for="artist in group.items"
               :key="artist.name"
-              class="artist-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-              :data-selected="props.selectedArtistName === artist.name"
-              tabindex="0"
-              @click="emit('selectArtist', artist)"
-              @dblclick="emit('openArtist', artist)"
-              @keydown.enter.prevent="emit('openArtist', artist)"
+              @update:open="(isOpen) => isOpen && emit('selectArtist', artist)"
             >
-              <div
-                class="cover-art grid place-items-center rounded-full [&>svg]:size-6 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
-                :class="'aspect-square w-full'"
-              >
-                <Mic2 aria-hidden="true" />
-                <YouTubeArtwork
-                  class="absolute inset-0 size-full object-cover"
-                  :video-id="artist.videoId"
-                />
-              </div>
-              <div class="min-w-0">
-                <h2
-                  class="overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+              <ContextMenuTrigger as-child>
+                <article
+                  class="artist-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                  :data-selected="props.selectedArtistName === artist.name"
+                  tabindex="0"
+                  @click="emit('selectArtist', artist)"
+                  @dblclick="emit('openArtist', artist)"
+                  @keydown.enter.prevent="emit('openArtist', artist)"
                 >
-                  {{ artist.name }}
-                </h2>
-                <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
-                  {{ artist.detail }}
-                </p>
-              </div>
-            </article>
+                  <div
+                    class="cover-art grid place-items-center rounded-full [&>svg]:size-6 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+                    :class="'aspect-square w-full'"
+                  >
+                    <YouTubeArtwork
+                      class="absolute inset-0 size-full object-cover"
+                      :video-id="artist.videoId"
+                      :missing-icon="Mic2"
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <h2
+                      class="overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+                    >
+                      {{ artist.name }}
+                    </h2>
+                    <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
+                      {{ artist.detail }}
+                    </p>
+                  </div>
+                </article>
+              </ContextMenuTrigger>
+              <ContextMenuContent data-artist-context-menu>
+                <ContextMenuItem @select="emit('playArtist', artist)">
+                  Play artist
+                </ContextMenuItem>
+                <ContextMenuItem @select="emit('openArtist', artist)">
+                  Open tracks
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="emit('editArtist', artist)">
+                  Edit metadata
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         </section>
       </div>

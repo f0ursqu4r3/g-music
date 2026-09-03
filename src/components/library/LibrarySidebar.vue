@@ -11,6 +11,13 @@ import {
 import { nextTick, ref, watch } from "vue";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import type { Playlist } from "@/api";
 import type { LibraryCollection } from "./types";
 
@@ -27,8 +34,10 @@ const emit = defineEmits<{
   createPlaylist: [name: string];
   cancelPlaylistCreation: [];
   newPlaylist: [];
+  deletePlaylist: [playlist: Playlist];
   editPlaylist: [playlist: Playlist];
   openImport: [];
+  playPlaylist: [playlist: Playlist];
 }>();
 
 const newPlaylistName = ref("");
@@ -151,35 +160,64 @@ watch(
               @keydown.esc.prevent="cancelNewPlaylist"
             />
           </form>
-          <div
+          <ContextMenu
             v-for="playlist in props.playlists"
             :key="playlist.id"
-            class="group flex min-h-8 items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text)"
+            @update:open="
+              (isOpen) => isOpen && emit('selectPlaylist', playlist.id)
+            "
           >
-            <button
-              :aria-current="
-                props.activePlaylistId === playlist.id ? 'page' : undefined
-              "
-              class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) [&>svg]:size-4"
-              :data-playlist-id="playlist.id"
-              type="button"
-              @click="emit('selectPlaylist', playlist.id)"
-            >
-              <component :is="playlistIcon(playlist.id)" aria-hidden="true" />
-              <span class="truncate">{{ playlist.name }}</span>
-            </button>
-            <button
-              v-if="
-                playlist.id !== 'favorites' && playlist.id !== 'most-played'
-              "
-              :aria-label="`Edit ${playlist.name}`"
-              class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
-              type="button"
-              @click="emit('editPlaylist', playlist)"
-            >
-              <Pencil aria-hidden="true" />
-            </button>
-          </div>
+            <ContextMenuTrigger as-child>
+              <div
+                class="group flex min-h-8 items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text)"
+              >
+                <button
+                  :aria-current="
+                    props.activePlaylistId === playlist.id ? 'page' : undefined
+                  "
+                  class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) [&>svg]:size-4"
+                  :data-playlist-id="playlist.id"
+                  type="button"
+                  @click="emit('selectPlaylist', playlist.id)"
+                >
+                  <component
+                    :is="playlistIcon(playlist.id)"
+                    aria-hidden="true"
+                  />
+                  <span class="truncate">{{ playlist.name }}</span>
+                </button>
+                <button
+                  v-if="
+                    playlist.id !== 'favorites' && playlist.id !== 'most-played'
+                  "
+                  :aria-label="`Edit ${playlist.name}`"
+                  class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
+                  type="button"
+                  @click="emit('editPlaylist', playlist)"
+                >
+                  <Pencil aria-hidden="true" />
+                </button>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent data-playlist-context-menu>
+              <ContextMenuItem @select="emit('playPlaylist', playlist)">
+                Play playlist
+              </ContextMenuItem>
+              <template
+                v-if="
+                  playlist.id !== 'favorites' && playlist.id !== 'most-played'
+                "
+              >
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="emit('editPlaylist', playlist)">
+                  Edit playlist
+                </ContextMenuItem>
+                <ContextMenuItem @select="emit('deletePlaylist', playlist)">
+                  Delete playlist…
+                </ContextMenuItem>
+              </template>
+            </ContextMenuContent>
+          </ContextMenu>
         </nav>
       </div>
     </ScrollArea>

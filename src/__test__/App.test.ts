@@ -11,6 +11,8 @@ const playbackMocks = vi.hoisted(() => ({
   applySnapshot: vi.fn(),
   importYouTubeUrls: vi.fn(),
   moveQueueItem: vi.fn(),
+  removeQueueItem: vi.fn(),
+  removeTracks: vi.fn(),
   next: vi.fn(),
   playTrack: vi.fn(),
   previous: vi.fn(),
@@ -108,6 +110,8 @@ vi.mock("@/composables/usePlayback", () => ({
     seek: vi.fn(),
     setVolume: vi.fn(),
     moveQueueItem: playbackMocks.moveQueueItem,
+    removeQueueItem: playbackMocks.removeQueueItem,
+    removeTracks: playbackMocks.removeTracks,
     playTrack: playbackMocks.playTrack,
     importYouTubeUrls: playbackMocks.importYouTubeUrls,
     updateImportProgress: vi.fn(),
@@ -120,6 +124,8 @@ describe("application landmarks", () => {
     playbackMocks.applySnapshot.mockReset();
     playbackMocks.importYouTubeUrls.mockReset();
     playbackMocks.moveQueueItem.mockReset();
+    playbackMocks.removeQueueItem.mockReset();
+    playbackMocks.removeTracks.mockReset();
     playbackMocks.next.mockReset();
     playbackMocks.playTrack.mockReset();
     playbackMocks.previous.mockReset();
@@ -209,6 +215,25 @@ describe("application landmarks", () => {
     expect(wrapper.getComponent(QueueWindow).props("status")).toBe("paused");
     expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
     expect(playbackMocks.moveQueueItem).toHaveBeenCalledWith(0, 1);
+  });
+
+  it("routes library and queue removal actions to their separate playback commands", async () => {
+    const libraryWrapper = mount(App);
+    await flushPromises();
+
+    libraryWrapper
+      .getComponent(LibraryWindow)
+      .vm.$emit("removeTracks", ["night-drive"]);
+    expect(playbackMocks.removeTracks).toHaveBeenCalledWith(["night-drive"]);
+    libraryWrapper.unmount();
+
+    window.history.replaceState({}, "", "/?view=queue");
+    const queueWrapper = mount(App);
+    await flushPromises();
+
+    queueWrapper.getComponent(QueueWindow).vm.$emit("remove", 0);
+    expect(playbackMocks.removeQueueItem).toHaveBeenCalledWith(0);
+    queueWrapper.unmount();
   });
 
   it("synchronizes live playback while the window is mounted", async () => {

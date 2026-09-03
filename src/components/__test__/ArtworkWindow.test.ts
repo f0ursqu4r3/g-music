@@ -77,6 +77,22 @@ describe("ArtworkWindow", () => {
     expect(wrapper.emitted("next")).toHaveLength(1);
   });
 
+  it("exposes current-track favorite actions from the artwork surface", async () => {
+    const wrapper = mount(ArtworkWindow, {
+      attachTo: document.body,
+      props: { snapshot, isUpdating: false },
+    });
+
+    await wrapper.get('[aria-label="Favorite track"]').trigger("click");
+    expect(wrapper.emitted("toggleFavorite")).toEqual([["M7lc1UVf-VE"]]);
+
+    await wrapper.get(".artwork-cover").trigger("contextmenu");
+    expect(
+      document.body.querySelector("[data-artwork-context-menu]")?.textContent,
+    ).toContain("Add to Favorites");
+    wrapper.unmount();
+  });
+
   it("commits pointer drags from the progress scrubber", async () => {
     const wrapper = mount(ArtworkWindow, {
       props: { snapshot, isUpdating: false },

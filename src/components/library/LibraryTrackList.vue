@@ -24,6 +24,7 @@ import {
 import type { MediaItem } from "@/api";
 import { formatDuration } from "@/lib/time";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
 import type { LibrarySortOption, TrackFilter } from "./types";
 
 type TrackSortColumn = "album" | "artist" | "duration" | "title";
@@ -37,9 +38,15 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  addToQueue: [id: string];
   selectTrack: [track: MediaItem];
   playTrack: [track: MediaItem];
+  playNext: [id: string];
   clearTrackFilter: [];
+  editTrack: [track: MediaItem];
+  openAlbum: [track: MediaItem];
+  openArtist: [track: MediaItem];
+  removeTrack: [track: MediaItem];
   setSort: [option: LibrarySortOption];
   toggleFavorite: [id: string];
 }>();
@@ -381,109 +388,125 @@ onBeforeUnmount(() => {
         role="rowgroup"
         :style="{ height: virtualTrackHeight }"
       >
-        <div
+        <LibraryTrackContextMenu
           v-for="{ track, virtualItem } in virtualTracks"
           :key="String(virtualItem.key)"
-          :aria-label="`${track.title} by ${track.artist}`"
-          class="group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-          :data-current="track.id === props.currentItemId"
-          :data-index="virtualItem.index"
-          :data-track-id="track.id"
-          role="row"
-          tabindex="0"
-          :style="{
-            gridTemplateColumns: trackGridTemplateColumns,
-            transform: `translateY(${virtualItem.start}px)`,
-          }"
-          @click="emit('selectTrack', track)"
-          @dblclick="emit('playTrack', track)"
-          @keydown.enter.prevent="emit('selectTrack', track)"
-          @keydown.space.prevent="emit('selectTrack', track)"
+          :is-favorite="isFavorite(track.id)"
+          :track="track"
+          @add-to-queue="emit('addToQueue', $event)"
+          @edit="emit('editTrack', $event)"
+          @open-album="emit('openAlbum', $event)"
+          @open-artist="emit('openArtist', $event)"
+          @play="emit('playTrack', $event)"
+          @play-next="emit('playNext', $event)"
+          @remove="emit('removeTrack', $event)"
+          @select="emit('selectTrack', $event)"
+          @toggle-favorite="emit('toggleFavorite', $event)"
         >
           <div
-            class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-            role="gridcell"
+            :aria-label="`${track.title} by ${track.artist}`"
+            class="group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            :data-current="track.id === props.currentItemId"
+            :data-index="virtualItem.index"
+            :data-track-id="track.id"
+            role="row"
+            tabindex="0"
+            :style="{
+              gridTemplateColumns: trackGridTemplateColumns,
+              transform: `translateY(${virtualItem.start}px)`,
+            }"
+            @click="emit('selectTrack', track)"
+            @dblclick="emit('playTrack', track)"
+            @keydown.enter.prevent="emit('selectTrack', track)"
+            @keydown.space.prevent="emit('selectTrack', track)"
           >
-            <Volume2
-              v-if="track.id === props.currentItemId"
-              class="track-playing-indicator size-3.75 text-(--text)"
-              aria-label="Currently playing"
-            />
-            <button
-              v-else
-              :aria-label="`Play ${track.title}`"
-              class="absolute grid size-7 cursor-pointer place-items-center border-0 bg-transparent p-0 text-(--muted-text) opacity-0 transition-[color,opacity] group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--text) focus-visible:opacity-100 [&>svg]:size-3.5"
-              data-track-action="play"
-              type="button"
-              @click.stop="emit('playTrack', track)"
-              @dblclick.stop
+            <div
+              class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              role="gridcell"
             >
-              <Play aria-hidden="true" />
-            </button>
-          </div>
-          <div
-            class="overflow-hidden px-3 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-            role="gridcell"
-          >
-            <span class="flex h-full min-w-0 items-center gap-2.5 font-medium">
-              <span
-                class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+              <Volume2
+                v-if="track.id === props.currentItemId"
+                class="track-playing-indicator size-3.75 text-(--text)"
+                aria-label="Currently playing"
+              />
+              <button
+                v-else
+                :aria-label="`Play ${track.title}`"
+                class="absolute grid size-7 cursor-pointer place-items-center border-0 bg-transparent p-0 text-(--muted-text) opacity-0 transition-[color,opacity] group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--text) focus-visible:opacity-100 [&>svg]:size-3.5"
+                data-track-action="play"
+                type="button"
+                @click.stop="emit('playTrack', track)"
+                @dblclick.stop
               >
-                {{ track.title }}
+                <Play aria-hidden="true" />
+              </button>
+            </div>
+            <div
+              class="overflow-hidden px-3 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              role="gridcell"
+            >
+              <span
+                class="flex h-full min-w-0 items-center gap-2.5 font-medium"
+              >
+                <span
+                  class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  {{ track.title }}
+                </span>
+                <LoaderCircle
+                  v-if="track.metadataDirty"
+                  class="size-3.5 shrink-0 animate-spin text-amber-200"
+                  data-metadata-dirty
+                  aria-label="Metadata refresh pending"
+                  role="status"
+                />
               </span>
-              <LoaderCircle
-                v-if="track.metadataDirty"
-                class="size-3.5 shrink-0 animate-spin text-amber-200"
-                data-metadata-dirty
-                aria-label="Metadata refresh pending"
-                role="status"
-              />
-            </span>
-          </div>
-          <div
-            class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-            role="gridcell"
-          >
-            <span
-              class="track-artist flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
+            </div>
+            <div
+              class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              role="gridcell"
             >
-              {{ track.artist }}
-            </span>
-          </div>
-          <div
-            class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-            role="gridcell"
-          >
-            <span
-              class="track-album flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
+              <span
+                class="track-artist flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
+              >
+                {{ track.artist }}
+              </span>
+            </div>
+            <div
+              class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              role="gridcell"
             >
-              {{ track.album || "—" }}
-            </span>
-          </div>
-          <div
-            class="grid place-items-center px-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
-            role="gridcell"
-          >
-            {{ formatDuration(track.durationMs) }}
-          </div>
-          <div
-            class="grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-            role="gridcell"
-          >
-            <button
-              :aria-label="`Favorite ${track.title}`"
-              :aria-pressed="isFavorite(track.id)"
-              class="grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
-              type="button"
-              @click.stop="emit('toggleFavorite', track.id)"
+              <span
+                class="track-album flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
+              >
+                {{ track.album || "—" }}
+              </span>
+            </div>
+            <div
+              class="grid place-items-center px-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              role="gridcell"
             >
-              <Heart
-                aria-hidden="true"
-                :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
-              />
-            </button>
+              {{ formatDuration(track.durationMs) }}
+            </div>
+            <div
+              class="grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              role="gridcell"
+            >
+              <button
+                :aria-label="`Favorite ${track.title}`"
+                :aria-pressed="isFavorite(track.id)"
+                class="grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
+                type="button"
+                @click.stop="emit('toggleFavorite', track.id)"
+              >
+                <Heart
+                  aria-hidden="true"
+                  :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
+                />
+              </button>
+            </div>
           </div>
-        </div>
+        </LibraryTrackContextMenu>
       </div>
     </ScrollArea>
   </div>

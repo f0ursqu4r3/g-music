@@ -6,6 +6,7 @@ import {
   Play,
   SkipBack,
   SkipForward,
+  Trash2,
   Volume2,
 } from "lucide-vue-next";
 import {
@@ -19,6 +20,13 @@ import { type ComponentPublicInstance, computed, ref, watch } from "vue";
 
 import type { MediaItem, PlaybackStatus } from "@/api";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDuration } from "@/lib/time";
 import YouTubeArtwork from "./YouTubeArtwork.vue";
@@ -39,6 +47,7 @@ const emit = defineEmits<{
   next: [];
   playTrack: [id: string];
   move: [from: number, to: number];
+  remove: [index: number];
 }>();
 
 const currentItem = computed(
@@ -231,78 +240,143 @@ watch(
             class="absolute left-0 w-full"
             :style="{ transform: `translateY(${virtualItem.start}px)` }"
           >
-            <ReorderItem
-              as="article"
-              :drag="
-                isUpdating || isStarting || item.id === currentItemId
-                  ? false
-                  : 'y'
-              "
-              :drag-momentum="false"
-              :on-drag-end="finishQueueReorder"
-              :on-drag-start="() => startQueueReorder(item.id)"
-              :transition="queueReorderTransition"
-              :value="item"
-              :aria-current="item.id === currentItemId ? 'true' : undefined"
-              :aria-label="`${item.title} by ${item.artist}`"
-              :data-current="item.id === currentItemId"
-              :data-queue-index="virtualItem.index"
-              :data-queue-item-id="item.id"
-              class="queue-row group grid h-13 w-full cursor-grab grid-cols-[2.25rem_minmax(0,1fr)_3.5rem_3.25rem] items-center border-b border-(--line) outline-none active:cursor-grabbing hover:bg-[oklch(0.72_0.025_258/0.08)] data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-              data-queue-item
-              role="listitem"
-            >
-              <div class="grid place-items-center">
-                <Button
-                  :aria-label="`Play ${item.title}`"
-                  :class="
-                    item.id === currentItemId
-                      ? 'text-accent'
-                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100'
+            <ContextMenu>
+              <ContextMenuTrigger as-child>
+                <ReorderItem
+                  as="article"
+                  :drag="
+                    isUpdating || isStarting || item.id === currentItemId
+                      ? false
+                      : 'y'
                   "
-                  size="icon-xs"
-                  variant="ghost"
-                  :disabled="isUpdating || isStarting"
-                  @click="playTrack(item.id)"
+                  :drag-momentum="false"
+                  :on-drag-end="finishQueueReorder"
+                  :on-drag-start="() => startQueueReorder(item.id)"
+                  :transition="queueReorderTransition"
+                  :value="item"
+                  :aria-current="item.id === currentItemId ? 'true' : undefined"
+                  :aria-label="`${item.title} by ${item.artist}`"
+                  :data-current="item.id === currentItemId"
+                  :data-queue-index="virtualItem.index"
+                  :data-queue-item-id="item.id"
+                  class="queue-row group grid h-13 w-full cursor-grab grid-cols-[2.25rem_minmax(0,1fr)_3.5rem_5rem] items-center border-b border-(--line) outline-none active:cursor-grabbing hover:bg-[oklch(0.72_0.025_258/0.08)] data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                  data-queue-item
+                  role="listitem"
                 >
-                  <Volume2
-                    v-if="item.id === currentItemId"
-                    aria-hidden="true"
-                  />
-                  <Play v-else aria-hidden="true" fill="currentColor" />
-                </Button>
-              </div>
-              <div class="min-w-0 pr-2">
-                <p
-                  class="overflow-hidden text-[0.8rem] font-medium text-ellipsis whitespace-nowrap"
+                  <div class="grid place-items-center">
+                    <Button
+                      :aria-label="`Play ${item.title}`"
+                      :class="
+                        item.id === currentItemId
+                          ? 'text-accent'
+                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100'
+                      "
+                      size="icon-xs"
+                      variant="ghost"
+                      :disabled="isUpdating || isStarting"
+                      @click="playTrack(item.id)"
+                    >
+                      <Volume2
+                        v-if="item.id === currentItemId"
+                        aria-hidden="true"
+                      />
+                      <Play v-else aria-hidden="true" fill="currentColor" />
+                    </Button>
+                  </div>
+                  <div class="min-w-0 pr-2">
+                    <p
+                      class="overflow-hidden text-[0.8rem] font-medium text-ellipsis whitespace-nowrap"
+                    >
+                      {{ item.title }}
+                    </p>
+                    <p
+                      class="mt-0.5 overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
+                    >
+                      {{ item.artist }}
+                    </p>
+                  </div>
+                  <span
+                    class="text-center text-[0.72rem] text-(--muted-text) tabular-nums"
+                  >
+                    {{ formatDuration(item.durationMs) }}
+                  </span>
+                  <div
+                    class="flex items-center justify-end gap-0.5 pr-2 text-(--subtle-text)"
+                  >
+                    <Button
+                      :aria-label="`Move ${item.title} up`"
+                      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                      size="icon-xs"
+                      variant="ghost"
+                      :disabled="
+                        isUpdating ||
+                        item.id === currentItemId ||
+                        virtualItem.index === 0
+                      "
+                      @click.stop="
+                        emit(
+                          'move',
+                          queueStartIndex + virtualItem.index,
+                          queueStartIndex + virtualItem.index - 1,
+                        )
+                      "
+                    >
+                      <span aria-hidden="true">↑</span>
+                    </Button>
+                    <Button
+                      :aria-label="`Move ${item.title} down`"
+                      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                      size="icon-xs"
+                      variant="ghost"
+                      :disabled="
+                        isUpdating ||
+                        item.id === currentItemId ||
+                        virtualItem.index === visibleQueue.length - 1
+                      "
+                      @click.stop="
+                        emit(
+                          'move',
+                          queueStartIndex + virtualItem.index,
+                          queueStartIndex + virtualItem.index + 1,
+                        )
+                      "
+                    >
+                      <span aria-hidden="true">↓</span>
+                    </Button>
+                    <Button
+                      v-if="item.id !== currentItemId"
+                      :aria-label="`Remove ${item.title} from queue`"
+                      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                      size="icon-xs"
+                      variant="ghost"
+                      :disabled="isUpdating || isStarting"
+                      @click.stop="
+                        emit('remove', queueStartIndex + virtualItem.index)
+                      "
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </Button>
+                  </div>
+                </ReorderItem>
+              </ContextMenuTrigger>
+              <ContextMenuContent data-queue-context-menu>
+                <ContextMenuItem
+                  :disabled="
+                    isUpdating || isStarting || item.id === currentItemId
+                  "
+                  @select="playTrack(item.id)"
                 >
-                  {{ item.title }}
-                </p>
-                <p
-                  class="mt-0.5 overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
-                >
-                  {{ item.artist }}
-                </p>
-              </div>
-              <span
-                class="text-center text-[0.72rem] text-(--muted-text) tabular-nums"
-              >
-                {{ formatDuration(item.durationMs) }}
-              </span>
-              <div
-                class="flex items-center justify-end gap-0.5 pr-2 text-(--subtle-text)"
-              >
-                <Button
-                  :aria-label="`Move ${item.title} up`"
-                  class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                  size="icon-xs"
-                  variant="ghost"
+                  Play now
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
                   :disabled="
                     isUpdating ||
+                    isStarting ||
                     item.id === currentItemId ||
                     virtualItem.index === 0
                   "
-                  @click.stop="
+                  @select="
                     emit(
                       'move',
                       queueStartIndex + virtualItem.index,
@@ -310,19 +384,16 @@ watch(
                     )
                   "
                 >
-                  <span aria-hidden="true">↑</span>
-                </Button>
-                <Button
-                  :aria-label="`Move ${item.title} down`"
-                  class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                  size="icon-xs"
-                  variant="ghost"
+                  Move up
+                </ContextMenuItem>
+                <ContextMenuItem
                   :disabled="
                     isUpdating ||
+                    isStarting ||
                     item.id === currentItemId ||
                     virtualItem.index === visibleQueue.length - 1
                   "
-                  @click.stop="
+                  @select="
                     emit(
                       'move',
                       queueStartIndex + virtualItem.index,
@@ -330,10 +401,19 @@ watch(
                     )
                   "
                 >
-                  <span aria-hidden="true">↓</span>
-                </Button>
-              </div>
-            </ReorderItem>
+                  Move down
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  v-if="item.id !== currentItemId"
+                  variant="destructive"
+                  :disabled="isUpdating || isStarting"
+                  @select="emit('remove', queueStartIndex + virtualItem.index)"
+                >
+                  Remove from queue
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         </ReorderGroup>
       </ScrollArea>

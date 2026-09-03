@@ -8,14 +8,14 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-} from 'lucide-vue-next';
-import { computed } from 'vue';
+} from "lucide-vue-next";
+import { computed } from "vue";
 
-import type { PlaybackSnapshot } from '@/api';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { formatDuration } from '@/lib/time';
-import YouTubeArtwork from './YouTubeArtwork.vue';
+import type { PlaybackSnapshot } from "@/api";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { formatDuration } from "@/lib/time";
+import YouTubeArtwork from "./YouTubeArtwork.vue";
 
 interface Props {
   snapshot: PlaybackSnapshot;
@@ -35,15 +35,15 @@ const emit = defineEmits<{
 
 const currentItem = computed(() => props.snapshot.currentItem);
 const durationMs = computed(() => currentItem.value?.durationMs ?? 0);
-const isPlaying = computed(() => props.snapshot.status === 'playing');
+const isPlaying = computed(() => props.snapshot.status === "playing");
 const trackTitle = computed(
-  () => currentItem.value?.title ?? 'Nothing selected'
+  () => currentItem.value?.title ?? "Nothing selected",
 );
 const trackArtist = computed(
-  () => currentItem.value?.artist ?? 'Choose a track to begin'
+  () => currentItem.value?.artist ?? "Choose a track to begin",
 );
 const remainingMs = computed(() =>
-  Math.max(durationMs.value - props.snapshot.positionMs, 0)
+  Math.max(durationMs.value - props.snapshot.positionMs, 0),
 );
 const volumeIcon = computed(() => {
   if (props.snapshot.volumePercent === 0) {
@@ -61,14 +61,14 @@ const volumeIcon = computed(() => {
 function emitSeek(values: number[]): void {
   const value = values[0];
   if (Number.isFinite(value)) {
-    emit('seek', value);
+    emit("seek", value);
   }
 }
 
 function emitVolume(values: number[] | undefined): void {
   const value = values?.[0];
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    emit('setVolume', value);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    emit("setVolume", value);
   }
 }
 </script>

@@ -128,6 +128,13 @@ impl AppState {
             playback.snapshot()
         })
     }
+
+    pub fn remove_queue_item(&self, index: usize) -> Result<PlaybackSnapshot, CommandError> {
+        with_playback(self, "remove_queue_item", |playback| {
+            playback.remove_queue_item(index)?;
+            playback.snapshot()
+        })
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -800,6 +807,19 @@ pub fn toggle_favorite(
 }
 
 #[tauri::command]
+pub fn remove_tracks(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<LibrarySnapshot, CommandError> {
+    let snapshot = state.remove_tracks(&ids)?;
+    if let Err(error) = app.emit("library-updated", ()) {
+        tracing::debug!(%error, "could not deliver library update event");
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn upsert_playlist(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -998,6 +1018,17 @@ pub fn move_queue_item(
         playback.move_queue_item(from, to)?;
         playback.snapshot()
     })?;
+    emit_playback_updated(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn remove_queue_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    index: usize,
+) -> Result<PlaybackSnapshot, CommandError> {
+    let snapshot = state.remove_queue_item(index)?;
     emit_playback_updated(&app, &snapshot);
     Ok(snapshot)
 }

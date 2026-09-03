@@ -179,4 +179,46 @@ describe("QueueWindow", () => {
       wrapper.get('[data-queue-item][data-queue-index="0"]').text(),
     ).toContain("Toxicity");
   });
+
+  it("removes only an upcoming item through a visible queue action", async () => {
+    const wrapper = mount(QueueWindow, {
+      props: {
+        currentItemId: "track-1",
+        isStarting: false,
+        isUpdating: false,
+        positionMs: 0,
+        queue,
+        status: "playing",
+      },
+    });
+
+    expect(
+      wrapper.find('button[aria-label="Remove Aerials from queue"]').exists(),
+    ).toBe(false);
+    await wrapper
+      .get('button[aria-label="Remove Toxicity from queue"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("remove")).toEqual([[1]]);
+  });
+
+  it("opens queue context actions without offering current-item removal", async () => {
+    const wrapper = mount(QueueWindow, {
+      attachTo: document.body,
+      props: {
+        currentItemId: "track-1",
+        isStarting: false,
+        isUpdating: false,
+        positionMs: 0,
+        queue,
+        status: "playing",
+      },
+    });
+
+    await wrapper.get('[data-queue-item-id="track-1"]').trigger("contextmenu");
+    expect(
+      document.body.querySelector("[data-queue-context-menu]")?.textContent,
+    ).not.toContain("Remove from queue");
+    wrapper.unmount();
+  });
 });

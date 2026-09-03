@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, type Component } from "vue";
 
 import { artworkApi } from "@/api";
 
 const props = defineProps<{
   videoId: string | null | undefined;
+  missingIcon?: Component | null;
 }>();
 
 const source = ref<string | null>(null);
@@ -42,11 +43,6 @@ function clearBrokenImage(): void {
 
 <template>
   <div class="youtube-artwork" aria-hidden="true">
-    <div
-      class="artwork-placeholder"
-      data-artwork-placeholder
-      aria-hidden="true"
-    />
     <img
       v-if="source"
       :src="source"
@@ -56,6 +52,14 @@ function clearBrokenImage(): void {
       referrerpolicy="no-referrer"
       @error="clearBrokenImage"
     />
+    <div
+      v-else
+      class="artwork-placeholder flex inset-0 justify-center items-center"
+      data-artwork-placeholder
+      aria-hidden="true"
+    >
+      <component v-if="missingIcon" :is="missingIcon" aria-hidden="true" />
+    </div>
   </div>
 </template>
 

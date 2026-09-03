@@ -55,6 +55,7 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
+  removeTracks: [ids: string[]];
   toggle: [];
   previous: [];
   next: [];
@@ -79,6 +80,7 @@ const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
 const metadataEditorTarget = ref<MetadataEditTarget | null>(null);
 const playlistEditorTarget = ref<Playlist | null>(null);
+const trackRemovalTarget = ref<MediaItem | null>(null);
 const isCreatingPlaylist = ref(false);
 const detailsSidebarOpen = ref(true);
 const activePlaylistId = ref<string>();
@@ -401,6 +403,43 @@ function playTrack(track: MediaItem): void {
   }
 }
 
+function playTracks(tracks: MediaItem[]): void {
+  const track = tracks[0];
+  if (!track || props.isUpdating) {
+    return;
+  }
+
+  selectTrack(track);
+  emit(
+    "playTrack",
+    tracks.map((item) => item.id),
+    track.id,
+  );
+}
+
+function playAlbum(album: LibraryAlbum): void {
+  playTracks(
+    allTracks.value.filter(
+      (track) =>
+        track.artist === album.artist && track.album?.trim() === album.title,
+    ),
+  );
+}
+
+function playArtist(artist: LibraryArtist): void {
+  playTracks(allTracks.value.filter((track) => track.artist === artist.name));
+}
+
+function playPlaylist(playlist: Playlist): void {
+  const tracksById = new Map(allTracks.value.map((track) => [track.id, track]));
+  playTracks(
+    playlist.trackIds.flatMap((id) => {
+      const track = tracksById.get(id);
+      return track ? [track] : [];
+    }),
+  );
+}
+
 function selectAlbum(album: LibraryAlbum): void {
   selectedLibraryItem.value = { key: album.key, kind: "album" };
 }
@@ -415,6 +454,40 @@ function openTrackMetadataEditor(track: MediaItem): void {
     name: track.title,
     tracks: [track],
   };
+}
+
+function openTrackAlbum(track: MediaItem): void {
+  const album = track.album
+    ? libraryAlbums.value.find(
+        (candidate) => candidate.key === `${track.artist}\u0000${track.album}`,
+      )
+    : undefined;
+  if (album) {
+    openAlbum(album);
+  }
+}
+
+function openTrackArtist(track: MediaItem): void {
+  const artist = libraryArtists.value.find(
+    (candidate) => candidate.name === track.artist,
+  );
+  if (artist) {
+    openArtist(artist);
+  }
+}
+
+function requestTrackRemoval(track: MediaItem): void {
+  trackRemovalTarget.value = track;
+}
+
+function confirmTrackRemoval(): void {
+  const track = trackRemovalTarget.value;
+  if (!track) {
+    return;
+  }
+
+  trackRemovalTarget.value = null;
+  emit("removeTracks", [track.id]);
 }
 
 function openAlbumMetadataEditor(album: LibraryAlbum): void {
@@ -505,9 +578,11 @@ function toggleMetadataRefresh(): void {
       :playlists="playlists"
       @cancel-playlist-creation="cancelPlaylistCreation"
       @create-playlist="createPlaylist"
+      @delete-playlist="openPlaylistEditor"
       @edit-playlist="openPlaylistEditor"
       @new-playlist="beginPlaylistCreation"
       @open-import="emit('openImport')"
+      @play-playlist="playPlaylist"
       @select-collection="selectCollection"
       @select-playlist="selectPlaylist"
     />
@@ -546,7 +621,13 @@ function toggleMetadataRefresh(): void {
           []
         "
         @clear-track-filter="trackFilter = null"
+        @add-to-queue="emit('addToQueue', $event)"
+        @edit-track="openTrackMetadataEditor"
+        @open-album="openTrackAlbum"
+        @open-artist="openTrackArtist"
         @play-track="playTrack"
+        @play-next="emit('playNext', $event)"
+        @remove-track="requestTrackRemoval"
         @select-track="selectTrack"
         @set-sort="setSort"
         @toggle-favorite="emit('toggleFavorite', $event)"
@@ -554,9 +635,21 @@ function toggleMetadataRefresh(): void {
       <LibraryTrackGrid
         v-else-if="activeCollection === 'tracks'"
         :current-item-id="currentItem?.id"
+        :favorite-track-ids="
+          playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
+          []
+        "
         :grid-item-size="gridItemSize"
         :groups="groupedTracks"
+        @add-to-queue="emit('addToQueue', $event)"
+        @edit-track="openTrackMetadataEditor"
+        @open-album="openTrackAlbum"
+        @open-artist="openTrackArtist"
+        @play-next="emit('playNext', $event)"
+        @play-track="playTrack"
+        @remove-track="requestTrackRemoval"
         @select-track="selectTrack"
+        @toggle-favorite="emit('toggleFavorite', $event)"
       />
       <LibraryAlbumGrid
         v-else-if="activeCollection === 'albums'"
@@ -564,7 +657,9 @@ function toggleMetadataRefresh(): void {
         :grid-item-size="gridItemSize"
         :groups="groupedAlbums"
         :selected-album-key="selectedAlbum?.key"
+        @edit-album="openAlbumMetadataEditor"
         @open-album="openAlbum"
+        @play-album="playAlbum"
         @select-album="selectAlbum"
         @set-sort="setSort"
         :sort-by="sortBy"
@@ -575,7 +670,9 @@ function toggleMetadataRefresh(): void {
         :grid-item-size="gridItemSize"
         :groups="groupedArtists"
         :selected-artist-name="selectedArtist?.name"
+        @edit-artist="openArtistMetadataEditor"
         @open-artist="openArtist"
+        @play-artist="playArtist"
         @select-artist="selectArtist"
         @set-sort="setSort"
         :sort-by="sortBy"
@@ -633,6 +730,47 @@ function toggleMetadataRefresh(): void {
       @delete="deletePlaylist"
       @save="savePlaylist"
     />
+    <section
+      v-if="trackRemovalTarget"
+      aria-labelledby="track-removal-title"
+      aria-modal="true"
+      class="absolute inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm"
+      role="dialog"
+      @click.self="trackRemovalTarget = null"
+      @keydown.esc="trackRemovalTarget = null"
+    >
+      <div
+        class="w-full max-w-100 rounded-2xl border border-(--line-strong) bg-[oklch(0.11_0.014_260/0.98)] p-6 shadow-2xl"
+      >
+        <h2
+          id="track-removal-title"
+          class="text-lg font-semibold text-(--text)"
+        >
+          Remove from library?
+        </h2>
+        <p class="mt-2 text-sm text-(--muted-text)">
+          Remove {{ trackRemovalTarget.title }} from your library and every
+          playlist?
+        </p>
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-md px-3 py-2 text-sm font-medium text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+            type="button"
+            @click="trackRemovalTarget = null"
+          >
+            Cancel
+          </button>
+          <button
+            class="rounded-md bg-red-500/15 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-500/25 focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+            data-confirm-track-removal
+            type="button"
+            @click="confirmTrackRemoval"
+          >
+            Remove track
+          </button>
+        </div>
+      </div>
+    </section>
   </main>
 </template>
 

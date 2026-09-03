@@ -45,6 +45,7 @@ pub fn run() {
             commands::show_import_window,
             commands::update_tracks_metadata,
             commands::toggle_favorite,
+            commands::remove_tracks,
             commands::upsert_playlist,
             commands::delete_playlist,
             commands::play,
@@ -57,6 +58,7 @@ pub fn run() {
             commands::seek,
             commands::set_volume,
             commands::move_queue_item,
+            commands::remove_queue_item,
             commands::resolve_youtube_artwork,
         ])
         .build(tauri::generate_context!());

@@ -4,16 +4,26 @@ import { Disc3 } from "lucide-vue-next";
 import type { MediaItem } from "@/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
+import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
 import type { TrackGroup } from "./types";
 
 const props = defineProps<{
   groups: TrackGroup[];
   currentItemId: string | undefined;
+  favoriteTrackIds: string[];
   gridItemSize: number;
 }>();
 
 const emit = defineEmits<{
+  addToQueue: [id: string];
+  editTrack: [track: MediaItem];
+  openAlbum: [track: MediaItem];
+  openArtist: [track: MediaItem];
+  playNext: [id: string];
+  playTrack: [track: MediaItem];
+  removeTrack: [track: MediaItem];
   selectTrack: [track: MediaItem];
+  toggleFavorite: [id: string];
 }>();
 
 function selectTrack(track: MediaItem): void {
@@ -41,38 +51,52 @@ function selectTrack(track: MediaItem): void {
             {{ group.label }}
           </h2>
           <div class="library-grid track-grid">
-            <article
+            <LibraryTrackContextMenu
               v-for="track in group.items"
               :key="track.id"
-              :aria-label="`Play ${track.title}`"
-              class="track-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-              :data-current="track.id === props.currentItemId"
-              :data-track-id="track.id"
-              tabindex="0"
-              @click="selectTrack(track)"
-              @keydown.enter.prevent="selectTrack(track)"
-              @keydown.space.prevent="selectTrack(track)"
+              :is-favorite="props.favoriteTrackIds.includes(track.id)"
+              :track="track"
+              @add-to-queue="emit('addToQueue', $event)"
+              @edit="emit('editTrack', $event)"
+              @open-album="emit('openAlbum', $event)"
+              @open-artist="emit('openArtist', $event)"
+              @play="emit('playTrack', $event)"
+              @play-next="emit('playNext', $event)"
+              @remove="emit('removeTrack', $event)"
+              @select="selectTrack"
+              @toggle-favorite="emit('toggleFavorite', $event)"
             >
-              <div
-                class="cover-art grid aspect-square w-full place-items-center rounded-lg [&>svg]:size-[28%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
+              <article
+                :aria-label="`Play ${track.title}`"
+                class="track-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                :data-current="track.id === props.currentItemId"
+                :data-track-id="track.id"
+                tabindex="0"
+                @click="selectTrack(track)"
+                @keydown.enter.prevent="selectTrack(track)"
+                @keydown.space.prevent="selectTrack(track)"
               >
-                <Disc3 aria-hidden="true" />
-                <YouTubeArtwork
-                  class="absolute inset-0 size-full object-cover"
-                  :video-id="track.id"
-                />
-              </div>
-              <h2
-                class="mt-2 overflow-hidden text-xs font-semibold text-ellipsis whitespace-nowrap text-(--text)"
-              >
-                {{ track.title }}
-              </h2>
-              <p
-                class="mt-0.5 overflow-hidden text-[0.69rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
-              >
-                {{ track.artist }}
-              </p>
-            </article>
+                <div
+                  class="cover-art grid aspect-square w-full place-items-center rounded-lg [&>svg]:size-[28%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
+                >
+                  <YouTubeArtwork
+                    class="absolute inset-0 size-full object-cover"
+                    :video-id="track.id"
+                    :missing-icon="Disc3"
+                  />
+                </div>
+                <h2
+                  class="mt-2 overflow-hidden text-xs font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+                >
+                  {{ track.title }}
+                </h2>
+                <p
+                  class="mt-0.5 overflow-hidden text-[0.69rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
+                >
+                  {{ track.artist }}
+                </p>
+              </article>
+            </LibraryTrackContextMenu>
           </div>
         </section>
       </div>

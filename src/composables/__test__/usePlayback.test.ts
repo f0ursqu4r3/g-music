@@ -205,6 +205,40 @@ describe("usePlayback", () => {
     expect(playback.snapshot.value).toEqual(selected);
   });
 
+  it("removes a durable library track and an upcoming queue item", async () => {
+    const library = { playlists: [], tracks: [] };
+    const item = {
+      artist: "YouTube Creators",
+      durationMs: 207_000,
+      id: "BaW_jenozKc",
+      title: "Creator Studio Session",
+    };
+    const queueWithoutSecondItem = { ...paused, queue: [item] };
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn().mockResolvedValue(paused),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      removeQueueItem: vi.fn().mockResolvedValue(queueWithoutSecondItem),
+      removeTracks: vi.fn().mockResolvedValue(library),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const playback = usePlayback(client);
+
+    await playback.removeTracks(["BaW_jenozKc"]);
+    await playback.removeQueueItem(1);
+
+    expect(client.removeTracks).toHaveBeenCalledWith(["BaW_jenozKc"]);
+    expect(client.removeQueueItem).toHaveBeenCalledWith(1);
+    expect(playback.library.value).toEqual(library);
+    expect(playback.snapshot.value).toEqual(queueWithoutSecondItem);
+  });
+
   it("replaces the library after saving edited metadata without changing transport", async () => {
     const library = {
       tracks: [

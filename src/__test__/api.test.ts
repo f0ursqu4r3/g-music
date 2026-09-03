@@ -79,6 +79,18 @@ describe("playbackApi", () => {
     });
   });
 
+  it("removes a library track and an upcoming queue item through dedicated commands", async () => {
+    vi.mocked(invoke).mockResolvedValue(snapshot);
+
+    await playbackApi.removeTracks(["BaW_jenozKc"]);
+    await playbackApi.removeQueueItem(1);
+
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ["remove_tracks", { ids: ["BaW_jenozKc"] }],
+      ["remove_queue_item", { index: 1 }],
+    ]);
+  });
+
   it("updates selected library metadata through the batched command", async () => {
     const library: LibrarySnapshot = { playlists: [], tracks: [] };
     const updates: Array<{ id: string; metadata: EditableTrackMetadata }> = [

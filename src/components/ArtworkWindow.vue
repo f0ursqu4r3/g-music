@@ -13,6 +13,12 @@ import { computed } from "vue";
 
 import type { PlaybackSnapshot } from "@/api";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Slider } from "@/components/ui/slider";
 import { formatDuration } from "@/lib/time";
 import AutoScrollText from "./AutoScrollText.vue";
@@ -32,6 +38,7 @@ const emit = defineEmits<{
   previous: [];
   next: [];
   seek: [positionMs: number];
+  toggleFavorite: [id: string];
 }>();
 
 const isPlaying = computed(() => props.snapshot.status === "playing");
@@ -50,16 +57,28 @@ function emitSeek(values: number[]): void {
     class="artwork-window window-shell relative flex h-screen min-h-0 flex-col overflow-hidden bg-(--canvas) text-(--text)"
     aria-label="Current artwork"
   >
-    <div
-      class="artwork-cover absolute inset-0 overflow-hidden"
-      data-cover="violet"
-      aria-hidden="true"
-    >
-      <YouTubeArtwork
-        class="absolute inset-0 size-full object-cover"
-        :video-id="currentItem?.id"
-      />
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger as-child>
+        <div
+          class="artwork-cover absolute inset-0 overflow-hidden"
+          data-cover="violet"
+          aria-hidden="true"
+        >
+          <YouTubeArtwork
+            class="absolute inset-0 size-full object-cover"
+            :video-id="currentItem?.id"
+          />
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent data-artwork-context-menu>
+        <ContextMenuItem
+          :disabled="!currentItem || isUpdating"
+          @select="currentItem && emit('toggleFavorite', currentItem.id)"
+        >
+          Add to Favorites
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
 
     <div
       class="artwork-drag-region relative z-20 min-h-0 flex-1 cursor-grab active:cursor-grabbing"
@@ -98,6 +117,8 @@ function emitSeek(values: number[]): void {
               aria-label="Favorite track"
               size="icon-sm"
               variant="ghost"
+              :disabled="!currentItem || isUpdating"
+              @click="currentItem && emit('toggleFavorite', currentItem.id)"
             >
               <Heart aria-hidden="true" />
             </Button>

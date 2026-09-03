@@ -930,6 +930,98 @@ describe("LibraryWindow", () => {
     expect(wrapper.emitted("addToQueue")).toEqual([["BaW_jenozKc"]]);
   });
 
+  it("opens a track action menu with the current library actions", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+
+    const menu = document.body.querySelector("[data-track-context-menu]");
+    expect(menu?.textContent).toContain("Play");
+    expect(menu?.textContent).toContain("Play next");
+    expect(menu?.textContent).toContain("Add to queue");
+    expect(menu?.textContent).toContain("Add to Favorites");
+    expect(menu?.textContent).toContain("Go to album");
+    expect(menu?.textContent).toContain("Go to artist");
+    expect(menu?.textContent).toContain("Edit metadata");
+    expect(menu?.textContent).toContain("Remove from library…");
+
+    wrapper.unmount();
+  });
+
+  it("routes a track context action through the library command", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+    await document
+      .querySelector<HTMLButtonElement>(
+        '[data-track-context-action="play-next"]',
+      )
+      ?.click();
+
+    expect(wrapper.emitted("playNext")).toEqual([["BaW_jenozKc"]]);
+
+    wrapper.unmount();
+  });
+
+  it("requires confirmation before removing a track from the durable library", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+    await document
+      .querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')
+      ?.click();
+
+    expect(wrapper.get('[role="dialog"]').text()).toContain(
+      "Remove from library?",
+    );
+    expect(wrapper.emitted("removeTracks")).toBeUndefined();
+
+    await wrapper.get("[data-confirm-track-removal]").trigger("click");
+    expect(wrapper.emitted("removeTracks")).toEqual([[["BaW_jenozKc"]]]);
+    wrapper.unmount();
+  });
+
+  it("opens contextual actions from track grid, collection rows, and playlists", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        playlists: [
+          { id: "focus", name: "Focus", trackIds: [importedTracks[0]!.id] },
+        ],
+        snapshot,
+      },
+    });
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    await wrapper.get(".track-grid .track-tile").trigger("contextmenu");
+    expect(document.querySelector("[data-track-context-menu]")).not.toBeNull();
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    await wrapper.get(".album-tile").trigger("contextmenu");
+    expect(document.querySelector("[data-album-context-menu]")).not.toBeNull();
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    await wrapper.get(".artist-tile").trigger("contextmenu");
+    expect(document.querySelector("[data-artist-context-menu]")).not.toBeNull();
+
+    await wrapper.get('[data-playlist-id="focus"]').trigger("contextmenu");
+    expect(
+      document.querySelector("[data-playlist-context-menu]"),
+    ).not.toBeNull();
+
+    wrapper.unmount();
+  });
+
   it("uses dense square-corner track rows", () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },

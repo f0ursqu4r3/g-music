@@ -41,12 +41,6 @@ let unlistenMetadataRefreshProgress: (() => void) | undefined;
 let unlistenPlaybackUpdated: (() => void) | undefined;
 let unlistenKeyboardShortcuts: (() => void) | undefined;
 
-const statusMessage = computed(
-  () =>
-    windowError.value ||
-    playback.errorMessage.value ||
-    "Local YouTube via yt-dlp + mpv",
-);
 const isViewLoaded = computed(() =>
   view === "library"
     ? Boolean(playback.library.value && playback.transport.value)
@@ -306,6 +300,7 @@ onUnmounted(() => {
       @open-import="openImportWindow"
       @upsert-playlist="playback.upsertPlaylist"
       @delete-playlist="playback.deletePlaylist"
+      @remove-tracks="playback.removeTracks"
       @toggle-favorite="playback.toggleFavorite"
       @update-tracks-metadata="playback.updateTracksMetadata"
     />
@@ -327,6 +322,7 @@ onUnmounted(() => {
       @previous="playback.previous"
       @next="playback.next"
       @seek="playback.seek"
+      @toggle-favorite="playback.toggleFavorite"
     />
 
     <QueueWindow
@@ -342,6 +338,7 @@ onUnmounted(() => {
       @next="playback.next"
       @play-track="playback.playTrack"
       @move="playback.moveQueueItem"
+      @remove="playback.removeQueueItem"
     />
 
     <MiniWindow
@@ -357,6 +354,7 @@ onUnmounted(() => {
       @set-volume="playback.setVolume"
       @toggle-mute="playback.toggleMute"
       @move="playback.moveQueueItem"
+      @remove="playback.removeQueueItem"
       @toggle-queue="toggleQueue"
       @toggle-theme="cycleTheme"
       @close="closeMiniPlayer"

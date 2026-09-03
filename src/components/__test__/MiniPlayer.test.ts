@@ -30,7 +30,7 @@ describe("MiniPlayer", () => {
     expect(wrapper.text()).toContain("Aerials");
     expect(wrapper.text()).toContain("System of a Down");
     expect(wrapper.get('button[aria-label="Play"]')).toBeDefined();
-    expect(wrapper.get(".mini-drag-handle").attributes()).toHaveProperty(
+    expect(wrapper.get("[data-tauri-drag-region]").attributes()).toHaveProperty(
       "data-tauri-drag-region",
     );
     expect(wrapper.getComponent(YouTubeArtwork).props("videoId")).toBe(

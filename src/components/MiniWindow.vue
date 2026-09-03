@@ -24,6 +24,7 @@ const emit = defineEmits<{
   setVolume: [volumePercent: number];
   toggleMute: [];
   move: [from: number, to: number];
+  remove: [index: number];
   toggleQueue: [];
   toggleTheme: [];
   close: [];
@@ -53,6 +54,7 @@ const emit = defineEmits<{
         :current-item-id="snapshot.currentItem?.id"
         :is-updating="isUpdating"
         @move="(from, to) => emit('move', from, to)"
+        @remove="emit('remove', $event)"
       />
       <nav
         class="absolute top-2 right-2 z-3 grid gap-0.5 [&_button]:text-(--subtle-text) [&_button:hover]:bg-(--surface-muted) [&_button:hover]:text-(--text)"

@@ -56,6 +56,9 @@ pub enum YouTubePlaybackError {
     #[error("queue index {index} is outside the current queue")]
     QueueIndexOutOfBounds { index: usize },
 
+    #[error("the current queue item cannot be removed")]
+    CurrentQueueItem,
+
     #[error("track {id} is not in the current queue")]
     TrackNotFound { id: String },
 
@@ -643,6 +646,22 @@ impl YouTubePlaybackProvider {
         let item = self.snapshot.queue.remove(from);
         self.snapshot.queue.insert(to, item);
         tracing::info!(from, to, "queue item moved");
+        Ok(())
+    }
+
+    pub fn remove_queue_item(&mut self, index: usize) -> Result<(), YouTubePlaybackError> {
+        if index >= self.snapshot.queue.len() {
+            return Err(YouTubePlaybackError::QueueIndexOutOfBounds { index });
+        }
+        if self
+            .current_index()
+            .is_some_and(|current_index| current_index == index)
+        {
+            return Err(YouTubePlaybackError::CurrentQueueItem);
+        }
+
+        self.snapshot.queue.remove(index);
+        tracing::info!(index, "queue item removed");
         Ok(())
     }
 
@@ -2328,6 +2347,26 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["M7lc1UVf-VE", "BaW_jenozKc"]
         );
+        assert_eq!(provider.library_snapshot().tracks.len(), 2);
+    }
+
+    #[test]
+    fn removes_an_upcoming_item_without_changing_the_library() {
+        let entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider
+            .replace_queue(&["M7lc1UVf-VE".into(), "BaW_jenozKc".into()])
+            .expect("known library tracks create a play queue");
+
+        provider
+            .remove_queue_item(1)
+            .expect("an upcoming queue item can be removed");
+
+        assert_eq!(provider.snapshot.queue.len(), 1);
+        assert_eq!(provider.snapshot.queue[0].id, "M7lc1UVf-VE");
         assert_eq!(provider.library_snapshot().tracks.len(), 2);
     }
 

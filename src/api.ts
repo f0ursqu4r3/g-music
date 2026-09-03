@@ -128,6 +128,8 @@ export const playbackApi = {
     invoke<LibrarySnapshot>("update_tracks_metadata", { updates }),
   toggleFavorite: (id: string): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>("toggle_favorite", { id }),
+  removeTracks: (ids: string[]): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("remove_tracks", { ids }),
   upsertPlaylist: (playlist: Playlist): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>("upsert_playlist", { playlist }),
   deletePlaylist: (id: string): Promise<LibrarySnapshot> =>
@@ -154,6 +156,8 @@ export const playbackApi = {
     invoke<void>("set_volume", { volumePercent }),
   moveQueueItem: (from: number, to: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("move_queue_item", { from, to }),
+  removeQueueItem: (index: number): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("remove_queue_item", { index }),
 };
 
 export const artworkApi = {

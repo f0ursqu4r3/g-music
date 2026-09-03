@@ -2,6 +2,13 @@
 import { Disc3 } from "lucide-vue-next";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { formatDuration } from "@/lib/time";
 import type {
   AlbumGroup,
@@ -22,6 +29,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  editAlbum: [album: LibraryAlbum];
+  playAlbum: [album: LibraryAlbum];
   selectAlbum: [album: LibraryAlbum];
   openAlbum: [album: LibraryAlbum];
   setSort: [option: LibrarySortOption];
@@ -165,56 +174,74 @@ function toggleSort(column: AlbumSortColumn): void {
             v-for="group in props.groups"
             :key="group.label || 'all-albums'"
           >
-            <tr
+            <ContextMenu
               v-for="album in group.items"
               :key="album.key"
-              class="album-tile cursor-pointer outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:bg-[oklch(0.72_0.03_268/0.13)] data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-              :data-selected="props.selectedAlbumKey === album.key"
-              tabindex="0"
-              @click="emit('selectAlbum', album)"
-              @dblclick="emit('openAlbum', album)"
-              @keydown.enter.prevent="emit('openAlbum', album)"
+              @update:open="(isOpen) => isOpen && emit('selectAlbum', album)"
             >
-              <td class="px-3 py-1.5">
-                <div
-                  class="cover-art grid size-8 place-items-center rounded-md [&>svg]:size-4 [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
+              <ContextMenuTrigger as-child>
+                <tr
+                  class="album-tile cursor-pointer outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:bg-[oklch(0.72_0.03_268/0.13)] data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                  :data-selected="props.selectedAlbumKey === album.key"
+                  tabindex="0"
+                  @click="emit('selectAlbum', album)"
+                  @dblclick="emit('openAlbum', album)"
+                  @keydown.enter.prevent="emit('openAlbum', album)"
                 >
-                  <Disc3 aria-hidden="true" />
-                  <YouTubeArtwork
-                    class="absolute inset-0 size-full object-cover"
-                    :video-id="album.videoId"
-                  />
-                </div>
-              </td>
-              <td
-                class="overflow-hidden px-3 py-1.5 text-[0.82rem] font-medium text-(--text)"
-              >
-                <span
-                  class="block overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {{ album.title }}
-                </span>
-              </td>
-              <td
-                class="overflow-hidden px-3 py-1.5 text-[0.8rem] text-(--muted-text)"
-              >
-                <span
-                  class="block overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {{ album.artist }}
-                </span>
-              </td>
-              <td
-                class="px-3 py-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums"
-              >
-                {{ album.trackCount }}
-              </td>
-              <td
-                class="px-3 py-1.5 text-right text-[0.78rem] text-(--muted-text) tabular-nums"
-              >
-                {{ formatDuration(album.durationMs) }}
-              </td>
-            </tr>
+                  <td class="px-3 py-1.5">
+                    <div
+                      class="cover-art grid size-8 place-items-center rounded-md [&>svg]:size-4 [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
+                    >
+                      <Disc3 aria-hidden="true" />
+                      <YouTubeArtwork
+                        class="absolute inset-0 size-full object-cover"
+                        :video-id="album.videoId"
+                      />
+                    </div>
+                  </td>
+                  <td
+                    class="overflow-hidden px-3 py-1.5 text-[0.82rem] font-medium text-(--text)"
+                  >
+                    <span
+                      class="block overflow-hidden text-ellipsis whitespace-nowrap"
+                    >
+                      {{ album.title }}
+                    </span>
+                  </td>
+                  <td
+                    class="overflow-hidden px-3 py-1.5 text-[0.8rem] text-(--muted-text)"
+                  >
+                    <span
+                      class="block overflow-hidden text-ellipsis whitespace-nowrap"
+                    >
+                      {{ album.artist }}
+                    </span>
+                  </td>
+                  <td
+                    class="px-3 py-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums"
+                  >
+                    {{ album.trackCount }}
+                  </td>
+                  <td
+                    class="px-3 py-1.5 text-right text-[0.78rem] text-(--muted-text) tabular-nums"
+                  >
+                    {{ formatDuration(album.durationMs) }}
+                  </td>
+                </tr>
+              </ContextMenuTrigger>
+              <ContextMenuContent data-album-context-menu>
+                <ContextMenuItem @select="emit('playAlbum', album)">
+                  Play album
+                </ContextMenuItem>
+                <ContextMenuItem @select="emit('openAlbum', album)">
+                  Open tracks
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="emit('editAlbum', album)">
+                  Edit metadata
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </template>
         </tbody>
       </table>
@@ -232,38 +259,56 @@ function toggleSort(column: AlbumSortColumn): void {
             {{ group.label }}
           </h2>
           <div class="library-grid">
-            <article
+            <ContextMenu
               v-for="album in group.items"
               :key="album.key"
-              class="album-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-              :data-selected="props.selectedAlbumKey === album.key"
-              tabindex="0"
-              @click="emit('selectAlbum', album)"
-              @dblclick="emit('openAlbum', album)"
-              @keydown.enter.prevent="emit('openAlbum', album)"
+              @update:open="(isOpen) => isOpen && emit('selectAlbum', album)"
             >
-              <div
-                class="cover-art grid place-items-center rounded-lg [&>svg]:size-[34%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
-                :class="'aspect-square w-full'"
-              >
-                <Disc3 aria-hidden="true" />
-                <YouTubeArtwork
-                  class="absolute inset-0 size-full object-cover"
-                  :video-id="album.videoId"
-                />
-              </div>
-              <div class="min-w-0">
-                <h2
-                  class="mt-2 overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+              <ContextMenuTrigger as-child>
+                <article
+                  class="album-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                  :data-selected="props.selectedAlbumKey === album.key"
+                  tabindex="0"
+                  @click="emit('selectAlbum', album)"
+                  @dblclick="emit('openAlbum', album)"
+                  @keydown.enter.prevent="emit('openAlbum', album)"
                 >
-                  {{ album.title }}
-                </h2>
-                <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
-                  {{ album.artist }} · {{ album.trackCount }}
-                  {{ album.trackCount === 1 ? "song" : "songs" }}
-                </p>
-              </div>
-            </article>
+                  <div
+                    class="cover-art grid place-items-center rounded-lg [&>svg]:size-[34%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
+                    :class="'aspect-square w-full'"
+                  >
+                    <YouTubeArtwork
+                      class="absolute inset-0 size-full object-cover"
+                      :video-id="album.videoId"
+                      :missing-icon="Disc3"
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <h2
+                      class="mt-2 overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+                    >
+                      {{ album.title }}
+                    </h2>
+                    <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
+                      {{ album.artist }} · {{ album.trackCount }}
+                      {{ album.trackCount === 1 ? "song" : "songs" }}
+                    </p>
+                  </div>
+                </article>
+              </ContextMenuTrigger>
+              <ContextMenuContent data-album-context-menu>
+                <ContextMenuItem @select="emit('playAlbum', album)">
+                  Play album
+                </ContextMenuItem>
+                <ContextMenuItem @select="emit('openAlbum', album)">
+                  Open tracks
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="emit('editAlbum', album)">
+                  Edit metadata
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         </section>
       </div>
