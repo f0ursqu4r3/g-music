@@ -132,16 +132,18 @@ impl YouTubePlaybackProvider {
 
     pub fn from_library_path(path: PathBuf) -> Result<Self, YouTubePlaybackError> {
         let library = load_library(&path)?;
+        let saved_state = crate::persistence::load_playback_state(&path)
+            .map_err(YouTubePlaybackError::Library)?;
         tracing::info!(
             tracks = library.entries.len(),
             playlists = library.playlists.len(),
             "imported library loaded"
         );
-        Ok(Self::with_library(
-            library.entries,
-            library.playlists,
-            Some(path),
-        ))
+        let mut provider = Self::with_library(library.entries, library.playlists, Some(path));
+        if let Some(saved_state) = saved_state {
+            provider.restore_playback_state(saved_state);
+        }
+        Ok(provider)
     }
 
     pub fn from_library_directory(directory: PathBuf) -> Result<Self, YouTubePlaybackError> {
@@ -240,6 +242,12 @@ impl YouTubePlaybackProvider {
     }
 
     pub fn shutdown(&mut self) {
+        if let Err(error) = self.update_transport() {
+            tracing::warn!(%error, "could not sample playback state before shutdown");
+        }
+        if let Err(error) = self.persist_playback_state() {
+            tracing::error!(%error, "could not save playback state before shutdown");
+        }
         self.player.stop();
     }
 
@@ -595,7 +603,7 @@ impl YouTubePlaybackProvider {
     }
 
     fn update_transport(&mut self) -> Result<(), YouTubePlaybackError> {
-        if self.snapshot.current_item.is_some() {
+        if self.snapshot.current_item.is_some() && self.player.is_running() {
             let was_playing = self.snapshot.status == PlaybackStatus::Playing;
             let state = self.player.inspect()?;
             if was_playing && state.eof_reached {
@@ -620,6 +628,17 @@ impl YouTubePlaybackProvider {
 
     pub fn play(&mut self) -> Result<(), YouTubePlaybackError> {
         if self.snapshot.current_item.is_some() {
+            if !self.player.is_running() {
+                let index = self.current_index().ok_or_else(|| {
+                    YouTubePlaybackError::Player("the restored track is not in the queue".into())
+                })?;
+                let position_ms = self.snapshot.position_ms;
+                self.select_queue_index(index)?;
+                if position_ms > 0 {
+                    self.player.seek(position_ms)?;
+                    self.snapshot.position_ms = position_ms;
+                }
+            }
             self.player.set_paused(false)?;
             self.snapshot.status = PlaybackStatus::Playing;
             tracing::info!("playback resumed");
@@ -641,7 +660,9 @@ impl YouTubePlaybackProvider {
             return Ok(());
         };
         let position_ms = position_ms.min(current_item.duration_ms);
-        self.player.seek(position_ms)?;
+        if self.player.is_running() {
+            self.player.seek(position_ms)?;
+        }
         self.snapshot.position_ms = position_ms;
         tracing::debug!(position_ms, "playback seeked");
         Ok(())
@@ -767,7 +788,7 @@ impl YouTubePlaybackProvider {
         if volume_percent > 100 {
             return Err(YouTubePlaybackError::InvalidVolume);
         }
-        if self.snapshot.current_item.is_some() {
+        if self.snapshot.current_item.is_some() && self.player.is_running() {
             self.player.set_volume(volume_percent)?;
         }
         self.snapshot.volume_percent = volume_percent;
@@ -792,7 +813,7 @@ impl YouTubePlaybackProvider {
 
     pub fn cycle_repeat_mode(&mut self) -> Result<(), YouTubePlaybackError> {
         self.snapshot.repeat_mode = self.snapshot.repeat_mode.cycle();
-        if self.snapshot.current_item.is_some() {
+        if self.snapshot.current_item.is_some() && self.player.is_running() {
             self.player
                 .set_repeat_one(self.snapshot.repeat_mode == RepeatMode::One)?;
         }
@@ -1047,6 +1068,58 @@ impl YouTubePlaybackProvider {
             "imported library persisted"
         );
         Ok(())
+    }
+
+    fn persist_playback_state(&self) -> Result<(), YouTubePlaybackError> {
+        let Some(path) = self.library_path.as_ref() else {
+            return Ok(());
+        };
+        let state = crate::persistence::SavedPlaybackState {
+            current_item_id: self
+                .snapshot
+                .current_item
+                .as_ref()
+                .map(|item| item.id.clone()),
+            position_ms: self.snapshot.position_ms,
+            volume_percent: self.snapshot.volume_percent,
+            shuffle_enabled: self.snapshot.shuffle_enabled,
+            repeat_mode: self.snapshot.repeat_mode,
+            queue_ids: self
+                .snapshot
+                .queue
+                .iter()
+                .map(|item| item.id.clone())
+                .collect(),
+            shuffle_order: self.shuffle_order.clone(),
+        };
+        crate::persistence::save_playback_state(path, &state).map_err(YouTubePlaybackError::Library)
+    }
+
+    fn restore_playback_state(&mut self, state: crate::persistence::SavedPlaybackState) {
+        self.snapshot.queue = state
+            .queue_ids
+            .iter()
+            .filter_map(|id| self.entries.iter().find(|entry| entry.item.id == *id))
+            .map(|entry| entry.item.clone())
+            .collect();
+        self.snapshot.current_item = state.current_item_id.and_then(|id| {
+            self.snapshot
+                .queue
+                .iter()
+                .find(|item| item.id == id)
+                .cloned()
+        });
+        self.snapshot.position_ms = self
+            .snapshot
+            .current_item
+            .as_ref()
+            .map_or(0, |item| state.position_ms.min(item.duration_ms));
+        self.snapshot.status = PlaybackStatus::Paused;
+        self.snapshot.volume_percent = state.volume_percent;
+        self.snapshot.shuffle_enabled = state.shuffle_enabled;
+        self.snapshot.repeat_mode = state.repeat_mode;
+        self.shuffle_order = state.shuffle_order;
+        self.reconcile_shuffle_order();
     }
 }
 
@@ -1744,6 +1817,12 @@ impl MpvPlayer {
         }
     }
 
+    fn is_running(&mut self) -> bool {
+        self.child
+            .as_mut()
+            .is_some_and(|child| child.try_wait().ok().flatten().is_none())
+    }
+
     fn load(
         &mut self,
         source_url: &str,
@@ -2106,7 +2185,7 @@ mod tests {
         parse_streamed_metadata, resolve_metadata, spawn_parent_exit_watchdog,
         validate_youtube_url,
     };
-    use crate::playback::{EditableTrackMetadata, Playlist};
+    use crate::playback::{EditableTrackMetadata, PlaybackStatus, Playlist, RepeatMode};
 
     #[test]
     fn accepts_supported_youtube_urls() {
@@ -2898,7 +2977,7 @@ mod tests {
     }
 
     #[test]
-    fn imported_library_survives_a_provider_restart() {
+    fn restores_application_state_after_the_provider_closes() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time should be after the Unix epoch")
@@ -2918,14 +2997,43 @@ mod tests {
         provider
             .persist_library()
             .expect("the imported library should persist");
-        drop(provider);
+
+        provider.snapshot.queue = vec![
+            provider.entries[1].item.clone(),
+            provider.entries[0].item.clone(),
+        ];
+        provider.snapshot.current_item = Some(provider.entries[1].item.clone());
+        provider.snapshot.position_ms = 34_000;
+        provider.snapshot.volume_percent = 41;
+        provider.snapshot.shuffle_enabled = true;
+        provider.snapshot.repeat_mode = RepeatMode::All;
+        provider.shuffle_order = vec!["BaW_jenozKc".into(), "M7lc1UVf-VE".into()];
+        provider.shutdown();
 
         let mut restored = YouTubePlaybackProvider::from_library_path(path.clone())
             .expect("the persisted library should load");
-        let snapshot = restored.snapshot().expect("restored state is readable");
+        let snapshot = restored
+            .snapshot()
+            .expect("restored application state is inspectable without a player process");
 
-        assert!(snapshot.queue.is_empty());
-        assert_eq!(snapshot.current_item, None);
+        assert_eq!(
+            snapshot
+                .queue
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["BaW_jenozKc", "M7lc1UVf-VE"]
+        );
+        assert_eq!(
+            snapshot.current_item.as_ref().map(|item| item.id.as_str()),
+            Some("BaW_jenozKc")
+        );
+        assert_eq!(snapshot.position_ms, 34_000);
+        assert_eq!(snapshot.volume_percent, 41);
+        assert!(snapshot.shuffle_enabled);
+        assert_eq!(snapshot.repeat_mode, RepeatMode::All);
+        assert_eq!(snapshot.status, PlaybackStatus::Paused);
+        assert_eq!(restored.shuffle_order, ["BaW_jenozKc", "M7lc1UVf-VE"]);
 
         fs::remove_file(path).expect("temporary library should be removable");
     }

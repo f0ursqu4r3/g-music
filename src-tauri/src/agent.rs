@@ -211,10 +211,10 @@ fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandErr
         }
         _ => Err(protocol_error(format!("unknown method {}", request.method))),
     }?;
-    if library_mutation_method(method) {
-        if let Err(error) = app.emit("library-updated", ()) {
-            tracing::debug!(%error, method, "could not deliver library update event");
-        }
+    if library_mutation_method(method)
+        && let Err(error) = app.emit("library-updated", ())
+    {
+        tracing::debug!(%error, method, "could not deliver library update event");
     }
     Ok(result)
 }

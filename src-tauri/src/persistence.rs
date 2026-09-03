@@ -1,8 +1,32 @@
 use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Deserialize, Serialize};
 
-use crate::playback::{MediaItem, Playlist, QueueEntry};
+use crate::playback::{MediaItem, Playlist, QueueEntry, RepeatMode};
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SavedPlaybackState {
+    #[serde(default)]
+    pub(crate) current_item_id: Option<String>,
+    #[serde(default)]
+    pub(crate) position_ms: u64,
+    #[serde(default = "default_volume_percent")]
+    pub(crate) volume_percent: u8,
+    #[serde(default)]
+    pub(crate) shuffle_enabled: bool,
+    #[serde(default)]
+    pub(crate) repeat_mode: RepeatMode,
+    #[serde(default)]
+    pub(crate) queue_ids: Vec<String>,
+    #[serde(default)]
+    pub(crate) shuffle_order: Vec<String>,
+}
+
+fn default_volume_percent() -> u8 {
+    72
+}
 
 pub(crate) fn load_library(path: &Path) -> Result<(Vec<QueueEntry>, Vec<Playlist>), String> {
     let connection = open(path)?;
@@ -190,6 +214,34 @@ pub(crate) fn save_library(
     transaction.commit().map_err(error)
 }
 
+pub(crate) fn load_playback_state(path: &Path) -> Result<Option<SavedPlaybackState>, String> {
+    let connection = open(path)?;
+    let state_json = connection
+        .query_row(
+            "SELECT state_json FROM playback_state WHERE id = 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(error)?;
+    state_json
+        .map(|state_json| serde_json::from_str(&state_json).map_err(error))
+        .transpose()
+}
+
+pub(crate) fn save_playback_state(path: &Path, state: &SavedPlaybackState) -> Result<(), String> {
+    let connection = open(path)?;
+    let state_json = serde_json::to_string(state).map_err(error)?;
+    connection
+        .execute(
+            "INSERT INTO playback_state (id, state_json) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json",
+            [state_json],
+        )
+        .map_err(error)?;
+    Ok(())
+}
+
 pub(crate) fn database_exists(path: &Path) -> bool {
     path.is_file()
 }
@@ -261,6 +313,10 @@ fn open(path: &Path) -> Result<Connection, String> {
                 relative_path TEXT NOT NULL,
                 byte_size INTEGER NOT NULL,
                 last_accessed_at_ms INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS playback_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                state_json TEXT NOT NULL
             );
             ",
         )

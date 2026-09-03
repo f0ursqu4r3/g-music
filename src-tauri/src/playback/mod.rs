@@ -110,9 +110,10 @@ pub enum PlaybackStatus {
     Playing,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RepeatMode {
+    #[default]
     Off,
     All,
     One,
@@ -133,12 +134,6 @@ impl RepeatMode {
             Self::All => "all",
             Self::One => "one",
         }
-    }
-}
-
-impl Default for RepeatMode {
-    fn default() -> Self {
-        Self::Off
     }
 }
 
