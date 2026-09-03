@@ -21,6 +21,8 @@ use super::{
 };
 
 const IPC_TIMEOUT: Duration = Duration::from_secs(3);
+const MEDIA_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const MEDIA_LOAD_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const LIBRARY_VERSION: u32 = 2;
 const MAX_PLAY_HISTORY: usize = 500;
 const METADATA_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -628,7 +630,7 @@ impl YouTubePlaybackProvider {
 
     pub fn play(&mut self) -> Result<(), YouTubePlaybackError> {
         if self.snapshot.current_item.is_some() {
-            if !self.player.is_running() {
+            if !self.player.has_loaded_file()? {
                 let index = self.current_index().ok_or_else(|| {
                     YouTubePlaybackError::Player("the restored track is not in the queue".into())
                 })?;
@@ -1823,6 +1825,34 @@ impl MpvPlayer {
             .is_some_and(|child| child.try_wait().ok().flatten().is_none())
     }
 
+    fn has_loaded_file(&mut self) -> Result<bool, YouTubePlaybackError> {
+        if !self.is_running() {
+            return Ok(false);
+        }
+        Ok(self
+            .send(json!(["get_property", "path"]))?
+            .as_str()
+            .is_some())
+    }
+
+    fn wait_until_loaded(&mut self) -> Result<(), YouTubePlaybackError> {
+        let deadline = Instant::now() + MEDIA_LOAD_TIMEOUT;
+        while Instant::now() < deadline {
+            if self.has_loaded_file()? {
+                return Ok(());
+            }
+            if !self.is_running() {
+                return Err(YouTubePlaybackError::Player(
+                    "mpv exited while loading media".into(),
+                ));
+            }
+            thread::sleep(MEDIA_LOAD_POLL_INTERVAL);
+        }
+        Err(YouTubePlaybackError::Player(
+            "timed out while loading media".into(),
+        ))
+    }
+
     fn load(
         &mut self,
         source_url: &str,
@@ -1840,7 +1870,7 @@ impl MpvPlayer {
         self.ensure_started(volume_percent)?;
         tracing::debug!("sending track to mpv");
         self.send(json!(["loadfile", source_url, "replace"]))?;
-        Ok(())
+        self.wait_until_loaded()
     }
 
     fn set_paused(&mut self, paused: bool) -> Result<(), YouTubePlaybackError> {
@@ -2287,6 +2317,212 @@ mod tests {
             .status()
             .expect("kill should inspect the fixture process");
         assert!(!status.success(), "mpv process {pid} should be stopped");
+    }
+
+    #[test]
+    fn play_reloads_the_selected_track_when_mpv_is_alive_but_idle() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let socket_path = std::env::temp_dir().join(format!(
+            "gmusic-idle-mpv-{}-{unique}.sock",
+            std::process::id()
+        ));
+        let listener = UnixListener::bind(&socket_path).expect("idle player socket should bind");
+        let server = thread::spawn(move || {
+            let mut commands = Vec::new();
+            let mut loaded = false;
+            loop {
+                let (mut stream, _) = listener.accept().expect("player command should connect");
+                let mut request = String::new();
+                BufReader::new(
+                    stream
+                        .try_clone()
+                        .expect("player stream should be cloneable"),
+                )
+                .read_line(&mut request)
+                .expect("player command should be readable");
+                let request: serde_json::Value =
+                    serde_json::from_str(&request).expect("player command should be JSON");
+                let command = request["command"].clone();
+                let request_id = request["request_id"].clone();
+                let response = if command == serde_json::json!(["get_property", "path"]) && !loaded
+                {
+                    serde_json::json!({
+                        "request_id": request_id,
+                        "error": "property unavailable"
+                    })
+                } else if command == serde_json::json!(["get_property", "path"]) {
+                    serde_json::json!({
+                        "request_id": request_id,
+                        "error": "success",
+                        "data": "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+                    })
+                } else {
+                    serde_json::json!({"request_id": request_id, "error": "success"})
+                };
+                if command
+                    .as_array()
+                    .and_then(|parts| parts.first())
+                    .and_then(serde_json::Value::as_str)
+                    == Some("loadfile")
+                {
+                    loaded = true;
+                }
+                commands.push(command.clone());
+                serde_json::to_writer(&mut stream, &response)
+                    .expect("player response should be writable");
+                stream
+                    .write_all(b"\n")
+                    .expect("player response should terminate");
+                if command == serde_json::json!(["set_property", "pause", false]) {
+                    break;
+                }
+            }
+            commands
+        });
+
+        let entries = parse_import_metadata(
+            r#"{"id":"M7lc1UVf-VE","title":"Track","channel":"Artist","duration":120}"#,
+        )
+        .expect("fixture metadata is valid");
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider
+            .replace_queue(&["M7lc1UVf-VE".into()])
+            .expect("known library tracks create a play queue");
+        provider.snapshot.current_item = Some(provider.snapshot.queue[0].clone());
+        provider.player.socket_path = socket_path.clone();
+        provider.player.child = Some(
+            Command::new("sleep")
+                .arg("30")
+                .spawn()
+                .expect("idle player fixture should start"),
+        );
+
+        provider.play().expect("the selected track should resume");
+
+        let commands = server.join().expect("idle player server should stop");
+        let mut child = provider
+            .player
+            .child
+            .take()
+            .expect("idle player fixture should still exist");
+        child.kill().expect("idle player fixture should stop");
+        child.wait().expect("idle player fixture should be reaped");
+        let _ = fs::remove_file(socket_path);
+
+        assert!(
+            commands.iter().any(|command| {
+                command
+                    .as_array()
+                    .and_then(|parts| parts.first())
+                    .and_then(serde_json::Value::as_str)
+                    == Some("loadfile")
+            }),
+            "an idle mpv process must reload the selected track"
+        );
+    }
+
+    #[test]
+    fn load_waits_until_mpv_reports_a_media_path() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let socket_path = std::env::temp_dir().join(format!(
+            "gmusic-loading-mpv-{}-{unique}.sock",
+            std::process::id()
+        ));
+        let listener = UnixListener::bind(&socket_path).expect("loading player socket should bind");
+        listener
+            .set_nonblocking(true)
+            .expect("loading player socket should become non-blocking");
+        let server = thread::spawn(move || {
+            let mut path_checks = 0;
+            let mut idle_deadline = Instant::now() + Duration::from_millis(100);
+            loop {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(connection) => connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= idle_deadline {
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(5));
+                        continue;
+                    }
+                    Err(error) => panic!("loading player socket failed: {error}"),
+                };
+                idle_deadline = Instant::now() + Duration::from_millis(100);
+                let mut request = String::new();
+                BufReader::new(
+                    stream
+                        .try_clone()
+                        .expect("player stream should be cloneable"),
+                )
+                .read_line(&mut request)
+                .expect("player command should be readable");
+                let request: serde_json::Value =
+                    serde_json::from_str(&request).expect("player command should be JSON");
+                let command = &request["command"];
+                let request_id = request["request_id"].clone();
+                let response = if command == &serde_json::json!(["get_property", "path"]) {
+                    path_checks += 1;
+                    if path_checks < 2 {
+                        serde_json::json!({
+                            "request_id": request_id,
+                            "error": "property unavailable"
+                        })
+                    } else {
+                        serde_json::json!({
+                            "request_id": request_id,
+                            "error": "success",
+                            "data": "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+                        })
+                    }
+                } else {
+                    serde_json::json!({"request_id": request_id, "error": "success"})
+                };
+                serde_json::to_writer(&mut stream, &response)
+                    .expect("player response should be writable");
+                stream
+                    .write_all(b"\n")
+                    .expect("player response should terminate");
+                if path_checks == 2 {
+                    break;
+                }
+            }
+            path_checks
+        });
+
+        let mut player = MpvPlayer::new();
+        player.socket_path = socket_path.clone();
+        player.child = Some(
+            Command::new("sleep")
+                .arg("30")
+                .spawn()
+                .expect("loading player fixture should start"),
+        );
+
+        player
+            .load("https://www.youtube.com/watch?v=M7lc1UVf-VE", 72, None)
+            .expect("player load should complete after media is ready");
+
+        let path_checks = server.join().expect("loading player server should stop");
+        let mut child = player
+            .child
+            .take()
+            .expect("loading player fixture should still exist");
+        child.kill().expect("loading player fixture should stop");
+        child
+            .wait()
+            .expect("loading player fixture should be reaped");
+        let _ = fs::remove_file(socket_path);
+
+        assert_eq!(
+            path_checks, 2,
+            "load must remain pending until mpv detects the media"
+        );
     }
 
     #[test]
