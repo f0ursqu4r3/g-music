@@ -44,6 +44,40 @@ describe("MiniPlayer", () => {
     expect(wrapper.emitted("next")).toHaveLength(1);
   });
 
+  it("matches the main player playback capabilities and primary-control style", async () => {
+    const wrapper = mount(MiniPlayer, {
+      props: {
+        snapshot: {
+          ...snapshot,
+          repeatMode: "all",
+          shuffleEnabled: true,
+        },
+        isUpdating: false,
+        favoriteTrackIds: ["M7lc1UVf-VE"],
+      },
+    });
+
+    const shuffle = wrapper.get('button[aria-label="Disable shuffle"]');
+    const repeat = wrapper.get('button[aria-label="Enable repeat one"]');
+    const favorite = wrapper.get('button[aria-label="Favorite track"]');
+    const play = wrapper.get('button[aria-label="Play"]');
+
+    expect(shuffle.attributes("aria-pressed")).toBe("true");
+    expect(repeat.attributes("aria-pressed")).toBe("true");
+    expect(favorite.attributes("aria-pressed")).toBe("true");
+    expect(play.classes()).toEqual(
+      expect.arrayContaining(["size-10", "rounded-full", "bg-(--text)"]),
+    );
+
+    await shuffle.trigger("click");
+    await repeat.trigger("click");
+    await favorite.trigger("click");
+
+    expect(wrapper.emitted("toggleShuffle")).toEqual([[]]);
+    expect(wrapper.emitted("cycleRepeatMode")).toEqual([[]]);
+    expect(wrapper.emitted("toggleFavorite")).toEqual([["M7lc1UVf-VE"]]);
+  });
+
   it("uses shadcn sliders for seeking and live volume updates", () => {
     const wrapper = mount(MiniPlayer, {
       props: { snapshot, isUpdating: false },

@@ -5,7 +5,7 @@ export interface PlayerDimensions {
 
 export function playerDimensions(queueExpanded: boolean): PlayerDimensions {
   return {
-    width: 520,
-    height: queueExpanded ? 420 : 174,
+    width: 480,
+    height: queueExpanded ? 390 : 144,
   };
 }

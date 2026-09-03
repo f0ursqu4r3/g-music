@@ -5,10 +5,12 @@ import { nextTick } from "vue";
 
 import App from "../App.vue";
 import LibraryWindow from "../components/LibraryWindow.vue";
+import MiniWindow from "../components/MiniWindow.vue";
 import QueueWindow from "../components/QueueWindow.vue";
 
 const playbackMocks = vi.hoisted(() => ({
   applySnapshot: vi.fn(),
+  cycleRepeatMode: vi.fn(),
   importYouTubeUrls: vi.fn(),
   moveQueueItem: vi.fn(),
   reorderPlaylists: vi.fn(),
@@ -20,7 +22,9 @@ const playbackMocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   sync: vi.fn(),
   toggle: vi.fn(),
+  toggleFavorite: vi.fn(),
   toggleMute: vi.fn(),
+  toggleShuffle: vi.fn(),
 }));
 const windowMocks = vi.hoisted(() => ({
   showImport: vi.fn(),
@@ -71,6 +75,13 @@ vi.mock("@/composables/usePlayback", () => ({
     },
     library: {
       value: {
+        playlists: [
+          {
+            id: "favorites",
+            name: "Favorites",
+            trackIds: ["night-drive"],
+          },
+        ],
         tracks: [
           {
             id: "night-drive",
@@ -105,7 +116,10 @@ vi.mock("@/composables/usePlayback", () => ({
     refresh: playbackMocks.refresh,
     sync: playbackMocks.sync,
     toggle: playbackMocks.toggle,
+    toggleFavorite: playbackMocks.toggleFavorite,
     toggleMute: playbackMocks.toggleMute,
+    toggleShuffle: playbackMocks.toggleShuffle,
+    cycleRepeatMode: playbackMocks.cycleRepeatMode,
     previous: playbackMocks.previous,
     next: playbackMocks.next,
     seek: vi.fn(),
@@ -124,6 +138,7 @@ vi.mock("@/composables/usePlayback", () => ({
 describe("application landmarks", () => {
   beforeEach(() => {
     playbackMocks.applySnapshot.mockReset();
+    playbackMocks.cycleRepeatMode.mockReset();
     playbackMocks.importYouTubeUrls.mockReset();
     playbackMocks.moveQueueItem.mockReset();
     playbackMocks.reorderPlaylists.mockReset();
@@ -135,7 +150,9 @@ describe("application landmarks", () => {
     playbackMocks.refresh.mockReset();
     playbackMocks.sync.mockReset();
     playbackMocks.toggle.mockReset();
+    playbackMocks.toggleFavorite.mockReset();
     playbackMocks.toggleMute.mockReset();
+    playbackMocks.toggleShuffle.mockReset();
     windowMocks.showImport.mockReset();
     eventMocks.listen.mockReset();
     eventMocks.listen.mockResolvedValue(vi.fn());
@@ -232,6 +249,23 @@ describe("application landmarks", () => {
     expect(wrapper.getComponent(QueueWindow).props("status")).toBe("paused");
     expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
     expect(playbackMocks.moveQueueItem).toHaveBeenCalledWith(0, 1);
+  });
+
+  it("routes complete mini-player playback controls to the composable", async () => {
+    window.history.replaceState({}, "", "/?view=mini");
+    const wrapper = mount(App);
+    await flushPromises();
+    const miniWindow = wrapper.getComponent(MiniWindow);
+
+    expect(miniWindow.props("favoriteTrackIds")).toEqual(["night-drive"]);
+
+    miniWindow.vm.$emit("toggleShuffle");
+    miniWindow.vm.$emit("cycleRepeatMode");
+    miniWindow.vm.$emit("toggleFavorite", "night-drive");
+
+    expect(playbackMocks.toggleShuffle).toHaveBeenCalledOnce();
+    expect(playbackMocks.cycleRepeatMode).toHaveBeenCalledOnce();
+    expect(playbackMocks.toggleFavorite).toHaveBeenCalledWith("night-drive");
   });
 
   it("routes library and queue removal actions to their separate playback commands", async () => {

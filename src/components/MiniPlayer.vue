@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import {
   Disc3,
+  Heart,
+  LoaderCircle,
   Pause,
   Play,
+  Repeat,
+  Repeat1,
+  Repeat2,
+  Shuffle,
   SkipBack,
   SkipForward,
   Volume,
@@ -21,9 +27,14 @@ import YouTubeArtwork from "./YouTubeArtwork.vue";
 interface Props {
   snapshot: PlaybackSnapshot;
   isUpdating: boolean;
+  isStarting?: boolean;
+  favoriteTrackIds?: string[];
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  favoriteTrackIds: () => [],
+  isStarting: false,
+});
 
 const emit = defineEmits<{
   toggle: [];
@@ -32,6 +43,9 @@ const emit = defineEmits<{
   seek: [positionMs: number];
   setVolume: [volumePercent: number];
   toggleMute: [];
+  toggleShuffle: [];
+  cycleRepeatMode: [];
+  toggleFavorite: [id: string];
 }>();
 
 const currentItem = computed(() => props.snapshot.currentItem);
@@ -46,6 +60,30 @@ const trackArtist = computed(
 const remainingMs = computed(() =>
   Math.max(durationMs.value - props.snapshot.positionMs, 0),
 );
+const isFavorite = computed(() =>
+  currentItem.value
+    ? props.favoriteTrackIds.includes(currentItem.value.id)
+    : false,
+);
+const repeatMode = computed(() => props.snapshot.repeatMode ?? "off");
+const repeatIcon = computed(() => {
+  if (repeatMode.value === "one") {
+    return Repeat1;
+  }
+  if (repeatMode.value === "all") {
+    return Repeat2;
+  }
+  return Repeat;
+});
+const repeatLabel = computed(() => {
+  if (repeatMode.value === "one") {
+    return "Disable repeat";
+  }
+  if (repeatMode.value === "all") {
+    return "Enable repeat one";
+  }
+  return "Enable repeat all";
+});
 const volumeIcon = computed(() => {
   if (props.snapshot.volumePercent === 0) {
     return VolumeX;
@@ -76,18 +114,18 @@ function emitVolume(values: number[] | undefined): void {
 
 <template>
   <section
-    class="mini-player-shell relative grid min-h-43.5 grid-cols-[164px_minmax(0,1fr)] max-[390px]:grid-cols-[138px_minmax(0,1fr)]"
+    class="mini-player-shell relative grid min-h-36 grid-cols-[112px_minmax(0,1fr)] max-[390px]:grid-cols-[96px_minmax(0,1fr)]"
     aria-label="Now playing"
   >
     <div
-      class="absolute top-0 right-0 left-0 z-3 grid min-h-8"
+      class="absolute top-0 right-0 left-0 z-3 grid h-7"
       data-tauri-drag-region
       title="Drag to move mini player"
       aria-hidden="true"
     ></div>
 
     <div
-      class="album-art relative grid place-items-center overflow-hidden"
+      class="album-art relative grid place-items-center overflow-hidden border-r border-(--line)"
       aria-hidden="true"
     >
       <YouTubeArtwork
@@ -98,28 +136,41 @@ function emitVolume(values: number[] | undefined): void {
     </div>
 
     <div
-      class="grid min-w-0 grid-rows-[auto_1fr_auto] pt-5 pr-11.5 pb-3.5 pl-5 max-[390px]:pl-4"
+      class="grid min-w-0 grid-rows-[auto_1fr_auto] px-3.5 py-3 max-[390px]:px-3"
     >
-      <header class="min-w-0 mt-4">
+      <header class="min-w-0 pr-14">
         <div class="min-w-0">
           <h1
-            class="overflow-hidden text-[1.2rem] leading-[1.08] font-[680] tracking-[-0.045em] text-ellipsis whitespace-nowrap text-(--text)"
+            class="overflow-hidden text-[1rem] leading-[1.1] font-[680] tracking-[-0.04em] text-ellipsis whitespace-nowrap text-(--text)"
           >
             {{ trackTitle }}
           </h1>
           <p
-            class="mt-1.25 overflow-hidden text-[0.77rem] font-[510] tracking-[-0.005em] text-ellipsis whitespace-nowrap text-(--muted-text)"
+            class="mt-0.75 overflow-hidden text-[0.7rem] font-[510] tracking-[-0.005em] text-ellipsis whitespace-nowrap text-(--muted-text)"
           >
             {{ trackArtist }}
           </p>
         </div>
       </header>
 
-      <div class="flex items-center justify-between gap-4">
-        <nav class="flex items-center gap-0.75" aria-label="Playback controls">
+      <div class="flex items-end justify-between gap-3 pt-2">
+        <nav class="flex items-center gap-0.5" aria-label="Playback controls">
+          <Button
+            :aria-label="
+              snapshot.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'
+            "
+            :aria-pressed="snapshot.shuffleEnabled ?? false"
+            class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
+            size="icon-xs"
+            variant="ghost"
+            :disabled="isUpdating"
+            @click="emit('toggleShuffle')"
+          >
+            <Shuffle aria-hidden="true" />
+          </Button>
           <Button
             aria-label="Previous track"
-            class="text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text)"
+            class="size-7 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-4"
             size="icon-sm"
             variant="ghost"
             :disabled="isUpdating"
@@ -128,18 +179,31 @@ function emitVolume(values: number[] | undefined): void {
             <SkipBack aria-hidden="true" />
           </Button>
           <Button
-            :aria-label="isPlaying ? 'Pause' : 'Play'"
-            class="rounded-[11px] bg-accent text-(--accent-ink) hover:bg-[color-mix(in_oklch,var(--accent)_88%,oklch(0.98_0.01_90))] hover:text-(--accent-ink) active:translate-y-px"
+            :aria-label="
+              isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'
+            "
+            :aria-busy="isStarting ? 'true' : undefined"
+            class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) [&_svg]:size-4"
             size="icon"
             :disabled="isUpdating"
             @click="emit('toggle')"
           >
-            <Pause v-if="isPlaying" aria-hidden="true" />
+            <LoaderCircle
+              v-if="isStarting"
+              class="animate-spin"
+              data-playback-starting
+              aria-hidden="true"
+            />
+            <Pause
+              v-else-if="isPlaying"
+              aria-hidden="true"
+              fill="currentColor"
+            />
             <Play v-else aria-hidden="true" fill="currentColor" />
           </Button>
           <Button
             aria-label="Next track"
-            class="text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text)"
+            class="size-7 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-4"
             size="icon-sm"
             variant="ghost"
             :disabled="isUpdating"
@@ -147,10 +211,36 @@ function emitVolume(values: number[] | undefined): void {
           >
             <SkipForward aria-hidden="true" />
           </Button>
+          <Button
+            :aria-label="repeatLabel"
+            :aria-pressed="repeatMode !== 'off'"
+            :data-repeat-mode="repeatMode"
+            class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
+            size="icon-xs"
+            variant="ghost"
+            :disabled="isUpdating"
+            @click="emit('cycleRepeatMode')"
+          >
+            <component :is="repeatIcon" aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label="Favorite track"
+            :aria-pressed="isFavorite"
+            class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
+            size="icon-xs"
+            variant="ghost"
+            :disabled="!currentItem || isUpdating"
+            @click="currentItem && emit('toggleFavorite', currentItem.id)"
+          >
+            <Heart
+              :fill="isFavorite ? 'currentColor' : 'none'"
+              aria-hidden="true"
+            />
+          </Button>
         </nav>
 
         <div
-          class="grid w-27.5 grid-cols-[14px_minmax(0,1fr)_20px] items-center gap-1.75 text-(--muted-text) max-[390px]:w-21.5"
+          class="grid w-24 grid-cols-[14px_minmax(0,1fr)_18px] items-center gap-1.5 text-(--muted-text) max-[390px]:hidden"
         >
           <Button
             :aria-label="
@@ -183,7 +273,7 @@ function emitVolume(values: number[] | undefined): void {
       </div>
 
       <div
-        class="grid grid-cols-[30px_minmax(0,1fr)_34px] items-center gap-2 text-[0.62rem] text-(--subtle-text) tabular-nums [&>span:last-child]:text-right"
+        class="grid grid-cols-[28px_minmax(0,1fr)_32px] items-center gap-1.5 pt-2 text-[0.58rem] text-(--subtle-text) tabular-nums [&>span:last-child]:text-right"
       >
         <span>{{ formatDuration(snapshot.positionMs) }}</span>
         <Slider

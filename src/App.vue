@@ -350,6 +350,12 @@ onUnmounted(() => {
       v-else
       :snapshot="playbackSnapshot"
       :is-updating="playback.isUpdating.value"
+      :is-starting="playback.isStarting.value"
+      :favorite-track-ids="
+        playback.library.value?.playlists?.find(
+          (playlist) => playlist.id === 'favorites',
+        )?.trackIds ?? []
+      "
       :queue-expanded="queueExpanded"
       :theme="theme"
       @toggle="playback.toggle"
@@ -358,6 +364,9 @@ onUnmounted(() => {
       @seek="playback.seek"
       @set-volume="playback.setVolume"
       @toggle-mute="playback.toggleMute"
+      @toggle-shuffle="playback.toggleShuffle"
+      @cycle-repeat-mode="playback.cycleRepeatMode"
+      @toggle-favorite="playback.toggleFavorite"
       @move="playback.moveQueueItem"
       @remove="playback.removeQueueItem"
       @toggle-queue="toggleQueue"

@@ -10,11 +10,16 @@ import type { ThemeName } from "@/lib/theme";
 interface Props {
   snapshot: PlaybackSnapshot;
   isUpdating: boolean;
+  isStarting?: boolean;
+  favoriteTrackIds?: string[];
   queueExpanded: boolean;
   theme: ThemeName;
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  favoriteTrackIds: () => [],
+  isStarting: false,
+});
 
 const emit = defineEmits<{
   toggle: [];
@@ -28,25 +33,33 @@ const emit = defineEmits<{
   toggleQueue: [];
   toggleTheme: [];
   close: [];
+  toggleShuffle: [];
+  cycleRepeatMode: [];
+  toggleFavorite: [id: string];
 }>();
 </script>
 
 <template>
-  <main class="mini-window-shell min-h-43.5 w-full">
+  <main class="mini-window-shell min-h-36 w-full">
     <section
-      class="player-frame window-panel relative overflow-hidden rounded-[22px] bg-(--glass-panel) text-(--text) backdrop-saturate-[1.18]"
-      :class="queueExpanded ? 'min-h-105' : ''"
+      class="player-frame window-panel relative isolate overflow-hidden rounded-[18px] bg-(--glass-window) text-(--text) shadow-2xl backdrop-blur-xl backdrop-saturate-[1.18]"
+      :class="queueExpanded ? 'min-h-97.5' : ''"
       :data-queue-expanded="queueExpanded"
     >
       <MiniPlayer
         :snapshot="snapshot"
         :is-updating="isUpdating"
+        :is-starting="props.isStarting"
+        :favorite-track-ids="props.favoriteTrackIds"
         @toggle="emit('toggle')"
         @previous="emit('previous')"
         @next="emit('next')"
         @seek="emit('seek', $event)"
         @set-volume="emit('setVolume', $event)"
         @toggle-mute="emit('toggleMute')"
+        @toggle-shuffle="emit('toggleShuffle')"
+        @cycle-repeat-mode="emit('cycleRepeatMode')"
+        @toggle-favorite="emit('toggleFavorite', $event)"
       />
       <QueueDrawer
         v-if="queueExpanded"
@@ -57,7 +70,7 @@ const emit = defineEmits<{
         @remove="emit('remove', $event)"
       />
       <nav
-        class="absolute top-2 right-2 z-3 grid gap-0.5 [&_button]:text-(--subtle-text) [&_button:hover]:bg-(--surface-muted) [&_button:hover]:text-(--text)"
+        class="absolute top-1.5 right-2 z-5 flex items-center gap-0.5 [&_button]:text-(--subtle-text) [&_button:hover]:bg-(--surface-muted) [&_button:hover]:text-(--text)"
         aria-label="Mini player options"
       >
         <Button
@@ -104,6 +117,16 @@ const emit = defineEmits<{
     transparent
   );
   opacity: 0.7;
+  pointer-events: none;
+}
+
+.player-frame::after {
+  position: absolute;
+  z-index: 4;
+  inset: 1px;
+  border: 1px solid color-mix(in oklch, var(--line-strong), transparent 58%);
+  border-radius: inherit;
+  content: "";
   pointer-events: none;
 }
 </style>
