@@ -4,10 +4,10 @@ import {
   type Rect,
   useVirtualizer,
   type Virtualizer,
-} from '@tanstack/vue-virtual';
-import { computed, ref } from 'vue';
+} from "@tanstack/vue-virtual";
+import { computed, ref } from "vue";
 
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface GridGroup<T> {
   items: T[];
@@ -29,9 +29,9 @@ const props = withDefaults(
     itemHeightPadding?: number;
   }>(),
   {
-    gridClass: '',
+    gridClass: "",
     itemHeightPadding: 48,
-  }
+  },
 );
 
 defineSlots<{
@@ -44,11 +44,11 @@ const gridViewport = ref<HTMLElement | null>(null);
 const viewportWidth = ref(defaultViewportWidth());
 
 function defaultViewportHeight(): number {
-  return typeof window === 'undefined' ? 600 : window.innerHeight || 600;
+  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
 }
 
 function defaultViewportWidth(): number {
-  return typeof window === 'undefined' ? 1024 : window.innerWidth || 1024;
+  return typeof window === "undefined" ? 1024 : window.innerWidth || 1024;
 }
 
 function updateViewportWidth(element: HTMLElement | null): void {
@@ -66,7 +66,7 @@ const columnCount = computed(() => {
 
   return Math.max(
     1,
-    Math.floor((contentWidth + gridGap) / (minimumItemWidth + gridGap))
+    Math.floor((contentWidth + gridGap) / (minimumItemWidth + gridGap)),
   );
 });
 
@@ -82,7 +82,7 @@ const rows = computed<GridRow<T>[]>(() => {
       nextRows.push({
         items: group.items.slice(itemIndex, itemIndex + columnCount.value),
         key: `${groupIndex}-${itemIndex}`,
-        label: itemIndex === 0 ? group.label : '',
+        label: itemIndex === 0 ? group.label : "",
       });
     }
   });
@@ -108,7 +108,7 @@ function estimateRowHeight(index: number): number {
 
 function observeGridRect(
   instance: Virtualizer<HTMLElement, Element>,
-  callback: (rect: Rect) => void
+  callback: (rect: Rect) => void,
 ): (() => void) | undefined {
   return observeElementRect(instance, (rect) => {
     if (rect.width > 0) {
@@ -142,10 +142,10 @@ const virtualRows = computed(() =>
   gridVirtualizer.value.getVirtualItems().flatMap((virtualItem) => {
     const row = rows.value[virtualItem.index];
     return row ? [{ row, virtualItem }] : [];
-  })
+  }),
 );
 const virtualGridHeight = computed(
-  () => `${gridVirtualizer.value.getTotalSize()}px`
+  () => `${gridVirtualizer.value.getTotalSize()}px`,
 );
 </script>
 
@@ -191,7 +191,7 @@ const virtualGridHeight = computed(
   display: grid;
   grid-template-columns: repeat(
     auto-fill,
-    minmax(min(v-bind('`${props.gridItemSize}px`'), 100%), 1fr)
+    minmax(min(v-bind("`${props.gridItemSize}px`"), 100%), 1fr)
   );
   align-content: start;
   gap: 1rem;

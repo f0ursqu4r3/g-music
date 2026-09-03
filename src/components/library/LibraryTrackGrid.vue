@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Disc3, Volume2 } from 'lucide-vue-next';
+import { Disc3, Volume2 } from "lucide-vue-next";
 
-import type { MediaItem } from '@/api';
-import YouTubeArtwork from '../YouTubeArtwork.vue';
-import LibraryTrackContextMenu from './LibraryTrackContextMenu.vue';
-import LibraryVirtualGrid from './LibraryVirtualGrid.vue';
-import type { TrackGroup } from './types';
+import type { MediaItem } from "@/api";
+import YouTubeArtwork from "../YouTubeArtwork.vue";
+import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
+import LibraryVirtualGrid from "./LibraryVirtualGrid.vue";
+import type { TrackGroup } from "./types";
 
 const props = defineProps<{
   groups: TrackGroup[];
@@ -28,7 +28,7 @@ const emit = defineEmits<{
 }>();
 
 function selectTrack(track: MediaItem): void {
-  emit('selectTrack', track);
+  emit("selectTrack", track);
 }
 </script>
 
