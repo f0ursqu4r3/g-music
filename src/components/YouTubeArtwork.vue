@@ -41,13 +41,55 @@ function clearBrokenImage(): void {
 </script>
 
 <template>
-  <img
-    v-if="source"
-    :src="source"
-    alt=""
-    decoding="async"
-    draggable="false"
-    referrerpolicy="no-referrer"
-    @error="clearBrokenImage"
-  />
+  <div class="youtube-artwork" aria-hidden="true">
+    <div
+      class="artwork-placeholder"
+      data-artwork-placeholder
+      aria-hidden="true"
+    />
+    <img
+      v-if="source"
+      :src="source"
+      alt=""
+      decoding="async"
+      draggable="false"
+      referrerpolicy="no-referrer"
+      @error="clearBrokenImage"
+    />
+  </div>
 </template>
+
+<style scoped>
+.youtube-artwork {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: var(--artwork-c);
+}
+
+.artwork-placeholder {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      circle at 18% 12%,
+      color-mix(in oklch, var(--artwork-a), transparent 16%),
+      transparent 42%
+    ),
+    linear-gradient(
+      145deg,
+      var(--artwork-a),
+      var(--artwork-b) 54%,
+      var(--artwork-c)
+    );
+}
+
+.youtube-artwork > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+</style>

@@ -43,6 +43,18 @@ describe("YouTubeArtwork", () => {
     await wrapper.get("img").trigger("error");
 
     expect(wrapper.find("img").exists()).toBe(false);
+    expect(
+      wrapper.get("[data-artwork-placeholder]").attributes("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("renders the artwork fallback when no video artwork can be requested", () => {
+    const wrapper = mount(YouTubeArtwork, {
+      props: { videoId: "track-1" },
+    });
+
+    expect(wrapper.find("[data-artwork-placeholder]").exists()).toBe(true);
+    expect(wrapper.find("img").exists()).toBe(false);
   });
 
   it("does not request YouTube artwork for non-video identifiers", () => {
