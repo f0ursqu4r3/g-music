@@ -31,7 +31,8 @@ type TrackSortColumn = "album" | "artist" | "duration" | "title";
 
 const props = defineProps<{
   tracks: MediaItem[];
-  currentItemId: string | undefined;
+  playingItemId: string | undefined;
+  selectedTrackId: string | undefined;
   favoriteTrackIds: string[];
   sortBy: LibrarySortOption;
   trackFilter: TrackFilter | null;
@@ -405,9 +406,11 @@ onBeforeUnmount(() => {
         >
           <div
             :aria-label="`${track.title} by ${track.artist}`"
-            class="group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-            :data-current="track.id === props.currentItemId"
+            :aria-selected="track.id === props.selectedTrackId"
+            class="group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
             :data-index="virtualItem.index"
+            :data-playing="track.id === props.playingItemId"
+            :data-selected="track.id === props.selectedTrackId"
             :data-track-id="track.id"
             role="row"
             tabindex="0"
@@ -421,11 +424,11 @@ onBeforeUnmount(() => {
             @keydown.space.prevent="emit('selectTrack', track)"
           >
             <div
-              class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
               role="gridcell"
             >
               <Volume2
-                v-if="track.id === props.currentItemId"
+                v-if="track.id === props.playingItemId"
                 class="track-playing-indicator size-3.75 text-(--text)"
                 aria-label="Currently playing"
               />
@@ -442,7 +445,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <div
-              class="overflow-hidden px-3 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              class="overflow-hidden px-3 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
               role="gridcell"
             >
               <span
@@ -463,7 +466,7 @@ onBeforeUnmount(() => {
               </span>
             </div>
             <div
-              class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[selected=true]:text-(--text)"
               role="gridcell"
             >
               <span
@@ -473,7 +476,7 @@ onBeforeUnmount(() => {
               </span>
             </div>
             <div
-              class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              class="overflow-hidden px-3 text-[0.8rem] text-(--muted-text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-hover:text-(--text) group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[selected=true]:text-(--text)"
               role="gridcell"
             >
               <span
@@ -483,13 +486,13 @@ onBeforeUnmount(() => {
               </span>
             </div>
             <div
-              class="grid place-items-center px-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[current=true]:text-(--text)"
+              class="grid place-items-center px-1.5 text-center text-[0.78rem] text-(--muted-text) tabular-nums group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)] group-data-[selected=true]:text-(--text)"
               role="gridcell"
             >
               {{ formatDuration(track.durationMs) }}
             </div>
             <div
-              class="grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+              class="grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
               role="gridcell"
             >
               <button

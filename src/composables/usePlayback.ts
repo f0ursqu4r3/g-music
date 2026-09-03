@@ -19,6 +19,7 @@ export type PlaybackClient = Omit<
   | "updateTracksMetadata"
   | "toggleFavorite"
   | "upsertPlaylist"
+  | "reorderPlaylists"
   | "deletePlaylist"
   | "playNext"
   | "addToQueue"
@@ -34,6 +35,7 @@ export type PlaybackClient = Omit<
       | "updateTracksMetadata"
       | "toggleFavorite"
       | "upsertPlaylist"
+      | "reorderPlaylists"
       | "deletePlaylist"
       | "playNext"
       | "addToQueue"
@@ -343,6 +345,22 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     }
   }
 
+  async function reorderPlaylists(playlistIds: string[]): Promise<void> {
+    if (isUpdating.value || !client.reorderPlaylists) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      library.value = await client.reorderPlaylists(playlistIds);
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
   async function deletePlaylist(id: string): Promise<void> {
     if (isUpdating.value || !client.deletePlaylist) {
       return;
@@ -446,6 +464,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     previous,
     refresh,
     refreshMetadataRefreshes,
+    reorderPlaylists,
     removeQueueItem,
     removeTracks,
     seek,

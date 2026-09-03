@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Disc3 } from "lucide-vue-next";
+import { Disc3, Volume2 } from "lucide-vue-next";
 
 import type { MediaItem } from "@/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -9,7 +9,8 @@ import type { TrackGroup } from "./types";
 
 const props = defineProps<{
   groups: TrackGroup[];
-  currentItemId: string | undefined;
+  playingItemId: string | undefined;
+  selectedTrackId: string | undefined;
   favoriteTrackIds: string[];
   gridItemSize: number;
 }>();
@@ -68,8 +69,10 @@ function selectTrack(track: MediaItem): void {
             >
               <article
                 :aria-label="`Play ${track.title}`"
-                class="track-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-                :data-current="track.id === props.currentItemId"
+                :aria-selected="track.id === props.selectedTrackId"
+                class="track-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring) data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                :data-playing="track.id === props.playingItemId"
+                :data-selected="track.id === props.selectedTrackId"
                 :data-track-id="track.id"
                 tabindex="0"
                 @click="selectTrack(track)"
@@ -86,9 +89,18 @@ function selectTrack(track: MediaItem): void {
                   />
                 </div>
                 <h2
-                  class="mt-2 overflow-hidden text-xs font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+                  class="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-semibold text-(--text)"
                 >
-                  {{ track.title }}
+                  <Volume2
+                    v-if="track.id === props.playingItemId"
+                    class="track-playing-indicator size-3.5 shrink-0"
+                    aria-label="Currently playing"
+                  />
+                  <span
+                    class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+                  >
+                    {{ track.title }}
+                  </span>
                 </h2>
                 <p
                   class="mt-0.5 overflow-hidden text-[0.69rem] text-ellipsis whitespace-nowrap text-(--muted-text)"

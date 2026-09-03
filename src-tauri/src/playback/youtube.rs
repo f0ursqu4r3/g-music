@@ -485,6 +485,42 @@ impl YouTubePlaybackProvider {
         Ok(self.library_snapshot())
     }
 
+    pub fn reorder_playlists(
+        &mut self,
+        playlist_ids: &[String],
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        let user_playlist_ids = self
+            .playlists
+            .iter()
+            .filter(|playlist| !is_default_playlist(&playlist.id))
+            .map(|playlist| playlist.id.as_str())
+            .collect::<HashSet<_>>();
+        let requested_ids = playlist_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        if requested_ids.len() != playlist_ids.len() || requested_ids != user_playlist_ids {
+            return Err(YouTubePlaybackError::InvalidPlaylist(
+                "playlist order must contain every user playlist exactly once".into(),
+            ));
+        }
+
+        let (mut default_playlists, mut user_playlists): (Vec<_>, Vec<_>) = self
+            .playlists
+            .drain(..)
+            .partition(|playlist| is_default_playlist(&playlist.id));
+        for id in playlist_ids {
+            let position = user_playlists
+                .iter()
+                .position(|playlist| playlist.id == *id)
+                .expect("playlist IDs are validated before reordering");
+            default_playlists.push(user_playlists.remove(position));
+        }
+        self.playlists = default_playlists;
+        self.persist_library()?;
+        Ok(self.library_snapshot())
+    }
+
     pub fn delete_playlist(&mut self, id: &str) -> Result<LibrarySnapshot, YouTubePlaybackError> {
         if is_default_playlist(id) {
             return Err(YouTubePlaybackError::InvalidPlaylist(
@@ -2534,6 +2570,54 @@ mod tests {
             provider.playlists[0].track_ids,
             ["BaW_jenozKc", "M7lc1UVf-VE"]
         );
+    }
+
+    #[test]
+    fn reorders_user_playlists_and_persists_the_new_order() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "gmusic-playlists-{}-{unique}.sqlite",
+            std::process::id()
+        ));
+        let mut provider = YouTubePlaybackProvider::from_library_path(path.clone())
+            .expect("an absent library should initialize empty");
+
+        provider
+            .upsert_playlist(Playlist {
+                id: "focus".into(),
+                name: "Focus".into(),
+                track_ids: Vec::new(),
+            })
+            .expect("the first user playlist is valid");
+        provider
+            .upsert_playlist(Playlist {
+                id: "road-trip".into(),
+                name: "Road Trip".into(),
+                track_ids: Vec::new(),
+            })
+            .expect("the second user playlist is valid");
+
+        provider
+            .reorder_playlists(&["road-trip".into(), "focus".into()])
+            .expect("the user playlist order is valid");
+        drop(provider);
+
+        let restored = YouTubePlaybackProvider::from_library_path(path.clone())
+            .expect("the persisted library should load");
+        assert_eq!(
+            restored
+                .library_snapshot()
+                .playlists
+                .iter()
+                .map(|playlist| playlist.id.as_str())
+                .collect::<Vec<_>>(),
+            ["favorites", "most-played", "road-trip", "focus"]
+        );
+
+        fs::remove_file(path).expect("temporary library should be removable");
     }
 
     #[test]

@@ -296,6 +296,49 @@ describe("usePlayback", () => {
     expect(playback.transport.value).toEqual(transport);
   });
 
+  it("replaces the library after reordering user playlists", async () => {
+    const library = {
+      playlists: [
+        { id: "favorites", name: "Favorites", trackIds: [] },
+        { id: "most-played", name: "Most Played", trackIds: [] },
+        { id: "focus", name: "Focus", trackIds: [] },
+        { id: "road-trip", name: "Road Trip", trackIds: [] },
+      ],
+      tracks: [],
+    };
+    const reorderedLibrary = {
+      ...library,
+      playlists: [
+        library.playlists[0]!,
+        library.playlists[1]!,
+        library.playlists[3]!,
+        library.playlists[2]!,
+      ],
+    };
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn(),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      reorderPlaylists: vi.fn().mockResolvedValue(reorderedLibrary),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const playback = usePlayback(client);
+
+    await playback.reorderPlaylists(["road-trip", "focus"]);
+
+    expect(client.reorderPlaylists).toHaveBeenCalledWith([
+      "road-trip",
+      "focus",
+    ]);
+    expect(playback.library.value).toEqual(reorderedLibrary);
+  });
+
   it("mutes and restores the prior non-zero volume", async () => {
     const muted = { ...paused, volumePercent: 0 };
     const restored = { ...paused, volumePercent: 70 };

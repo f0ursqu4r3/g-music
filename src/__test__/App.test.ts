@@ -11,6 +11,7 @@ const playbackMocks = vi.hoisted(() => ({
   applySnapshot: vi.fn(),
   importYouTubeUrls: vi.fn(),
   moveQueueItem: vi.fn(),
+  reorderPlaylists: vi.fn(),
   removeQueueItem: vi.fn(),
   removeTracks: vi.fn(),
   next: vi.fn(),
@@ -110,6 +111,7 @@ vi.mock("@/composables/usePlayback", () => ({
     seek: vi.fn(),
     setVolume: vi.fn(),
     moveQueueItem: playbackMocks.moveQueueItem,
+    reorderPlaylists: playbackMocks.reorderPlaylists,
     removeQueueItem: playbackMocks.removeQueueItem,
     removeTracks: playbackMocks.removeTracks,
     playTrack: playbackMocks.playTrack,
@@ -124,6 +126,7 @@ describe("application landmarks", () => {
     playbackMocks.applySnapshot.mockReset();
     playbackMocks.importYouTubeUrls.mockReset();
     playbackMocks.moveQueueItem.mockReset();
+    playbackMocks.reorderPlaylists.mockReset();
     playbackMocks.removeQueueItem.mockReset();
     playbackMocks.removeTracks.mockReset();
     playbackMocks.next.mockReset();
@@ -163,6 +166,20 @@ describe("application landmarks", () => {
       positionMs: 57_000,
       status: "paused",
     });
+  });
+
+  it("routes reordered playlist titles to the playback composable", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+
+    wrapper
+      .getComponent(LibraryWindow)
+      .vm.$emit("reorderPlaylists", ["road-trip", "focus"]);
+
+    expect(playbackMocks.reorderPlaylists).toHaveBeenCalledWith([
+      "road-trip",
+      "focus",
+    ]);
   });
 
   it("opens Import Music from the Library plus button", async () => {

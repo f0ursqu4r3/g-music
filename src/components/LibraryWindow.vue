@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref } from 'vue';
 
 import type {
   MediaItem,
@@ -8,21 +8,21 @@ import type {
   PlaybackTransport,
   Playlist,
   TrackMetadataUpdate,
-} from "@/api";
-import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
-import LibraryAlbumGrid from "./library/LibraryAlbumGrid.vue";
-import LibraryArtistGrid from "./library/LibraryArtistGrid.vue";
-import LibraryHeader from "./library/LibraryHeader.vue";
-import LibraryInfoPanel from "./library/LibraryInfoPanel.vue";
+} from '@/api';
+import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue';
+import LibraryAlbumGrid from './library/LibraryAlbumGrid.vue';
+import LibraryArtistGrid from './library/LibraryArtistGrid.vue';
+import LibraryHeader from './library/LibraryHeader.vue';
+import LibraryInfoPanel from './library/LibraryInfoPanel.vue';
 import LibraryMetadataEditor, {
   type MetadataEditTarget,
-} from "./library/LibraryMetadataEditor.vue";
-import LibraryPlaybackFooter from "./library/LibraryPlaybackFooter.vue";
-import LibrarySidebar from "./library/LibrarySidebar.vue";
-import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
-import LibraryTrackList from "./library/LibraryTrackList.vue";
-import PlaylistEditor from "./library/PlaylistEditor.vue";
-import { buildLibraryArtists, groupItems } from "./library/collections";
+} from './library/LibraryMetadataEditor.vue';
+import LibraryPlaybackFooter from './library/LibraryPlaybackFooter.vue';
+import LibrarySidebar from './library/LibrarySidebar.vue';
+import LibraryTrackGrid from './library/LibraryTrackGrid.vue';
+import LibraryTrackList from './library/LibraryTrackList.vue';
+import PlaylistEditor from './library/PlaylistEditor.vue';
+import { buildLibraryArtists, groupItems } from './library/collections';
 import type {
   AlbumGroup,
   ArtistGroup,
@@ -34,12 +34,12 @@ import type {
   LibrarySortOption,
   TrackFilter,
   TrackGroup,
-} from "./library/types";
+} from './library/types';
 
 type SelectedLibraryItem =
-  | { id: string; kind: "track" }
-  | { key: string; kind: "album" }
-  | { kind: "artist"; name: string };
+  | { id: string; kind: 'track' }
+  | { key: string; kind: 'album' }
+  | { kind: 'artist'; name: string };
 
 interface Props {
   snapshot?: PlaybackSnapshot;
@@ -68,13 +68,14 @@ const emit = defineEmits<{
   addToQueue: [id: string];
   toggleFavorite: [id: string];
   upsertPlaylist: [playlist: Playlist];
+  reorderPlaylists: [playlistIds: string[]];
   deletePlaylist: [id: string];
   updateTracksMetadata: [updates: TrackMetadataUpdate[]];
 }>();
 
-const activeCollection = ref<LibraryCollection>("tracks");
-const displayMode = ref<LibraryDisplayMode>("list");
-const groupBy = ref<LibraryGroupOption>("none");
+const activeCollection = ref<LibraryCollection>('tracks');
+const displayMode = ref<LibraryDisplayMode>('list');
+const groupBy = ref<LibraryGroupOption>('none');
 const gridItemSize = ref(176);
 const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
@@ -82,7 +83,7 @@ const metadataEditorTarget = ref<MetadataEditTarget | null>(null);
 const playlistEditorTarget = ref<Playlist | null>(null);
 const trackRemovalTarget = ref<MediaItem | null>(null);
 const isCreatingPlaylist = ref(false);
-const detailsSidebarOpen = ref(true);
+const detailsSidebarOpen = ref(false);
 const activePlaylistId = ref<string>();
 const playback = computed<PlaybackTransport>(
   () =>
@@ -90,27 +91,30 @@ const playback = computed<PlaybackTransport>(
     props.snapshot ?? {
       currentItem: null,
       positionMs: 0,
-      status: "paused",
+      status: 'paused',
       volumePercent: 0,
-    },
+    }
 );
 const selectedLibraryItem = ref<SelectedLibraryItem | null>(
   playback.value.currentItem
-    ? { id: playback.value.currentItem.id, kind: "track" }
-    : null,
+    ? { id: playback.value.currentItem.id, kind: 'track' }
+    : null
 );
-const sortBy = ref<LibrarySortOption>("title-asc");
+const sortBy = ref<LibrarySortOption>('title-asc');
 const trackFilter = ref<TrackFilter | null>(null);
 
-const isPlaying = computed(() => playback.value.status === "playing");
+const isPlaying = computed(() => playback.value.status === 'playing');
 const currentItem = computed(() => playback.value.currentItem);
+const playingItemId = computed(() =>
+  isPlaying.value ? currentItem.value?.id : undefined
+);
 const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? []);
 const playlists = computed(() => props.playlists ?? []);
 const activePlaylist = computed(
   () =>
     playlists.value.find(
-      (playlist) => playlist.id === activePlaylistId.value,
-    ) ?? null,
+      (playlist) => playlist.id === activePlaylistId.value
+    ) ?? null
 );
 const playlistTracks = computed(() => {
   const playlist = activePlaylist.value;
@@ -126,7 +130,7 @@ const playlistTracks = computed(() => {
 });
 const selectedTrack = computed(() => {
   const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== "track") {
+  if (!selection || selection.kind !== 'track') {
     return null;
   }
 
@@ -135,18 +139,18 @@ const selectedTrack = computed(() => {
 const libraryTracks = computed(() => {
   const filteredTracks = trackFilter.value
     ? playlistTracks.value.filter((track) => {
-        if (trackFilter.value?.type === "artist") {
+        if (trackFilter.value?.type === 'artist') {
           return track.artist === trackFilter.value.value;
         }
 
         return (
-          `${track.artist}\u0000${track.album ?? ""}` ===
+          `${track.artist}\u0000${track.album ?? ''}` ===
           trackFilter.value?.value
         );
       })
     : playlistTracks.value;
 
-  return sortCollection(filteredTracks, sortBy.value, "track");
+  return sortCollection(filteredTracks, sortBy.value, 'track');
 });
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
   const albums = new Map<string, LibraryAlbum>();
@@ -171,18 +175,18 @@ const libraryAlbums = computed<LibraryAlbum[]>(() => {
     albums.set(key, album);
   }
 
-  return sortCollection(albums.values(), sortBy.value, "album");
+  return sortCollection(albums.values(), sortBy.value, 'album');
 });
 const libraryArtists = computed<LibraryArtist[]>(() => {
   return sortCollection(
     buildLibraryArtists(allTracks.value),
     sortBy.value,
-    "artist",
+    'artist'
   );
 });
 const selectedAlbum = computed(() => {
   const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== "album") {
+  if (!selection || selection.kind !== 'album') {
     return null;
   }
 
@@ -192,7 +196,7 @@ const selectedAlbum = computed(() => {
 });
 const selectedArtist = computed(() => {
   const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== "artist") {
+  if (!selection || selection.kind !== 'artist') {
     return null;
   }
 
@@ -202,42 +206,42 @@ const selectedArtist = computed(() => {
   );
 });
 const groupedTracks = computed<TrackGroup[]>(() => {
-  if (groupBy.value === "none") {
-    return [{ items: libraryTracks.value, label: "" }];
+  if (groupBy.value === 'none') {
+    return [{ items: libraryTracks.value, label: '' }];
   }
 
   return groupItems(libraryTracks.value, (track) =>
-    groupBy.value === "artist"
+    groupBy.value === 'artist'
       ? track.artist
-      : track.album?.trim() || "Unknown album",
+      : track.album?.trim() || 'Unknown album'
   );
 });
 const groupedAlbums = computed<AlbumGroup[]>(() =>
   groupCollection(libraryAlbums.value, (album) =>
-    groupBy.value === "artist" ? album.artist : album.title,
-  ),
+    groupBy.value === 'artist' ? album.artist : album.title
+  )
 );
 const groupedArtists = computed<ArtistGroup[]>(() =>
   groupCollection(libraryArtists.value, (artist) =>
-    groupBy.value === "album" ? "Artists" : artist.name,
-  ),
+    groupBy.value === 'album' ? 'Artists' : artist.name
+  )
 );
 const collectionTitle = computed(() => {
   if (activePlaylist.value) {
     return activePlaylist.value.name;
   }
   const titles: Record<LibraryCollection, string> = {
-    albums: "Albums",
-    artists: "Artists",
-    tracks: "Tracks",
+    albums: 'Albums',
+    artists: 'Artists',
+    tracks: 'Tracks',
   };
 
   return titles[activeCollection.value];
 });
 const collectionSummary = computed(() => {
   const summaries: Record<LibraryCollection, string> = {
-    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? "album" : "albums"}`,
-    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? "artist" : "artists"}`,
+    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? 'album' : 'albums'}`,
+    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? 'artist' : 'artists'}`,
     tracks: trackCollectionSummary(libraryTracks.value),
   };
 
@@ -247,43 +251,43 @@ const metadataRefreshRemaining = computed(() =>
   Math.max(
     (props.metadataRefreshes?.totalTracks ?? 0) -
       (props.metadataRefreshes?.completedTracks ?? 0),
-    0,
-  ),
+    0
+  )
 );
 const hasActiveMetadataRefresh = computed(
   () =>
     metadataRefreshRemaining.value > 0 &&
     (props.metadataRefreshes?.jobs.some(
-      (job) => job.state === "queued" || job.state === "refreshing",
+      (job) => job.state === 'queued' || job.state === 'refreshing'
     ) ??
-      false),
+      false)
 );
 
 function trackCollectionSummary(tracks: MediaItem[]): string {
   const count = tracks.length;
   const totalMinutes = Math.round(
-    tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000,
+    tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000
   );
 
-  return `${count} ${count === 1 ? "song" : "songs"} · ${totalMinutes} min`;
+  return `${count} ${count === 1 ? 'song' : 'songs'} · ${totalMinutes} min`;
 }
 
 function sortCollection<T extends MediaItem | LibraryAlbum | LibraryArtist>(
   items: Iterable<T>,
   option: LibrarySortOption,
-  kind: "album" | "artist" | "track",
+  kind: 'album' | 'artist' | 'track'
 ): T[] {
   const sorted = [...items];
   const collator = new Intl.Collator(undefined, {
     numeric: true,
-    sensitivity: "base",
+    sensitivity: 'base',
   });
-  const direction = option.endsWith("desc") ? -1 : 1;
+  const direction = option.endsWith('desc') ? -1 : 1;
 
   sorted.sort((left, right) => {
     const leftValue = sortValue(left, option, kind);
     const rightValue = sortValue(right, option, kind);
-    if (typeof leftValue === "number" && typeof rightValue === "number") {
+    if (typeof leftValue === 'number' && typeof rightValue === 'number') {
       return (leftValue - rightValue) * direction;
     }
 
@@ -296,39 +300,39 @@ function sortCollection<T extends MediaItem | LibraryAlbum | LibraryArtist>(
 function sortValue(
   item: MediaItem | LibraryAlbum | LibraryArtist,
   option: LibrarySortOption,
-  kind: "album" | "artist" | "track",
+  kind: 'album' | 'artist' | 'track'
 ): number | string {
-  if (kind === "artist") {
+  if (kind === 'artist') {
     const artist = item as LibraryArtist;
-    if (option.startsWith("album-count")) return artist.albumCount;
-    if (option.startsWith("track-count")) return artist.trackCount;
-    if (option.startsWith("duration")) return artist.durationMs;
+    if (option.startsWith('album-count')) return artist.albumCount;
+    if (option.startsWith('track-count')) return artist.trackCount;
+    if (option.startsWith('duration')) return artist.durationMs;
     return artist.name;
   }
-  if (kind === "album") {
+  if (kind === 'album') {
     const album = item as LibraryAlbum;
-    return option.startsWith("artist")
+    return option.startsWith('artist')
       ? album.artist
-      : option.startsWith("track-count")
+      : option.startsWith('track-count')
         ? album.trackCount
-        : option.startsWith("duration")
+        : option.startsWith('duration')
           ? album.durationMs
           : album.title;
   }
 
   const track = item as MediaItem;
-  if (option.startsWith("artist")) return track.artist;
-  if (option.startsWith("album")) return track.album ?? "";
-  if (option.startsWith("duration")) return track.durationMs;
+  if (option.startsWith('artist')) return track.artist;
+  if (option.startsWith('album')) return track.album ?? '';
+  if (option.startsWith('duration')) return track.durationMs;
   return track.title;
 }
 
 function groupCollection<T>(
   items: T[],
-  getLabel: (item: T) => string,
+  getLabel: (item: T) => string
 ): Array<{ items: T[]; label: string }> {
-  if (groupBy.value === "none") {
-    return [{ items, label: "" }];
+  if (groupBy.value === 'none') {
+    return [{ items, label: '' }];
   }
 
   return groupItems(items, getLabel);
@@ -341,8 +345,8 @@ function selectCollection(collection: LibraryCollection): void {
 
 function selectPlaylist(id: string): void {
   activePlaylistId.value = id;
-  activeCollection.value = "tracks";
-  displayMode.value = "list";
+  activeCollection.value = 'tracks';
+  displayMode.value = 'list';
   trackFilter.value = null;
 }
 
@@ -362,7 +366,7 @@ function createPlaylist(name: string): void {
   };
   activePlaylistId.value = playlist.id;
   isCreatingPlaylist.value = false;
-  emit("upsertPlaylist", playlist);
+  emit('upsertPlaylist', playlist);
 }
 
 function cancelPlaylistCreation(): void {
@@ -371,7 +375,7 @@ function cancelPlaylistCreation(): void {
 
 function savePlaylist(playlist: Playlist): void {
   playlistEditorTarget.value = null;
-  emit("upsertPlaylist", playlist);
+  emit('upsertPlaylist', playlist);
 }
 
 function deletePlaylist(id: string): void {
@@ -379,7 +383,7 @@ function deletePlaylist(id: string): void {
     activePlaylistId.value = undefined;
   }
   playlistEditorTarget.value = null;
-  emit("deletePlaylist", id);
+  emit('deletePlaylist', id);
 }
 
 function setDisplayMode(mode: LibraryDisplayMode): void {
@@ -387,18 +391,18 @@ function setDisplayMode(mode: LibraryDisplayMode): void {
 }
 
 function selectTrack(track: MediaItem): void {
-  selectedLibraryItem.value = { id: track.id, kind: "track" };
+  selectedLibraryItem.value = { id: track.id, kind: 'track' };
 }
 
 function playTrack(track: MediaItem): void {
   selectTrack(track);
   if (!props.isUpdating) {
     emit(
-      "playTrack",
+      'playTrack',
       trackFilter.value
         ? libraryTracks.value.map((item) => item.id)
         : [track.id],
-      track.id,
+      track.id
     );
   }
 }
@@ -411,9 +415,9 @@ function playTracks(tracks: MediaItem[]): void {
 
   selectTrack(track);
   emit(
-    "playTrack",
+    'playTrack',
     tracks.map((item) => item.id),
-    track.id,
+    track.id
   );
 }
 
@@ -421,8 +425,8 @@ function playAlbum(album: LibraryAlbum): void {
   playTracks(
     allTracks.value.filter(
       (track) =>
-        track.artist === album.artist && track.album?.trim() === album.title,
-    ),
+        track.artist === album.artist && track.album?.trim() === album.title
+    )
   );
 }
 
@@ -436,21 +440,21 @@ function playPlaylist(playlist: Playlist): void {
     playlist.trackIds.flatMap((id) => {
       const track = tracksById.get(id);
       return track ? [track] : [];
-    }),
+    })
   );
 }
 
 function selectAlbum(album: LibraryAlbum): void {
-  selectedLibraryItem.value = { key: album.key, kind: "album" };
+  selectedLibraryItem.value = { key: album.key, kind: 'album' };
 }
 
 function selectArtist(artist: LibraryArtist): void {
-  selectedLibraryItem.value = { kind: "artist", name: artist.name };
+  selectedLibraryItem.value = { kind: 'artist', name: artist.name };
 }
 
 function openTrackMetadataEditor(track: MediaItem): void {
   metadataEditorTarget.value = {
-    kind: "track",
+    kind: 'track',
     name: track.title,
     tracks: [track],
   };
@@ -459,7 +463,7 @@ function openTrackMetadataEditor(track: MediaItem): void {
 function openTrackAlbum(track: MediaItem): void {
   const album = track.album
     ? libraryAlbums.value.find(
-        (candidate) => candidate.key === `${track.artist}\u0000${track.album}`,
+        (candidate) => candidate.key === `${track.artist}\u0000${track.album}`
       )
     : undefined;
   if (album) {
@@ -469,7 +473,7 @@ function openTrackAlbum(track: MediaItem): void {
 
 function openTrackArtist(track: MediaItem): void {
   const artist = libraryArtists.value.find(
-    (candidate) => candidate.name === track.artist,
+    (candidate) => candidate.name === track.artist
   );
   if (artist) {
     openArtist(artist);
@@ -487,23 +491,23 @@ function confirmTrackRemoval(): void {
   }
 
   trackRemovalTarget.value = null;
-  emit("removeTracks", [track.id]);
+  emit('removeTracks', [track.id]);
 }
 
 function openAlbumMetadataEditor(album: LibraryAlbum): void {
   metadataEditorTarget.value = {
-    kind: "album",
+    kind: 'album',
     name: album.title,
     tracks: allTracks.value.filter(
       (track) =>
-        track.artist === album.artist && track.album?.trim() === album.title,
+        track.artist === album.artist && track.album?.trim() === album.title
     ),
   };
 }
 
 function openArtistMetadataEditor(artist: LibraryArtist): void {
   metadataEditorTarget.value = {
-    kind: "artist",
+    kind: 'artist',
     name: artist.name,
     tracks: allTracks.value.filter((track) => track.artist === artist.name),
   };
@@ -511,25 +515,25 @@ function openArtistMetadataEditor(artist: LibraryArtist): void {
 
 function saveMetadata(updates: TrackMetadataUpdate[]): void {
   metadataEditorTarget.value = null;
-  emit("updateTracksMetadata", updates);
+  emit('updateTracksMetadata', updates);
 }
 
 function openAlbum(album: LibraryAlbum): void {
   selectAlbum(album);
-  trackFilter.value = { label: album.title, type: "album", value: album.key };
-  activeCollection.value = "tracks";
-  displayMode.value = "list";
+  trackFilter.value = { label: album.title, type: 'album', value: album.key };
+  activeCollection.value = 'tracks';
+  displayMode.value = 'list';
 }
 
 function openArtist(artist: LibraryArtist): void {
   selectArtist(artist);
   trackFilter.value = {
     label: artist.name,
-    type: "artist",
+    type: 'artist',
     value: artist.name,
   };
-  activeCollection.value = "tracks";
-  displayMode.value = "list";
+  activeCollection.value = 'tracks';
+  displayMode.value = 'list';
 }
 
 function setSort(option: LibrarySortOption): void {
@@ -575,6 +579,7 @@ function toggleMetadataRefresh(): void {
       :active-collection="activeCollection"
       :active-playlist-id="activePlaylistId"
       :is-creating-playlist="isCreatingPlaylist"
+      :is-updating="props.isUpdating"
       :playlists="playlists"
       @cancel-playlist-creation="cancelPlaylistCreation"
       @create-playlist="createPlaylist"
@@ -583,6 +588,7 @@ function toggleMetadataRefresh(): void {
       @new-playlist="beginPlaylistCreation"
       @open-import="emit('openImport')"
       @play-playlist="playPlaylist"
+      @reorder-playlists="emit('reorderPlaylists', $event)"
       @select-collection="selectCollection"
       @select-playlist="selectPlaylist"
     />
@@ -612,7 +618,8 @@ function toggleMetadataRefresh(): void {
 
       <LibraryTrackList
         v-if="activeCollection === 'tracks' && displayMode === 'list'"
-        :current-item-id="currentItem?.id"
+        :playing-item-id="playingItemId"
+        :selected-track-id="selectedTrack?.id"
         :sort-by="sortBy"
         :track-filter="trackFilter"
         :tracks="libraryTracks"
@@ -634,7 +641,8 @@ function toggleMetadataRefresh(): void {
       />
       <LibraryTrackGrid
         v-else-if="activeCollection === 'tracks'"
-        :current-item-id="currentItem?.id"
+        :playing-item-id="playingItemId"
+        :selected-track-id="selectedTrack?.id"
         :favorite-track-ids="
           playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
           []

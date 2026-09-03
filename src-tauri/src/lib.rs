@@ -47,6 +47,7 @@ pub fn run() {
             commands::toggle_favorite,
             commands::remove_tracks,
             commands::upsert_playlist,
+            commands::reorder_playlists,
             commands::delete_playlist,
             commands::play,
             commands::pause,

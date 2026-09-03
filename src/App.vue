@@ -299,6 +299,7 @@ onUnmounted(() => {
       @toggle-mute="playback.toggleMute"
       @open-import="openImportWindow"
       @upsert-playlist="playback.upsertPlaylist"
+      @reorder-playlists="playback.reorderPlaylists"
       @delete-playlist="playback.deletePlaylist"
       @remove-tracks="playback.removeTracks"
       @toggle-favorite="playback.toggleFavorite"

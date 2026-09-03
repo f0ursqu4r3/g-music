@@ -144,6 +144,19 @@ describe("playbackApi", () => {
       ["delete_playlist", { id: "focus" }],
     ]);
   });
+
+  it("reorders user playlists through a durable command", async () => {
+    const library: LibrarySnapshot = { playlists: [], tracks: [] };
+    vi.mocked(invoke).mockResolvedValue(library);
+
+    await expect(
+      playbackApi.reorderPlaylists(["road-trip", "focus"]),
+    ).resolves.toEqual(library);
+
+    expect(invoke).toHaveBeenCalledWith("reorder_playlists", {
+      playlistIds: ["road-trip", "focus"],
+    });
+  });
 });
 
 describe("youtubeAuthApi", () => {

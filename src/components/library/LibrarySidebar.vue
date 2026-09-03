@@ -8,7 +8,8 @@ import {
   Pencil,
   Plus,
 } from "lucide-vue-next";
-import { nextTick, ref, watch } from "vue";
+import { ReorderGroup, ReorderItem } from "motion-v";
+import { computed, nextTick, ref, watch } from "vue";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -25,6 +26,7 @@ const props = defineProps<{
   activeCollection: LibraryCollection;
   activePlaylistId?: string;
   isCreatingPlaylist?: boolean;
+  isUpdating?: boolean;
   playlists: Playlist[];
 }>();
 
@@ -38,10 +40,25 @@ const emit = defineEmits<{
   editPlaylist: [playlist: Playlist];
   openImport: [];
   playPlaylist: [playlist: Playlist];
+  reorderPlaylists: [playlistIds: string[]];
 }>();
 
 const newPlaylistName = ref("");
 const newPlaylistInput = ref<HTMLInputElement>();
+const activeReorderId = ref<string>();
+const isReorderPending = ref(false);
+const userPlaylists = computed(() =>
+  props.playlists.filter((playlist) => !isDefaultPlaylist(playlist)),
+);
+const defaultPlaylists = computed(() =>
+  props.playlists.filter((playlist) => isDefaultPlaylist(playlist)),
+);
+const reorderablePlaylists = ref<Playlist[]>([...userPlaylists.value]);
+const playlistReorderTransition = {
+  damping: 42,
+  stiffness: 650,
+  type: "spring" as const,
+};
 
 function saveNewPlaylist(): void {
   const name = newPlaylistName.value.trim();
@@ -58,6 +75,65 @@ function playlistIcon(id: string) {
   return id === "favorites" ? Heart : id === "most-played" ? Clock3 : ListMusic;
 }
 
+function isDefaultPlaylist(playlist: Playlist): boolean {
+  return playlist.id === "favorites" || playlist.id === "most-played";
+}
+
+function startPlaylistReorder(id: string): void {
+  activeReorderId.value = id;
+}
+
+function previewPlaylistReorder(playlists: Playlist[]): void {
+  reorderablePlaylists.value = playlists;
+}
+
+function finishPlaylistReorder(): void {
+  const id = activeReorderId.value;
+  activeReorderId.value = undefined;
+  if (!id || props.isUpdating) {
+    reorderablePlaylists.value = [...userPlaylists.value];
+    return;
+  }
+
+  const playlistIds = reorderablePlaylists.value.map((playlist) => playlist.id);
+  if (
+    playlistIds.every(
+      (playlistId, index) => playlistId === userPlaylists.value[index]?.id,
+    )
+  ) {
+    reorderablePlaylists.value = [...userPlaylists.value];
+    return;
+  }
+
+  isReorderPending.value = true;
+  emit("reorderPlaylists", playlistIds);
+}
+
+function movePlaylist(id: string, direction: -1 | 1): void {
+  const from = reorderablePlaylists.value.findIndex(
+    (playlist) => playlist.id === id,
+  );
+  const to = from + direction;
+  if (
+    props.isUpdating ||
+    from === -1 ||
+    to < 0 ||
+    to >= reorderablePlaylists.value.length
+  ) {
+    return;
+  }
+
+  const playlists = [...reorderablePlaylists.value];
+  const [playlist] = playlists.splice(from, 1);
+  playlists.splice(to, 0, playlist!);
+  reorderablePlaylists.value = playlists;
+  isReorderPending.value = true;
+  emit(
+    "reorderPlaylists",
+    playlists.map((playlist) => playlist.id),
+  );
+}
+
 watch(
   () => props.isCreatingPlaylist,
   async (isCreating) => {
@@ -65,6 +141,22 @@ watch(
     if (isCreating) {
       await nextTick();
       newPlaylistInput.value?.focus();
+    }
+  },
+);
+
+watch(userPlaylists, (playlists) => {
+  reorderablePlaylists.value = [...playlists];
+  activeReorderId.value = undefined;
+  isReorderPending.value = false;
+});
+
+watch(
+  () => props.isUpdating,
+  (isUpdating) => {
+    if (!isUpdating && isReorderPending.value) {
+      reorderablePlaylists.value = [...userPlaylists.value];
+      isReorderPending.value = false;
     }
   },
 );
@@ -144,24 +236,8 @@ watch(
               <Plus aria-hidden="true" />
             </button>
           </div>
-          <form
-            v-if="props.isCreatingPlaylist"
-            class="flex min-h-8 items-center gap-2 rounded-md bg-[oklch(0.7_0.03_262/0.15)] px-2.5"
-            data-new-playlist-editor
-            @submit.prevent="saveNewPlaylist"
-          >
-            <ListMusic aria-hidden="true" class="size-4 shrink-0 text-accent" />
-            <input
-              ref="newPlaylistInput"
-              v-model="newPlaylistName"
-              aria-label="New playlist name"
-              class="min-w-0 flex-1 bg-transparent text-[0.79rem] text-(--text) outline-none placeholder:text-(--subtle-text)"
-              placeholder="New playlist"
-              @keydown.esc.prevent="cancelNewPlaylist"
-            />
-          </form>
           <ContextMenu
-            v-for="playlist in props.playlists"
+            v-for="playlist in defaultPlaylists"
             :key="playlist.id"
             @update:open="
               (isOpen) => isOpen && emit('selectPlaylist', playlist.id)
@@ -169,7 +245,7 @@ watch(
           >
             <ContextMenuTrigger as-child>
               <div
-                class="group flex min-h-8 items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text)"
+                class="flex min-h-8 items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text)"
               >
                 <button
                   :aria-current="
@@ -186,28 +262,102 @@ watch(
                   />
                   <span class="truncate">{{ playlist.name }}</span>
                 </button>
-                <button
-                  v-if="
-                    playlist.id !== 'favorites' && playlist.id !== 'most-played'
-                  "
-                  :aria-label="`Edit ${playlist.name}`"
-                  class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
-                  type="button"
-                  @click="emit('editPlaylist', playlist)"
-                >
-                  <Pencil aria-hidden="true" />
-                </button>
               </div>
             </ContextMenuTrigger>
             <ContextMenuContent data-playlist-context-menu>
               <ContextMenuItem @select="emit('playPlaylist', playlist)">
                 Play playlist
               </ContextMenuItem>
-              <template
-                v-if="
-                  playlist.id !== 'favorites' && playlist.id !== 'most-played'
-                "
-              >
+            </ContextMenuContent>
+          </ContextMenu>
+          <ReorderGroup
+            as="div"
+            axis="y"
+            class="grid gap-0.5"
+            data-playlist-reorder-list
+            :values="reorderablePlaylists"
+            @update:values="previewPlaylistReorder"
+          >
+            <ContextMenu
+              v-for="playlist in reorderablePlaylists"
+              :key="playlist.id"
+              @update:open="
+                (isOpen) => isOpen && emit('selectPlaylist', playlist.id)
+              "
+            >
+              <ContextMenuTrigger as-child>
+                <ReorderItem
+                  as="div"
+                  :aria-label="`Drag ${playlist.name} to reorder`"
+                  :drag="props.isUpdating ? false : 'y'"
+                  :drag-momentum="false"
+                  :on-drag-end="finishPlaylistReorder"
+                  :on-drag-start="() => startPlaylistReorder(playlist.id)"
+                  :transition="playlistReorderTransition"
+                  :value="playlist"
+                  :data-playlist-reorder-item="playlist.id"
+                  class="group flex min-h-8 cursor-grab items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text) active:cursor-grabbing"
+                >
+                  <button
+                    :aria-current="
+                      props.activePlaylistId === playlist.id
+                        ? 'page'
+                        : undefined
+                    "
+                    class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) [&>svg]:size-4"
+                    :data-playlist-id="playlist.id"
+                    type="button"
+                    @click="emit('selectPlaylist', playlist.id)"
+                  >
+                    <component
+                      :is="playlistIcon(playlist.id)"
+                      aria-hidden="true"
+                    />
+                    <span class="truncate">{{ playlist.name }}</span>
+                  </button>
+                  <button
+                    :aria-label="`Move ${playlist.name} up`"
+                    class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100"
+                    :disabled="
+                      props.isUpdating ||
+                      reorderablePlaylists.findIndex(
+                        (candidate) => candidate.id === playlist.id,
+                      ) === 0
+                    "
+                    type="button"
+                    @click.stop="movePlaylist(playlist.id, -1)"
+                  >
+                    <span aria-hidden="true">↑</span>
+                  </button>
+                  <button
+                    :aria-label="`Move ${playlist.name} down`"
+                    class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100"
+                    :disabled="
+                      props.isUpdating ||
+                      reorderablePlaylists.findIndex(
+                        (candidate) => candidate.id === playlist.id,
+                      ) ===
+                        reorderablePlaylists.length - 1
+                    "
+                    type="button"
+                    @click.stop="movePlaylist(playlist.id, 1)"
+                  >
+                    <span aria-hidden="true">↓</span>
+                  </button>
+                  <button
+                    :aria-label="`Edit ${playlist.name}`"
+                    class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
+                    type="button"
+                    @click="emit('editPlaylist', playlist)"
+                  >
+                    <Pencil aria-hidden="true" />
+                  </button>
+                </ReorderItem>
+              </ContextMenuTrigger>
+              <ContextMenuContent data-playlist-context-menu>
+                <ContextMenuItem @select="emit('playPlaylist', playlist)">
+                  Play playlist
+                </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem @select="emit('editPlaylist', playlist)">
                   Edit playlist
@@ -215,9 +365,25 @@ watch(
                 <ContextMenuItem @select="emit('deletePlaylist', playlist)">
                   Delete playlist…
                 </ContextMenuItem>
-              </template>
-            </ContextMenuContent>
-          </ContextMenu>
+              </ContextMenuContent>
+            </ContextMenu>
+          </ReorderGroup>
+          <form
+            v-if="props.isCreatingPlaylist"
+            class="flex min-h-8 items-center gap-2 rounded-md bg-[oklch(0.7_0.03_262/0.15)] px-2.5"
+            data-new-playlist-editor
+            @submit.prevent="saveNewPlaylist"
+          >
+            <ListMusic aria-hidden="true" class="size-4 shrink-0 text-accent" />
+            <input
+              ref="newPlaylistInput"
+              v-model="newPlaylistName"
+              aria-label="New playlist name"
+              class="min-w-0 flex-1 bg-transparent text-[0.79rem] text-(--text) outline-none placeholder:text-(--subtle-text)"
+              placeholder="New playlist"
+              @keydown.esc.prevent="cancelNewPlaylist"
+            />
+          </form>
         </nav>
       </div>
     </ScrollArea>

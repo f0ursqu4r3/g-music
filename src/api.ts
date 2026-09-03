@@ -132,6 +132,8 @@ export const playbackApi = {
     invoke<LibrarySnapshot>("remove_tracks", { ids }),
   upsertPlaylist: (playlist: Playlist): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>("upsert_playlist", { playlist }),
+  reorderPlaylists: (playlistIds: string[]): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("reorder_playlists", { playlistIds }),
   deletePlaylist: (id: string): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>("delete_playlist", { id }),
   importYouTubeUrls: (urls: string[]): Promise<void> =>

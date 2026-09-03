@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MediaItem, PlaybackSnapshot, PlaybackTransport } from "@/api";
 import { Slider } from "@/components/ui/slider";
+import LibrarySidebar from "../library/LibrarySidebar.vue";
 import LibraryWindow from "../LibraryWindow.vue";
 import { dragSlider } from "./slider-interaction";
 
@@ -632,7 +633,10 @@ describe("LibraryWindow", () => {
 
   it("uses the compact reference-style library header and track table", () => {
     const wrapper = mount(LibraryWindow, {
-      props: { isUpdating: false, snapshot },
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, status: "playing" },
+      },
     });
 
     expect(wrapper.text()).not.toContain("Your library");
@@ -885,6 +889,53 @@ describe("LibraryWindow", () => {
       "Creator Studio Session",
     );
     expect(wrapper.emitted("playTrack")).toBeUndefined();
+  });
+
+  it("highlights the selected track separately from the playing track", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+
+    expect(
+      wrapper.get('[data-track-id="BaW_jenozKc"]').attributes("data-selected"),
+    ).toBe("true");
+    expect(
+      wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes("data-selected"),
+    ).toBe("false");
+    expect(wrapper.find(".track-playing-indicator").exists()).toBe(false);
+
+    await wrapper.setProps({ snapshot: { ...snapshot, status: "playing" } });
+
+    expect(
+      wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes("data-playing"),
+    ).toBe("true");
+    expect(
+      wrapper
+        .get('[data-track-id="M7lc1UVf-VE"]')
+        .find(".track-playing-indicator")
+        .exists(),
+    ).toBe(true);
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+
+    expect(
+      wrapper
+        .get('.track-grid [data-track-id="BaW_jenozKc"]')
+        .attributes("data-selected"),
+    ).toBe("true");
+    expect(
+      wrapper
+        .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
+        .attributes("data-playing"),
+    ).toBe("true");
+    expect(
+      wrapper
+        .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
+        .find(".track-playing-indicator")
+        .exists(),
+    ).toBe(true);
   });
 
   it("creates a one-item queue when playing from the unfiltered Tracks list", async () => {
@@ -1230,13 +1281,51 @@ describe("LibraryWindow", () => {
     );
   });
 
-  it("creates an empty user playlist from an inline sidebar editor", async () => {
+  it("delegates a reordered user playlist list", async () => {
     const wrapper = mount(LibraryWindow, {
-      props: { isUpdating: false, playlists: [], snapshot },
+      props: {
+        isUpdating: false,
+        playlists: [
+          { id: "favorites", name: "Favorites", trackIds: [] },
+          { id: "most-played", name: "Most Played", trackIds: [] },
+          { id: "focus", name: "Focus", trackIds: [] },
+          { id: "road-trip", name: "Road Trip", trackIds: [] },
+        ],
+        snapshot,
+      },
+    });
+
+    wrapper
+      .getComponent(LibrarySidebar)
+      .vm.$emit("reorderPlaylists", ["road-trip", "focus"]);
+
+    expect(wrapper.emitted("reorderPlaylists")).toEqual([
+      [["road-trip", "focus"]],
+    ]);
+  });
+
+  it("shows the inline new-playlist editor after existing playlists", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [
+          { id: "focus", name: "Focus", trackIds: [] },
+          { id: "road-trip", name: "Road Trip", trackIds: [] },
+        ],
+        snapshot,
+      },
     });
 
     await wrapper.get('button[aria-label="New playlist"]').trigger("click");
     const editor = wrapper.get("[data-new-playlist-editor]");
+
+    expect(
+      wrapper
+        .get("[data-library-playlists]")
+        .findAll("[data-playlist-id], [data-new-playlist-editor]")
+        .map((element) => element.attributes("data-playlist-id") ?? "editor"),
+    ).toEqual(["focus", "road-trip", "editor"]);
+
     await editor
       .get('input[aria-label="New playlist name"]')
       .setValue("Road Trip");

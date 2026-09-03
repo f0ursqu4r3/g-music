@@ -112,6 +112,15 @@ impl AppState {
         })
     }
 
+    pub fn reorder_playlists(
+        &self,
+        playlist_ids: &[String],
+    ) -> Result<LibrarySnapshot, CommandError> {
+        with_playback(self, "reorder_playlists", |playback| {
+            playback.reorder_playlists(playlist_ids)
+        })
+    }
+
     pub fn delete_playlist(&self, id: &str) -> Result<LibrarySnapshot, CommandError> {
         with_playback(self, "delete_playlist", |playback| {
             playback.delete_playlist(id)
@@ -826,6 +835,19 @@ pub fn upsert_playlist(
     playlist: Playlist,
 ) -> Result<LibrarySnapshot, CommandError> {
     let snapshot = state.upsert_playlist(playlist)?;
+    if let Err(error) = app.emit("library-updated", ()) {
+        tracing::debug!(%error, "could not deliver library update event");
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn reorder_playlists(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    playlist_ids: Vec<String>,
+) -> Result<LibrarySnapshot, CommandError> {
+    let snapshot = state.reorder_playlists(&playlist_ids)?;
     if let Err(error) = app.emit("library-updated", ()) {
         tracing::debug!(%error, "could not deliver library update event");
     }

@@ -60,6 +60,12 @@ struct PlaylistUpsertRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistReorderRequest {
+    playlist_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
 struct PlaylistDeleteRequest {
     id: String,
 }
@@ -191,6 +197,10 @@ fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandErr
             let request: PlaylistUpsertRequest = decode_params(&request.params)?;
             serialize(state.upsert_playlist(request.playlist)?)
         }
+        "playlist.reorder" => {
+            let request: PlaylistReorderRequest = decode_params(&request.params)?;
+            serialize(state.reorder_playlists(&request.playlist_ids)?)
+        }
         "playlist.delete" => {
             let request: PlaylistDeleteRequest = decode_params(&request.params)?;
             serialize(state.delete_playlist(&request.id)?)
@@ -216,6 +226,7 @@ fn library_mutation_method(method: &str) -> bool {
             | "tracks.update"
             | "track.remove"
             | "playlist.upsert"
+            | "playlist.reorder"
             | "playlist.delete"
             | "queue.move"
     )
@@ -256,6 +267,7 @@ mod tests {
             "tracks.update",
             "track.remove",
             "playlist.upsert",
+            "playlist.reorder",
             "playlist.delete",
             "queue.move",
         ] {
