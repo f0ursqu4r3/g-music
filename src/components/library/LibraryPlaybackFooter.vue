@@ -7,6 +7,8 @@ import {
   PanelRightOpen,
   Pause,
   Play,
+  Repeat,
+  Repeat1,
   Repeat2,
   Shuffle,
   SkipBack,
@@ -40,6 +42,8 @@ const emit = defineEmits<{
   seek: [positionMs: number];
   setVolume: [percent: number];
   toggleMute: [];
+  toggleShuffle: [];
+  cycleRepeatMode: [];
   toggleDetails: [];
 }>();
 
@@ -55,6 +59,25 @@ const volumeIcon = computed(() => {
     return Volume1;
   }
   return Volume2;
+});
+const repeatMode = computed(() => props.playback.repeatMode ?? "off");
+const repeatIcon = computed(() => {
+  if (repeatMode.value === "one") {
+    return Repeat1;
+  }
+  if (repeatMode.value === "all") {
+    return Repeat2;
+  }
+  return Repeat;
+});
+const repeatLabel = computed(() => {
+  if (repeatMode.value === "one") {
+    return "Disable repeat";
+  }
+  if (repeatMode.value === "all") {
+    return "Enable repeat one";
+  }
+  return "Enable repeat all";
 });
 
 function emitVolume(values: number[] | undefined): void {
@@ -108,7 +131,17 @@ function emitSeek(values: number[]): void {
         aria-label="Playback controls"
         data-playback-control="transport"
       >
-        <Button aria-label="Shuffle" size="icon-sm" variant="ghost">
+        <Button
+          :aria-label="
+            props.playback.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'
+          "
+          :aria-pressed="props.playback.shuffleEnabled ?? false"
+          class="aria-pressed:text-accent"
+          size="icon-sm"
+          variant="ghost"
+          :disabled="props.isUpdating"
+          @click="emit('toggleShuffle')"
+        >
           <Shuffle aria-hidden="true" />
         </Button>
         <Button
@@ -156,8 +189,17 @@ function emitSeek(values: number[]): void {
         >
           <SkipForward aria-hidden="true" />
         </Button>
-        <Button aria-label="Repeat" size="icon-sm" variant="ghost">
-          <Repeat2 aria-hidden="true" />
+        <Button
+          :aria-label="repeatLabel"
+          :aria-pressed="repeatMode !== 'off'"
+          class="aria-pressed:text-accent"
+          :data-repeat-mode="repeatMode"
+          size="icon-sm"
+          variant="ghost"
+          :disabled="props.isUpdating"
+          @click="emit('cycleRepeatMode')"
+        >
+          <component :is="repeatIcon" aria-hidden="true" />
         </Button>
       </nav>
 

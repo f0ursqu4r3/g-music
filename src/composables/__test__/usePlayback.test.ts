@@ -15,6 +15,37 @@ const paused: PlaybackSnapshot = {
 const playing: PlaybackSnapshot = { ...paused, status: "playing" };
 
 describe("usePlayback", () => {
+  it("applies authoritative shuffle and repeat mode snapshots", async () => {
+    const shuffled = {
+      ...paused,
+      repeatMode: "all" as const,
+      shuffleEnabled: true,
+    };
+    const client = {
+      inspect: vi.fn().mockResolvedValue(paused),
+      play: vi.fn(),
+      pause: vi.fn(),
+      previous: vi.fn(),
+      next: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      moveQueueItem: vi.fn(),
+      playTrack: vi.fn(),
+      importYouTubeUrls: vi.fn(),
+      toggleShuffle: vi.fn().mockResolvedValue(shuffled),
+      cycleRepeatMode: vi.fn().mockResolvedValue(shuffled),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    await playback.toggleShuffle();
+    await playback.cycleRepeatMode();
+
+    expect(client.toggleShuffle).toHaveBeenCalledOnce();
+    expect(client.cycleRepeatMode).toHaveBeenCalledOnce();
+    expect(playback.snapshot.value).toEqual(shuffled);
+  });
+
   it("loads a snapshot then uses play for a paused track", async () => {
     const client = {
       inspect: vi.fn().mockResolvedValue(paused),

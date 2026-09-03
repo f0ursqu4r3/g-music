@@ -53,6 +53,8 @@ pub fn run() {
             commands::pause,
             commands::previous,
             commands::next,
+            commands::toggle_shuffle,
+            commands::cycle_repeat_mode,
             commands::play_track,
             commands::queue_track_next,
             commands::add_to_queue,

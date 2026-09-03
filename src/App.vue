@@ -291,6 +291,8 @@ onUnmounted(() => {
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
+      @toggle-shuffle="playback.toggleShuffle"
+      @cycle-repeat-mode="playback.cycleRepeatMode"
       @play-track="(queueIds, id) => playback.playTrack(id, queueIds)"
       @play-next="playback.playNext"
       @add-to-queue="playback.addToQueue"

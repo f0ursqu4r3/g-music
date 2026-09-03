@@ -79,6 +79,18 @@ describe("playbackApi", () => {
     });
   });
 
+  it("changes shuffle and repeat modes through dedicated playback commands", async () => {
+    vi.mocked(invoke).mockResolvedValue(snapshot);
+
+    await playbackApi.toggleShuffle();
+    await playbackApi.cycleRepeatMode();
+
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ["toggle_shuffle"],
+      ["cycle_repeat_mode"],
+    ]);
+  });
+
   it("removes a library track and an upcoming queue item through dedicated commands", async () => {
     vi.mocked(invoke).mockResolvedValue(snapshot);
 

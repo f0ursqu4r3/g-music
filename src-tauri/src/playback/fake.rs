@@ -1,4 +1,4 @@
-use super::{MediaItem, PlaybackSnapshot, PlaybackStatus};
+use super::{MediaItem, PlaybackSnapshot, PlaybackStatus, RepeatMode, shuffle_upcoming};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -12,6 +12,7 @@ pub enum PlaybackError {
 
 pub struct FakePlaybackProvider {
     snapshot: PlaybackSnapshot,
+    shuffle_order: Vec<String>,
 }
 
 impl FakePlaybackProvider {
@@ -28,8 +29,11 @@ impl FakePlaybackProvider {
                 current_item,
                 position_ms: 0,
                 volume_percent: 72,
+                shuffle_enabled: false,
+                repeat_mode: RepeatMode::Off,
                 queue,
             },
+            shuffle_order: Vec::new(),
         }
     }
 
@@ -59,17 +63,35 @@ impl FakePlaybackProvider {
         let Some(current_item) = self.snapshot.current_item.as_ref() else {
             return;
         };
-        let Some(current_index) = self
+        let next_id = if self.snapshot.shuffle_enabled {
+            let Some(current_order_index) = self
+                .shuffle_order
+                .iter()
+                .position(|id| id == &current_item.id)
+            else {
+                return;
+            };
+            self.shuffle_order[(current_order_index + 1) % self.shuffle_order.len()].clone()
+        } else {
+            let Some(current_index) = self
+                .snapshot
+                .queue
+                .iter()
+                .position(|item| item.id == current_item.id)
+            else {
+                return;
+            };
+            self.snapshot.queue[(current_index + 1) % self.snapshot.queue.len()]
+                .id
+                .clone()
+        };
+        let Some(next_item) = self
             .snapshot
             .queue
             .iter()
-            .position(|item| item.id == current_item.id)
+            .find(|item| item.id == next_id)
+            .cloned()
         else {
-            return;
-        };
-
-        let next_index = (current_index + 1) % self.snapshot.queue.len();
-        let Some(next_item) = self.snapshot.queue.get(next_index).cloned() else {
             return;
         };
 
@@ -81,6 +103,34 @@ impl FakePlaybackProvider {
         let Some(current_item) = self.snapshot.current_item.as_ref() else {
             return;
         };
+        if self.snapshot.shuffle_enabled {
+            let Some(current_order_index) = self
+                .shuffle_order
+                .iter()
+                .position(|id| id == &current_item.id)
+            else {
+                return;
+            };
+            let previous_order_index = if current_order_index == 0 {
+                self.shuffle_order.len() - 1
+            } else {
+                current_order_index - 1
+            };
+            let previous_id = &self.shuffle_order[previous_order_index];
+            let Some(previous_item) = self
+                .snapshot
+                .queue
+                .iter()
+                .find(|item| &item.id == previous_id)
+                .cloned()
+            else {
+                return;
+            };
+
+            self.snapshot.current_item = Some(previous_item);
+            self.snapshot.position_ms = 0;
+            return;
+        }
         let Some(current_index) = self
             .snapshot
             .queue
@@ -101,6 +151,35 @@ impl FakePlaybackProvider {
 
         self.snapshot.current_item = Some(previous_item);
         self.snapshot.position_ms = 0;
+    }
+
+    pub fn toggle_shuffle(&mut self) {
+        self.snapshot.shuffle_enabled = !self.snapshot.shuffle_enabled;
+        if self.snapshot.shuffle_enabled {
+            let current_id = self
+                .snapshot
+                .current_item
+                .as_ref()
+                .map(|item| item.id.clone());
+            let mut shuffled_ids = self
+                .snapshot
+                .queue
+                .iter()
+                .filter(|item| Some(item.id.as_str()) != current_id.as_deref())
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>();
+            shuffle_upcoming(&mut shuffled_ids, 0, 0x9e37_79b9);
+            if let Some(current_id) = current_id {
+                shuffled_ids.insert(0, current_id);
+            }
+            self.shuffle_order = shuffled_ids;
+        } else {
+            self.shuffle_order.clear();
+        }
+    }
+
+    pub fn cycle_repeat_mode(&mut self) {
+        self.snapshot.repeat_mode = self.snapshot.repeat_mode.cycle();
     }
 
     pub fn move_queue_item(&mut self, from: usize, to: usize) -> Result<(), PlaybackError> {
@@ -196,6 +275,73 @@ mod tests {
                 .map(|item| item.id.as_str()),
             Some("soft-focus")
         );
+    }
+
+    #[test]
+    fn shuffles_playback_without_mutating_the_queue_or_original_next_order() {
+        let mut provider = FakePlaybackProvider::new();
+        let initial_queue = provider.snapshot().queue;
+
+        provider.toggle_shuffle();
+
+        assert!(provider.snapshot().shuffle_enabled);
+        assert_eq!(provider.snapshot().queue, initial_queue);
+
+        provider.next();
+        assert_eq!(
+            provider
+                .snapshot()
+                .current_item
+                .as_ref()
+                .map(|item| item.id.as_str()),
+            Some("soft-focus")
+        );
+
+        provider.previous();
+        assert_eq!(
+            provider
+                .snapshot()
+                .current_item
+                .as_ref()
+                .map(|item| item.id.as_str()),
+            Some("night-drive")
+        );
+
+        provider.next();
+        assert_eq!(
+            provider
+                .snapshot()
+                .current_item
+                .as_ref()
+                .map(|item| item.id.as_str()),
+            Some("soft-focus")
+        );
+
+        provider.toggle_shuffle();
+        assert!(!provider.snapshot().shuffle_enabled);
+        assert_eq!(provider.snapshot().queue, initial_queue);
+
+        provider.next();
+        assert_eq!(
+            provider
+                .snapshot()
+                .current_item
+                .as_ref()
+                .map(|item| item.id.as_str()),
+            Some("night-drive")
+        );
+    }
+
+    #[test]
+    fn cycles_repeat_modes() {
+        let mut provider = FakePlaybackProvider::new();
+
+        provider.cycle_repeat_mode();
+        assert_eq!(provider.snapshot().repeat_mode.as_str(), "all");
+        provider.cycle_repeat_mode();
+        assert_eq!(provider.snapshot().repeat_mode.as_str(), "one");
+        provider.cycle_repeat_mode();
+        assert_eq!(provider.snapshot().repeat_mode.as_str(), "off");
     }
 
     #[test]

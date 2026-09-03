@@ -17,7 +17,7 @@ use url::Url;
 
 use super::{
     EditableTrackMetadata, LibrarySnapshot, MediaItem, PlaybackSnapshot, PlaybackStatus,
-    PlaybackTransport, Playlist,
+    PlaybackTransport, Playlist, RepeatMode, shuffle_upcoming,
 };
 
 const IPC_TIMEOUT: Duration = Duration::from_secs(3);
@@ -121,6 +121,7 @@ pub struct YouTubePlaybackProvider {
     player: MpvPlayer,
     playlists: Vec<Playlist>,
     session_cookie_path: Option<PathBuf>,
+    shuffle_order: Vec<String>,
     snapshot: PlaybackSnapshot,
 }
 
@@ -177,11 +178,14 @@ impl YouTubePlaybackProvider {
             player: MpvPlayer::new(),
             playlists,
             session_cookie_path: None,
+            shuffle_order: Vec::new(),
             snapshot: PlaybackSnapshot {
                 status: PlaybackStatus::Paused,
                 current_item: None,
                 position_ms: 0,
                 volume_percent: 72,
+                shuffle_enabled: false,
+                repeat_mode: RepeatMode::Off,
                 queue: Vec::new(),
             },
         }
@@ -589,7 +593,12 @@ impl YouTubePlaybackProvider {
 
     fn update_transport(&mut self) -> Result<(), YouTubePlaybackError> {
         if self.snapshot.current_item.is_some() {
+            let was_playing = self.snapshot.status == PlaybackStatus::Playing;
             let state = self.player.inspect()?;
+            if was_playing && state.eof_reached {
+                self.advance_after_end()?;
+                return Ok(());
+            }
             self.snapshot.status = if state.paused {
                 PlaybackStatus::Paused
             } else {
@@ -639,14 +648,33 @@ impl YouTubePlaybackProvider {
         let Some(current_index) = self.current_index() else {
             return Ok(());
         };
-        let next_index = (current_index + 1) % self.snapshot.queue.len();
-        self.select_queue_index(next_index)
+        self.advance_from(current_index)
     }
 
     pub fn previous_track(&mut self) -> Result<(), YouTubePlaybackError> {
         let Some(current_index) = self.current_index() else {
             return Ok(());
         };
+        if self.snapshot.shuffle_enabled {
+            let Some(current_order_index) = self.current_shuffle_order_index() else {
+                return Ok(());
+            };
+            let previous_order_index = if current_order_index == 0 {
+                self.shuffle_order.len() - 1
+            } else {
+                current_order_index - 1
+            };
+            let previous_id = &self.shuffle_order[previous_order_index];
+            let previous_index = self
+                .snapshot
+                .queue
+                .iter()
+                .position(|item| &item.id == previous_id)
+                .ok_or_else(|| YouTubePlaybackError::TrackNotFound {
+                    id: previous_id.clone(),
+                })?;
+            return self.select_queue_index(previous_index);
+        }
         let previous_index = if current_index == 0 {
             self.snapshot.queue.len() - 1
         } else {
@@ -663,6 +691,9 @@ impl YouTubePlaybackProvider {
             .position(|item| item.id == id)
             .ok_or_else(|| YouTubePlaybackError::TrackNotFound { id: id.into() })?;
 
+        if self.snapshot.shuffle_enabled {
+            self.reset_shuffle_order(Some(id));
+        }
         self.select_queue_index(index)?;
         self.player.set_paused(false)?;
         self.snapshot.status = PlaybackStatus::Playing;
@@ -681,6 +712,7 @@ impl YouTubePlaybackProvider {
 
         let item = self.snapshot.queue.remove(from);
         self.snapshot.queue.insert(to, item);
+        self.reconcile_shuffle_order();
         tracing::info!(from, to, "queue item moved");
         Ok(())
     }
@@ -697,6 +729,7 @@ impl YouTubePlaybackProvider {
         }
 
         self.snapshot.queue.remove(index);
+        self.reconcile_shuffle_order();
         tracing::info!(index, "queue item removed");
         Ok(())
     }
@@ -706,6 +739,7 @@ impl YouTubePlaybackProvider {
         self.snapshot.current_item = None;
         self.snapshot.position_ms = 0;
         self.snapshot.status = PlaybackStatus::Paused;
+        self.reconcile_shuffle_order();
         Ok(())
     }
 
@@ -714,6 +748,7 @@ impl YouTubePlaybackProvider {
         self.snapshot.queue.retain(|queued| queued.id != id);
         let insert_at = self.current_index().map_or(0, |index| index + 1);
         self.snapshot.queue.insert(insert_at, item);
+        self.reconcile_shuffle_order();
         Ok(())
     }
 
@@ -721,6 +756,7 @@ impl YouTubePlaybackProvider {
         let item = self.library_item(id)?;
         self.snapshot.queue.retain(|queued| queued.id != id);
         self.snapshot.queue.push(item);
+        self.reconcile_shuffle_order();
         Ok(())
     }
 
@@ -736,12 +772,95 @@ impl YouTubePlaybackProvider {
         Ok(())
     }
 
+    pub fn toggle_shuffle(&mut self) -> Result<(), YouTubePlaybackError> {
+        self.snapshot.shuffle_enabled = !self.snapshot.shuffle_enabled;
+        if self.snapshot.shuffle_enabled {
+            let current_id = self
+                .snapshot
+                .current_item
+                .as_ref()
+                .map(|item| item.id.clone());
+            self.reset_shuffle_order(current_id.as_deref());
+        } else {
+            self.shuffle_order.clear();
+        }
+        Ok(())
+    }
+
+    pub fn cycle_repeat_mode(&mut self) -> Result<(), YouTubePlaybackError> {
+        self.snapshot.repeat_mode = self.snapshot.repeat_mode.cycle();
+        if self.snapshot.current_item.is_some() {
+            self.player
+                .set_repeat_one(self.snapshot.repeat_mode == RepeatMode::One)?;
+        }
+        Ok(())
+    }
+
     fn current_index(&self) -> Option<usize> {
         let current_id = &self.snapshot.current_item.as_ref()?.id;
         self.snapshot
             .queue
             .iter()
             .position(|item| &item.id == current_id)
+    }
+
+    fn advance_after_end(&mut self) -> Result<(), YouTubePlaybackError> {
+        let Some(current_index) = self.current_index() else {
+            return Ok(());
+        };
+        self.advance_from(current_index)
+    }
+
+    fn advance_from(&mut self, current_index: usize) -> Result<(), YouTubePlaybackError> {
+        let queue_len = self.snapshot.queue.len();
+        if queue_len == 0 {
+            return Ok(());
+        }
+        if self.snapshot.repeat_mode == RepeatMode::One {
+            return self.select_queue_index(current_index);
+        }
+        if self.snapshot.shuffle_enabled {
+            let Some(current_order_index) = self.current_shuffle_order_index() else {
+                return Ok(());
+            };
+            let next_order_index = if current_order_index + 1 < self.shuffle_order.len() {
+                current_order_index + 1
+            } else if self.snapshot.repeat_mode == RepeatMode::All {
+                0
+            } else {
+                self.snapshot.status = PlaybackStatus::Paused;
+                self.snapshot.position_ms = self
+                    .snapshot
+                    .current_item
+                    .as_ref()
+                    .map_or(0, |item| item.duration_ms);
+                return Ok(());
+            };
+            let next_id = &self.shuffle_order[next_order_index];
+            let next_index = self
+                .snapshot
+                .queue
+                .iter()
+                .position(|item| &item.id == next_id)
+                .ok_or_else(|| YouTubePlaybackError::TrackNotFound {
+                    id: next_id.clone(),
+                })?;
+            return self.select_queue_index(next_index);
+        }
+        if current_index + 1 < queue_len {
+            return self.select_queue_index(current_index + 1);
+        }
+        if self.snapshot.repeat_mode == RepeatMode::All {
+            return self.select_queue_index(0);
+        }
+
+        self.snapshot.status = PlaybackStatus::Paused;
+        self.snapshot.position_ms = self
+            .snapshot
+            .current_item
+            .as_ref()
+            .map_or(0, |item| item.duration_ms);
+        Ok(())
     }
 
     fn select_queue_index(&mut self, index: usize) -> Result<(), YouTubePlaybackError> {
@@ -766,6 +885,8 @@ impl YouTubePlaybackProvider {
             self.snapshot.volume_percent,
             self.session_cookie_path.as_deref(),
         )?;
+        self.player
+            .set_repeat_one(self.snapshot.repeat_mode == RepeatMode::One)?;
         if !was_playing {
             self.player.set_paused(true)?;
         }
@@ -867,6 +988,48 @@ impl YouTubePlaybackProvider {
                 .iter()
                 .find(|entry| entry.item.id == current_id)
                 .map(|entry| entry.item.clone());
+        }
+        self.reconcile_shuffle_order();
+    }
+
+    fn current_shuffle_order_index(&self) -> Option<usize> {
+        let current_id = &self.snapshot.current_item.as_ref()?.id;
+        self.shuffle_order.iter().position(|id| id == current_id)
+    }
+
+    fn reset_shuffle_order(&mut self, current_id: Option<&str>) {
+        let mut shuffled_ids = self
+            .snapshot
+            .queue
+            .iter()
+            .filter(|item| Some(item.id.as_str()) != current_id)
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>();
+        shuffle_upcoming(
+            &mut shuffled_ids,
+            0,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64,
+        );
+        if let Some(current_id) = current_id {
+            shuffled_ids.insert(0, current_id.to_owned());
+        }
+        self.shuffle_order = shuffled_ids;
+    }
+
+    fn reconcile_shuffle_order(&mut self) {
+        if !self.snapshot.shuffle_enabled {
+            self.shuffle_order.clear();
+            return;
+        }
+        self.shuffle_order
+            .retain(|id| self.snapshot.queue.iter().any(|item| item.id == *id));
+        for item in &self.snapshot.queue {
+            if !self.shuffle_order.iter().any(|id| id == &item.id) {
+                self.shuffle_order.push(item.id.clone());
+            }
         }
     }
 
@@ -1554,6 +1717,7 @@ fn finish_metadata_resolution(
 }
 
 struct PlayerState {
+    eof_reached: bool,
     paused: bool,
     position_ms: u64,
 }
@@ -1602,6 +1766,15 @@ impl MpvPlayer {
         Ok(())
     }
 
+    fn set_repeat_one(&mut self, enabled: bool) -> Result<(), YouTubePlaybackError> {
+        self.send(json!([
+            "set_property",
+            "loop-file",
+            if enabled { "inf" } else { "no" }
+        ]))?;
+        Ok(())
+    }
+
     fn seek(&mut self, position_ms: u64) -> Result<(), YouTubePlaybackError> {
         self.send(json!([
             "set_property",
@@ -1617,6 +1790,10 @@ impl MpvPlayer {
     }
 
     fn inspect(&mut self) -> Result<PlayerState, YouTubePlaybackError> {
+        let eof_reached = self
+            .send(json!(["get_property", "eof-reached"]))?
+            .as_bool()
+            .unwrap_or(false);
         let paused = self
             .send(json!(["get_property", "pause"]))?
             .as_bool()
@@ -1627,6 +1804,7 @@ impl MpvPlayer {
             .unwrap_or(0.0);
 
         Ok(PlayerState {
+            eof_reached,
             paused,
             position_ms: (position_seconds.max(0.0) * 1000.0).round() as u64,
         })
@@ -2384,6 +2562,47 @@ mod tests {
             ["M7lc1UVf-VE", "BaW_jenozKc"]
         );
         assert_eq!(provider.library_snapshot().tracks.len(), 2);
+    }
+
+    #[test]
+    fn toggling_shuffle_preserves_the_authoritative_queue_order() {
+        let entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90},{"id":"aqz-KE-bpKQ","title":"Third","channel":"Artist","duration":100}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        let queue_ids = vec![
+            "M7lc1UVf-VE".to_owned(),
+            "BaW_jenozKc".to_owned(),
+            "aqz-KE-bpKQ".to_owned(),
+        ];
+        provider
+            .replace_queue(&queue_ids)
+            .expect("known library tracks create a play queue");
+
+        provider.toggle_shuffle().expect("shuffle can be enabled");
+        assert!(provider.snapshot.shuffle_enabled);
+        assert_eq!(
+            provider
+                .snapshot
+                .queue
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            queue_ids
+        );
+
+        provider.toggle_shuffle().expect("shuffle can be disabled");
+        assert!(!provider.snapshot.shuffle_enabled);
+        assert_eq!(
+            provider
+                .snapshot
+                .queue
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            queue_ids
+        );
     }
 
     #[test]

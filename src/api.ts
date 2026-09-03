@@ -35,12 +35,15 @@ export interface MediaItem {
 }
 
 export type PlaybackStatus = "paused" | "playing";
+export type RepeatMode = "off" | "all" | "one";
 
 export interface PlaybackSnapshot {
   status: PlaybackStatus;
   currentItem: MediaItem | null;
   positionMs: number;
   volumePercent: number;
+  shuffleEnabled?: boolean;
+  repeatMode?: RepeatMode;
   queue: MediaItem[];
 }
 
@@ -49,6 +52,8 @@ export interface PlaybackTransport {
   currentItem: MediaItem | null;
   positionMs: number;
   volumePercent: number;
+  shuffleEnabled?: boolean;
+  repeatMode?: RepeatMode;
 }
 
 export interface LibrarySnapshot {
@@ -152,6 +157,10 @@ export const playbackApi = {
   previous: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("previous"),
   next: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("next"),
+  toggleShuffle: (): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("toggle_shuffle"),
+  cycleRepeatMode: (): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("cycle_repeat_mode"),
   seek: (positionMs: number): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("seek", { positionMs }),
   setVolume: (volumePercent: number): Promise<void> =>

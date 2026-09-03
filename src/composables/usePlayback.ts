@@ -25,6 +25,8 @@ export type PlaybackClient = Omit<
   | "addToQueue"
   | "removeTracks"
   | "removeQueueItem"
+  | "toggleShuffle"
+  | "cycleRepeatMode"
 > &
   Partial<
     Pick<
@@ -41,6 +43,8 @@ export type PlaybackClient = Omit<
       | "addToQueue"
       | "removeTracks"
       | "removeQueueItem"
+      | "toggleShuffle"
+      | "cycleRepeatMode"
     >
   >;
 
@@ -94,7 +98,13 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     transport.value = {
       currentItem: nextTransport.currentItem,
       positionMs: nextTransport.positionMs,
+      ...(nextTransport.repeatMode
+        ? { repeatMode: nextTransport.repeatMode }
+        : {}),
       status: nextTransport.status,
+      ...(typeof nextTransport.shuffleEnabled === "boolean"
+        ? { shuffleEnabled: nextTransport.shuffleEnabled }
+        : {}),
       volumePercent: nextTransport.volumePercent,
     };
     if (nextTransport.volumePercent > 0) {
@@ -273,6 +283,18 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await execute(client.next);
   }
 
+  async function toggleShuffle(): Promise<void> {
+    if (client.toggleShuffle) {
+      await execute(client.toggleShuffle);
+    }
+  }
+
+  async function cycleRepeatMode(): Promise<void> {
+    if (client.cycleRepeatMode) {
+      await execute(client.cycleRepeatMode);
+    }
+  }
+
   async function playTrack(id: string, queueIds?: string[]): Promise<void> {
     await startPlayback(() =>
       queueIds ? client.playTrack(id, queueIds) : client.playTrack(id),
@@ -448,6 +470,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   return {
     addToQueue,
     applySnapshot,
+    cycleRepeatMode,
     deletePlaylist,
     errorMessage,
     importProgress,
@@ -473,6 +496,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     sync,
     toggle,
     toggleFavorite,
+    toggleShuffle,
     toggleMute,
     transport,
     updateTracksMetadata,

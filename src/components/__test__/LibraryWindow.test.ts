@@ -891,6 +891,46 @@ describe("LibraryWindow", () => {
     expect(wrapper.emitted("playTrack")).toBeUndefined();
   });
 
+  it("routes shuffle and repeat mode controls through the library command boundary", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('button[aria-label="Enable shuffle"]').trigger("click");
+    await wrapper
+      .get('button[aria-label="Enable repeat all"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("toggleShuffle")).toEqual([[]]);
+    expect(wrapper.emitted("cycleRepeatMode")).toEqual([[]]);
+  });
+
+  it("shows the active shuffle and repeat modes with distinct icons", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, repeatMode: "all", shuffleEnabled: true },
+      },
+    });
+
+    const shuffle = wrapper.get('button[aria-label="Disable shuffle"]');
+    const repeat = wrapper.get('button[aria-label="Enable repeat one"]');
+    expect(shuffle.attributes("aria-pressed")).toBe("true");
+    expect(repeat.attributes("data-repeat-mode")).toBe("all");
+    expect(repeat.find("svg").classes()).toContain("lucide-repeat-2");
+
+    await wrapper.setProps({
+      snapshot: { ...snapshot, repeatMode: "one", shuffleEnabled: true },
+      isUpdating: true,
+    });
+
+    const repeatOne = wrapper.get('button[aria-label="Disable repeat"]');
+    expect(repeatOne.attributes("data-repeat-mode")).toBe("one");
+    expect(repeatOne.find("svg").classes()).toContain("lucide-repeat-1");
+    expect(shuffle.attributes("disabled")).toBeDefined();
+    expect(repeatOne.attributes("disabled")).toBeDefined();
+  });
+
   it("highlights the selected track separately from the playing track", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -1120,11 +1160,11 @@ describe("LibraryWindow", () => {
     });
 
     for (const label of [
-      "Shuffle",
+      "Enable shuffle",
       "Previous track",
       "Play",
       "Next track",
-      "Repeat",
+      "Enable repeat all",
     ]) {
       expect(wrapper.get(`button[aria-label="${label}"]`)).toBeDefined();
     }
@@ -1208,21 +1248,23 @@ describe("LibraryWindow", () => {
     expect(sidebar.classes()).toContain("transition-all");
 
     const detailsToggle = footer.get(
-      'button[aria-label="Hide selection details"]',
+      'button[aria-label="Show selection details"]',
     );
-    await detailsToggle.trigger("click");
-
-    expect(
-      footer
-        .get('button[aria-label="Show selection details"]')
-        .attributes("aria-pressed"),
-    ).toBe("false");
+    expect(detailsToggle.attributes("aria-pressed")).toBe("false");
     expect(sidebar.classes()).toContain("opacity-0");
 
-    await footer
-      .get('button[aria-label="Show selection details"]')
-      .trigger("click");
+    await detailsToggle.trigger("click");
+    expect(
+      footer
+        .get('button[aria-label="Hide selection details"]')
+        .attributes("aria-pressed"),
+    ).toBe("true");
     expect(sidebar.classes()).toContain("opacity-100");
+
+    await footer
+      .get('button[aria-label="Hide selection details"]')
+      .trigger("click");
+    expect(sidebar.classes()).toContain("opacity-0");
   });
 
   it("delegates track favorite changes from the table", async () => {

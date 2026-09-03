@@ -110,6 +110,38 @@ pub enum PlaybackStatus {
     Playing,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RepeatMode {
+    Off,
+    All,
+    One,
+}
+
+impl RepeatMode {
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Off => Self::All,
+            Self::All => Self::One,
+            Self::One => Self::Off,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::All => "all",
+            Self::One => "one",
+        }
+    }
+}
+
+impl Default for RepeatMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSnapshot {
@@ -117,6 +149,8 @@ pub struct PlaybackSnapshot {
     pub current_item: Option<MediaItem>,
     pub position_ms: u64,
     pub volume_percent: u8,
+    pub shuffle_enabled: bool,
+    pub repeat_mode: RepeatMode,
     pub queue: Vec<MediaItem>,
 }
 
@@ -127,6 +161,8 @@ pub struct PlaybackTransport {
     pub current_item: Option<MediaItem>,
     pub position_ms: u64,
     pub volume_percent: u8,
+    pub shuffle_enabled: bool,
+    pub repeat_mode: RepeatMode,
 }
 
 impl From<&PlaybackSnapshot> for PlaybackTransport {
@@ -136,6 +172,27 @@ impl From<&PlaybackSnapshot> for PlaybackTransport {
             current_item: snapshot.current_item.clone(),
             position_ms: snapshot.position_ms,
             volume_percent: snapshot.volume_percent,
+            shuffle_enabled: snapshot.shuffle_enabled,
+            repeat_mode: snapshot.repeat_mode,
         }
+    }
+}
+
+pub(crate) fn shuffle_upcoming<T: Clone + PartialEq>(items: &mut [T], start: usize, mut seed: u64) {
+    if items.len().saturating_sub(start) < 2 {
+        return;
+    }
+
+    let original = items[start..].to_vec();
+    for index in (start + 1..items.len()).rev() {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        let swap_index = start + (seed as usize % (index - start + 1));
+        items.swap(index, swap_index);
+    }
+
+    if items[start..] == original {
+        items[start..].reverse();
     }
 }

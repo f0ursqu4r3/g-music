@@ -958,6 +958,32 @@ pub fn next(state: State<'_, AppState>) -> Result<PlaybackSnapshot, CommandError
 }
 
 #[tauri::command]
+pub fn toggle_shuffle(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<PlaybackSnapshot, CommandError> {
+    let snapshot = with_playback(&state, "toggle_shuffle", |playback| {
+        playback.toggle_shuffle()?;
+        playback.snapshot()
+    })?;
+    emit_playback_updated(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn cycle_repeat_mode(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<PlaybackSnapshot, CommandError> {
+    let snapshot = with_playback(&state, "cycle_repeat_mode", |playback| {
+        playback.cycle_repeat_mode()?;
+        playback.snapshot()
+    })?;
+    emit_playback_updated(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn play_track(
     app: AppHandle,
     state: State<'_, AppState>,
