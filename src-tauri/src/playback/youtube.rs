@@ -1906,6 +1906,10 @@ impl MpvPlayer {
             .send(json!(["get_property", "eof-reached"]))?
             .as_bool()
             .unwrap_or(false);
+        let idle_active = self
+            .send(json!(["get_property", "idle-active"]))?
+            .as_bool()
+            .unwrap_or(false);
         let paused = self
             .send(json!(["get_property", "pause"]))?
             .as_bool()
@@ -1916,7 +1920,7 @@ impl MpvPlayer {
             .unwrap_or(0.0);
 
         Ok(PlayerState {
-            eof_reached,
+            eof_reached: eof_reached || idle_active,
             paused,
             position_ms: (position_seconds.max(0.0) * 1000.0).round() as u64,
         })
@@ -2522,6 +2526,84 @@ mod tests {
         assert_eq!(
             path_checks, 2,
             "load must remain pending until mpv detects the media"
+        );
+    }
+
+    #[test]
+    fn inspect_treats_mpv_idle_after_a_track_ends_as_end_of_file() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let socket_path = std::env::temp_dir().join(format!(
+            "gmusic-idle-inspect-{}-{unique}.sock",
+            std::process::id()
+        ));
+        let listener = UnixListener::bind(&socket_path).expect("idle inspect socket should bind");
+        listener
+            .set_nonblocking(true)
+            .expect("idle inspect socket should become non-blocking");
+        let server = thread::spawn(move || {
+            let mut commands = Vec::new();
+            let mut idle_deadline = Instant::now() + Duration::from_millis(100);
+            loop {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(connection) => connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= idle_deadline {
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(5));
+                        continue;
+                    }
+                    Err(error) => panic!("idle inspect socket failed: {error}"),
+                };
+                stream
+                    .set_nonblocking(false)
+                    .expect("idle inspect player stream should become blocking");
+                idle_deadline = Instant::now() + Duration::from_millis(100);
+                let mut request = String::new();
+                BufReader::new(
+                    stream
+                        .try_clone()
+                        .expect("player stream should be cloneable"),
+                )
+                .read_line(&mut request)
+                .expect("player command should be readable");
+                let request: serde_json::Value =
+                    serde_json::from_str(&request).expect("player command should be JSON");
+                let command = request["command"].clone();
+                let request_id = request["request_id"].clone();
+                let response = if command == serde_json::json!(["get_property", "pause"]) {
+                    serde_json::json!({"request_id": request_id, "error": "success", "data": false})
+                } else if command == serde_json::json!(["get_property", "idle-active"]) {
+                    serde_json::json!({"request_id": request_id, "error": "success", "data": true})
+                } else {
+                    serde_json::json!({"request_id": request_id, "error": "property unavailable"})
+                };
+                commands.push(command);
+                serde_json::to_writer(&mut stream, &response)
+                    .expect("player response should be writable");
+                stream
+                    .write_all(b"\n")
+                    .expect("player response should terminate");
+            }
+            commands
+        });
+
+        let mut player = MpvPlayer::new();
+        player.socket_path = socket_path.clone();
+
+        let state = player.inspect().expect("idle player state is inspectable");
+        let commands = server.join().expect("idle inspect server should stop");
+        let _ = fs::remove_file(socket_path);
+
+        assert!(state.eof_reached);
+        assert!(!state.paused);
+        assert_eq!(state.position_ms, 0);
+        assert!(
+            commands.contains(&serde_json::json!(["get_property", "idle-active"])),
+            "mpv idle state must be inspected after its end-of-file property is unavailable"
         );
     }
 
