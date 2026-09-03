@@ -446,6 +446,12 @@ function playPlaylist(playlist: Playlist): void {
   );
 }
 
+function playActivePlaylist(): void {
+  if (activePlaylist.value) {
+    playPlaylist(activePlaylist.value);
+  }
+}
+
 function selectAlbum(album: LibraryAlbum): void {
   selectedLibraryItem.value = { key: album.key, kind: "album" };
 }
@@ -601,6 +607,9 @@ function toggleMetadataRefresh(): void {
       <LibraryHeader
         :collection-title="collectionTitle"
         :collection-summary="collectionSummary"
+        :playlist-name="activePlaylist?.name"
+        :can-play-playlist="playlistTracks.length > 0"
+        :is-updating="props.isUpdating"
         :display-mode="displayMode"
         :error-message="errorMessage"
         :grid-item-size="gridItemSize"
@@ -616,6 +625,7 @@ function toggleMetadataRefresh(): void {
         @set-sort="setSort"
         @toggle-metadata-refresh="toggleMetadataRefresh"
         @toggle-options="toggleOptions"
+        @play-playlist="playActivePlaylist"
       />
 
       <LibraryTrackList

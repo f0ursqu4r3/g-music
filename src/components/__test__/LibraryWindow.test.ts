@@ -1323,6 +1323,37 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("selects a playlist instead of Tracks and plays it from the header", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [
+          {
+            id: "focus",
+            name: "Focus",
+            trackIds: ["BaW_jenozKc", "M7lc1UVf-VE"],
+          },
+        ],
+        snapshot,
+      },
+    });
+
+    await wrapper.get('[data-playlist-id="focus"]').trigger("click");
+
+    expect(
+      wrapper.get('[data-playlist-id="focus"]').attributes("aria-current"),
+    ).toBe("page");
+    expect(
+      wrapper.get('[data-collection="tracks"]').attributes("aria-current"),
+    ).toBeUndefined();
+
+    await wrapper.get('button[aria-label="Play Focus"]').trigger("click");
+
+    expect(wrapper.emitted("playTrack")).toEqual([
+      [["BaW_jenozKc", "M7lc1UVf-VE"], "BaW_jenozKc"],
+    ]);
+  });
+
   it("delegates a reordered user playlist list", async () => {
     const wrapper = mount(LibraryWindow, {
       props: {

@@ -196,7 +196,10 @@ watch(
             ] as const"
             :key="collection[0]"
             :aria-current="
-              props.activeCollection === collection[0] ? 'page' : undefined
+              props.activePlaylistId === undefined &&
+              props.activeCollection === collection[0]
+                ? 'page'
+                : undefined
             "
             class="flex min-h-8.5 w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left text-[0.82rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
             :data-collection="collection[0]"

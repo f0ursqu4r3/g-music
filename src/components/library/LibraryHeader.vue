@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ellipsis, Grid2X2, List, LoaderCircle } from "lucide-vue-next";
+import { Ellipsis, Grid2X2, List, LoaderCircle, Play } from "lucide-vue-next";
 
 import { Slider } from "@/components/ui/slider";
 import type {
@@ -12,6 +12,9 @@ withDefaults(
   defineProps<{
     collectionTitle: string;
     collectionSummary: string;
+    playlistName?: string;
+    canPlayPlaylist?: boolean;
+    isUpdating?: boolean;
     errorMessage?: string;
     displayMode: LibraryDisplayMode;
     gridItemSize: number;
@@ -32,6 +35,7 @@ const emit = defineEmits<{
   setGroup: [option: LibraryGroupOption];
   setGridItemSize: [size: number];
   toggleMetadataRefresh: [];
+  playPlaylist: [];
 }>();
 
 const sortOptions: ReadonlyArray<readonly [LibrarySortOption, string]> = [
@@ -61,9 +65,23 @@ function emitGridItemSize(values: number[]): void {
 <template>
   <header class="window-header gap-6">
     <div>
-      <h1 class="window-title">
-        {{ collectionTitle }}
-      </h1>
+      <div class="flex items-center gap-3">
+        <h1 class="window-title">
+          {{ collectionTitle }}
+        </h1>
+        <button
+          v-if="playlistName"
+          :aria-label="`Play ${playlistName}`"
+          :disabled="isUpdating || !canPlayPlaylist"
+          class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-(--line-strong) bg-transparent px-2.5 text-xs font-medium text-(--muted-text) transition-colors hover:border-(--accent) hover:text-(--text) disabled:cursor-default disabled:opacity-40 [&>svg]:size-3.5"
+          data-play-selected-playlist
+          type="button"
+          @click="emit('playPlaylist')"
+        >
+          <Play aria-hidden="true" />
+          Play
+        </button>
+      </div>
       <div
         class="mt-1 flex items-center gap-2 text-[0.77rem] text-(--muted-text)"
       >
