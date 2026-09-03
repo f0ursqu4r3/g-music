@@ -437,13 +437,9 @@ function playArtist(artist: LibraryArtist): void {
 }
 
 function playPlaylist(playlist: Playlist): void {
-  const tracksById = new Map(allTracks.value.map((track) => [track.id, track]));
-  playTracks(
-    playlist.trackIds.flatMap((id) => {
-      const track = tracksById.get(id);
-      return track ? [track] : [];
-    }),
-  );
+  if (playlist.id === activePlaylist.value?.id) {
+    playTracks(libraryTracks.value);
+  }
 }
 
 function playActivePlaylist(): void {

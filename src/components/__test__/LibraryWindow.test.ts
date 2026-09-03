@@ -1323,7 +1323,7 @@ describe("LibraryWindow", () => {
     );
   });
 
-  it("selects a playlist instead of Tracks and plays it from the header", async () => {
+  it("plays a selected playlist in its visible sorted order", async () => {
     const wrapper = mount(LibraryWindow, {
       props: {
         isUpdating: false,
@@ -1331,7 +1331,7 @@ describe("LibraryWindow", () => {
           {
             id: "focus",
             name: "Focus",
-            trackIds: ["BaW_jenozKc", "M7lc1UVf-VE"],
+            trackIds: ["M7lc1UVf-VE", "BaW_jenozKc"],
           },
         ],
         snapshot,
