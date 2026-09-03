@@ -193,7 +193,9 @@ describe("application landmarks", () => {
 
     await wrapper.get('[data-track-id="night-drive"]').trigger("dblclick");
 
-    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
+    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive", [
+      "night-drive",
+    ]);
   });
 
   it("routes queue playback and reorder actions to the playback composable", async () => {
@@ -266,6 +268,10 @@ describe("application landmarks", () => {
     expect(playbackMocks.applySnapshot).toHaveBeenCalled();
     expect(wrapper.get('[role="dialog"]').text()).toContain(
       "Keyboard Shortcuts",
+    );
+    expect(wrapper.get('[role="dialog"]').classes()).toContain("bg-black/60");
+    expect(wrapper.get('[role="dialog"] > div').classes()).toContain(
+      "bg-[oklch(0.11_0.014_260/0.98)]",
     );
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));

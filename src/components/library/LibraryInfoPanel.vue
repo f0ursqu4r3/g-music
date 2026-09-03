@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ExternalLink, Mic2, Pencil } from 'lucide-vue-next';
-import { computed, ref, watch } from 'vue';
+import { ExternalLink, ListPlus, Mic2, Pencil, Play } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
 
-import type { MediaItem } from '@/api';
-import { formatDuration } from '@/lib/time';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import type { LibraryAlbum, LibraryArtist } from './types';
-import YouTubeArtwork from '../YouTubeArtwork.vue';
+import type { MediaItem } from "@/api";
+import { formatDuration } from "@/lib/time";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import type { LibraryAlbum, LibraryArtist } from "./types";
+import YouTubeArtwork from "../YouTubeArtwork.vue";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -19,6 +19,8 @@ const emit = defineEmits<{
   editTrack: [track: MediaItem];
   editAlbum: [album: LibraryAlbum];
   editArtist: [artist: LibraryArtist];
+  playNext: [track: MediaItem];
+  addToQueue: [track: MediaItem];
 }>();
 
 interface TrackDetail {
@@ -28,12 +30,12 @@ interface TrackDetail {
 
 const numberFormat = new Intl.NumberFormat();
 const timestampFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
+  dateStyle: "medium",
+  timeStyle: "short",
 });
 const isDescriptionExpanded = ref(false);
 const hasLongDescription = computed(
-  () => (props.selectedTrack?.description?.length ?? 0) > 280
+  () => (props.selectedTrack?.description?.length ?? 0) > 280,
 );
 const trackDetails = computed<TrackDetail[]>(() => {
   const track = props.selectedTrack;
@@ -43,62 +45,62 @@ const trackDetails = computed<TrackDetail[]>(() => {
 
   const optionalDetails: Array<TrackDetail | null> = [
     track.albumArtist
-      ? { label: 'Album artist', value: track.albumArtist }
+      ? { label: "Album artist", value: track.albumArtist }
       : null,
     track.trackNumber !== undefined && track.trackNumber !== null
-      ? { label: 'Track number', value: String(track.trackNumber) }
+      ? { label: "Track number", value: String(track.trackNumber) }
       : null,
     track.discNumber !== undefined && track.discNumber !== null
-      ? { label: 'Disc number', value: String(track.discNumber) }
+      ? { label: "Disc number", value: String(track.discNumber) }
       : null,
-    track.releaseDate ? { label: 'Released', value: track.releaseDate } : null,
-    track.uploadDate ? { label: 'Uploaded', value: track.uploadDate } : null,
-    track.channel ? { label: 'Channel', value: track.channel } : null,
-    track.channelId ? { label: 'Channel ID', value: track.channelId } : null,
-    track.uploader ? { label: 'Uploader', value: track.uploader } : null,
-    track.uploaderId ? { label: 'Uploader ID', value: track.uploaderId } : null,
-    track.label ? { label: 'Label', value: track.label } : null,
+    track.releaseDate ? { label: "Released", value: track.releaseDate } : null,
+    track.uploadDate ? { label: "Uploaded", value: track.uploadDate } : null,
+    track.channel ? { label: "Channel", value: track.channel } : null,
+    track.channelId ? { label: "Channel ID", value: track.channelId } : null,
+    track.uploader ? { label: "Uploader", value: track.uploader } : null,
+    track.uploaderId ? { label: "Uploader ID", value: track.uploaderId } : null,
+    track.label ? { label: "Label", value: track.label } : null,
     track.genres?.length
-      ? { label: 'Genres', value: track.genres.join(', ') }
+      ? { label: "Genres", value: track.genres.join(", ") }
       : null,
     track.categories?.length
-      ? { label: 'Categories', value: track.categories.join(', ') }
+      ? { label: "Categories", value: track.categories.join(", ") }
       : null,
-    track.tags?.length ? { label: 'Tags', value: track.tags.join(', ') } : null,
-    track.language ? { label: 'Language', value: track.language } : null,
+    track.tags?.length ? { label: "Tags", value: track.tags.join(", ") } : null,
+    track.language ? { label: "Language", value: track.language } : null,
     track.availability
-      ? { label: 'Availability', value: track.availability }
+      ? { label: "Availability", value: track.availability }
       : null,
-    { label: 'Stream', value: track.isLive ? 'Live' : 'On demand' },
+    { label: "Stream", value: track.isLive ? "Live" : "On demand" },
     track.viewCount !== undefined && track.viewCount !== null
-      ? { label: 'Views', value: numberFormat.format(track.viewCount) }
+      ? { label: "Views", value: numberFormat.format(track.viewCount) }
       : null,
     track.likeCount !== undefined && track.likeCount !== null
-      ? { label: 'Likes', value: numberFormat.format(track.likeCount) }
+      ? { label: "Likes", value: numberFormat.format(track.likeCount) }
       : null,
-    track.provider ? { label: 'Provider', value: track.provider } : null,
-    { label: 'Track ID', value: track.id },
+    track.provider ? { label: "Provider", value: track.provider } : null,
+    { label: "Track ID", value: track.id },
     {
-      label: 'Metadata',
-      value: track.metadataDirty ? 'Refresh pending' : 'Complete',
+      label: "Metadata",
+      value: track.metadataDirty ? "Refresh pending" : "Complete",
     },
     {
-      label: 'Play count',
+      label: "Play count",
       value: numberFormat.format(track.playCount ?? 0),
     },
     track.lastPlayedAtMs
       ? {
-          label: 'Last played',
+          label: "Last played",
           value: timestampFormat.format(new Date(track.lastPlayedAtMs)),
         }
       : null,
   ];
 
   return [
-    { label: 'Album', value: track.album || '—' },
-    { label: 'Duration', value: formatDuration(track.durationMs) },
+    { label: "Album", value: track.album || "—" },
+    { label: "Duration", value: formatDuration(track.durationMs) },
     ...optionalDetails.filter(
-      (detail): detail is TrackDetail => detail !== null
+      (detail): detail is TrackDetail => detail !== null,
     ),
   ];
 });
@@ -111,7 +113,7 @@ watch(
   () => props.selectedTrack?.description,
   () => {
     isDescriptionExpanded.value = false;
-  }
+  },
 );
 </script>
 
@@ -160,6 +162,26 @@ watch(
           <p class="mt-1 text-sm text-(--muted-text)">
             {{ props.selectedTrack.artist }}
           </p>
+          <div class="mt-5 grid grid-cols-2 gap-2">
+            <button
+              class="inline-flex items-center justify-center gap-1.5 rounded-md bg-(--text) px-2.5 py-1.5 text-xs font-medium text-(--accent-ink) hover:bg-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+              :aria-label="`Play ${props.selectedTrack.title} next`"
+              type="button"
+              @click="emit('playNext', props.selectedTrack)"
+            >
+              <Play aria-hidden="true" fill="currentColor" />
+              Play next
+            </button>
+            <button
+              class="inline-flex items-center justify-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+              :aria-label="`Add ${props.selectedTrack.title} to queue`"
+              type="button"
+              @click="emit('addToQueue', props.selectedTrack)"
+            >
+              <ListPlus aria-hidden="true" />
+              Add to queue
+            </button>
+          </div>
           <section
             v-if="props.selectedTrack.description"
             class="mt-5 border-t border-(--line) pt-4"
@@ -189,7 +211,7 @@ watch(
               type="button"
               @click="isDescriptionExpanded = !isDescriptionExpanded"
             >
-              {{ isDescriptionExpanded ? 'Show less' : 'Show more' }}
+              {{ isDescriptionExpanded ? "Show less" : "Show more" }}
             </button>
           </section>
           <dl class="mt-6 grid gap-3 border-t border-(--line) pt-4 text-xs">

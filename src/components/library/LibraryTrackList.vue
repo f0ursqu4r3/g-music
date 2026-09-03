@@ -31,6 +31,7 @@ type TrackSortColumn = "album" | "artist" | "duration" | "title";
 const props = defineProps<{
   tracks: MediaItem[];
   currentItemId: string | undefined;
+  favoriteTrackIds: string[];
   sortBy: LibrarySortOption;
   trackFilter: TrackFilter | null;
 }>();
@@ -40,9 +41,9 @@ const emit = defineEmits<{
   playTrack: [track: MediaItem];
   clearTrackFilter: [];
   setSort: [option: LibrarySortOption];
+  toggleFavorite: [id: string];
 }>();
 
-const favoriteTrackIds = ref(new Set<string>());
 const columnWidths = ref([6, 29, 25, 25, 9, 6]);
 const minimumColumnWidths = [5, 18, 12, 12, 7, 5] as const;
 const trackList = ref<HTMLElement | null>(null);
@@ -97,19 +98,7 @@ const virtualTrackHeight = computed(
 );
 
 function isFavorite(trackId: string): boolean {
-  return favoriteTrackIds.value.has(trackId);
-}
-
-function toggleFavorite(trackId: string): void {
-  const nextFavorites = new Set(favoriteTrackIds.value);
-
-  if (nextFavorites.has(trackId)) {
-    nextFavorites.delete(trackId);
-  } else {
-    nextFavorites.add(trackId);
-  }
-
-  favoriteTrackIds.value = nextFavorites;
+  return props.favoriteTrackIds.includes(trackId);
 }
 
 function sortDirection(
@@ -486,7 +475,7 @@ onBeforeUnmount(() => {
               :aria-pressed="isFavorite(track.id)"
               class="grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
               type="button"
-              @click.stop="toggleFavorite(track.id)"
+              @click.stop="emit('toggleFavorite', track.id)"
             >
               <Heart
                 aria-hidden="true"

@@ -287,6 +287,7 @@ onUnmounted(() => {
 
     <LibraryWindow
       v-else-if="view === 'library'"
+      :playlists="playback.library.value?.playlists"
       :tracks="playback.library.value?.tracks"
       :transport="playback.transport.value ?? undefined"
       :is-starting="playback.isStarting.value"
@@ -296,11 +297,16 @@ onUnmounted(() => {
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
-      @play-track="playback.playTrack"
+      @play-track="(queueIds, id) => playback.playTrack(id, queueIds)"
+      @play-next="playback.playNext"
+      @add-to-queue="playback.addToQueue"
       @seek="playback.seek"
       @set-volume="playback.setVolume"
       @toggle-mute="playback.toggleMute"
       @open-import="openImportWindow"
+      @upsert-playlist="playback.upsertPlaylist"
+      @delete-playlist="playback.deletePlaylist"
+      @toggle-favorite="playback.toggleFavorite"
       @update-tracks-metadata="playback.updateTracksMetadata"
     />
 
@@ -356,23 +362,16 @@ onUnmounted(() => {
       @close="closeMiniPlayer"
     />
 
-    <p
-      v-if="view === 'mini'"
-      class="absolute right-11.5 bottom-0.5 m-0 max-w-43 overflow-hidden text-right text-[0.53rem] font-semibold tracking-[0.06em] text-ellipsis whitespace-nowrap text-(--subtle-text) uppercase"
-    >
-      {{ statusMessage }}
-    </p>
-
     <section
       v-if="keyboardShortcutsOpen"
-      class="absolute inset-0 z-50 grid place-items-center bg-black/45 p-5 backdrop-blur-sm"
+      class="absolute inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm"
       role="dialog"
       aria-labelledby="keyboard-shortcuts-title"
       aria-modal="true"
       @click.self="keyboardShortcutsOpen = false"
     >
       <div
-        class="w-full max-w-92 rounded-2xl border border-(--line-strong) bg-(--glass-window) p-5 shadow-2xl"
+        class="w-full max-w-92 rounded-2xl border border-(--line-strong) bg-[oklch(0.11_0.014_260/0.98)] p-5 shadow-2xl"
       >
         <header class="flex items-center justify-between gap-4">
           <h2

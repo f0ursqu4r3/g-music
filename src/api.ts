@@ -52,7 +52,14 @@ export interface PlaybackTransport {
 }
 
 export interface LibrarySnapshot {
+  playlists: Playlist[];
   tracks: MediaItem[];
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  trackIds: string[];
 }
 
 export interface EditableTrackMetadata {
@@ -119,12 +126,25 @@ export const playbackApi = {
     updates: TrackMetadataUpdate[],
   ): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>("update_tracks_metadata", { updates }),
+  toggleFavorite: (id: string): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("toggle_favorite", { id }),
+  upsertPlaylist: (playlist: Playlist): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("upsert_playlist", { playlist }),
+  deletePlaylist: (id: string): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>("delete_playlist", { id }),
   importYouTubeUrls: (urls: string[]): Promise<void> =>
     invoke<void>("import_youtube_urls", { urls }),
   play: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("play"),
   pause: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("pause"),
-  playTrack: (id: string): Promise<PlaybackSnapshot> =>
-    invoke<PlaybackSnapshot>("play_track", { id }),
+  playTrack: (id: string, queueIds?: string[]): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("play_track", {
+      id,
+      ...(queueIds ? { queueIds } : {}),
+    }),
+  playNext: (id: string): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("queue_track_next", { id }),
+  addToQueue: (id: string): Promise<PlaybackSnapshot> =>
+    invoke<PlaybackSnapshot>("add_to_queue", { id }),
   previous: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("previous"),
   next: (): Promise<PlaybackSnapshot> => invoke<PlaybackSnapshot>("next"),

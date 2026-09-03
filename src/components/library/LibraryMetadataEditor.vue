@@ -89,7 +89,7 @@ watch(() => props.target, resetForm, { immediate: true });
 
 <template>
   <section
-    class="absolute inset-0 z-50 grid place-items-center bg-black/45 p-5 backdrop-blur-sm"
+    class="absolute inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm"
     role="dialog"
     aria-labelledby="metadata-editor-title"
     aria-modal="true"
@@ -97,7 +97,7 @@ watch(() => props.target, resetForm, { immediate: true });
     @keydown.esc="emit('cancel')"
   >
     <form
-      class="w-full max-w-112 rounded-2xl border border-(--line-strong) bg-(--glass-window) p-6 shadow-2xl"
+      class="w-full max-w-112 rounded-2xl border border-(--line-strong) bg-[oklch(0.11_0.014_260/0.98)] p-6 shadow-2xl"
       @submit.prevent="save"
     >
       <header class="flex items-start justify-between gap-4">

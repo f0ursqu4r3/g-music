@@ -24,6 +24,8 @@ const IPC_TIMEOUT: Duration = Duration::from_secs(3);
 const LIBRARY_VERSION: u32 = 2;
 const MAX_PLAY_HISTORY: usize = 500;
 const METADATA_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const FAVORITES_PLAYLIST_ID: &str = "favorites";
+const MOST_PLAYED_PLAYLIST_ID: &str = "most-played";
 const PARENT_EXIT_WATCHDOG: &str = r#"
 parent_pid="$1"
 player_pid="$2"
@@ -166,7 +168,6 @@ impl YouTubePlaybackProvider {
         playlists: Vec<Playlist>,
         library_path: Option<PathBuf>,
     ) -> Self {
-        let queue = entries.iter().map(|entry| entry.item.clone()).collect();
         Self {
             entries,
             library_path,
@@ -178,7 +179,7 @@ impl YouTubePlaybackProvider {
                 current_item: None,
                 position_ms: 0,
                 volume_percent: 72,
-                queue,
+                queue: Vec::new(),
             },
         }
     }
@@ -213,7 +214,7 @@ impl YouTubePlaybackProvider {
             queue_size = self.entries.len(),
             "queue merged"
         );
-        self.sync_queue();
+        self.reconcile_queue();
         self.persist_library()?;
         tracing::info!(
             imported = imported_count,
@@ -254,7 +255,7 @@ impl YouTubePlaybackProvider {
 
     pub fn library_snapshot(&self) -> LibrarySnapshot {
         LibrarySnapshot {
-            playlists: self.playlists.clone(),
+            playlists: self.playlists_with_defaults(),
             total_plays: self.entries.iter().map(|entry| entry.item.play_count).sum(),
             tracks: self
                 .entries
@@ -262,6 +263,42 @@ impl YouTubePlaybackProvider {
                 .map(|entry| entry.item.clone())
                 .collect(),
         }
+    }
+
+    pub fn toggle_favorite(&mut self, id: &str) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        if !self.entries.iter().any(|entry| entry.item.id == id) {
+            return Err(YouTubePlaybackError::TrackNotFound { id: id.into() });
+        }
+
+        let favorites = if let Some(playlist) = self
+            .playlists
+            .iter_mut()
+            .find(|playlist| playlist.id == FAVORITES_PLAYLIST_ID)
+        {
+            playlist
+        } else {
+            self.playlists.push(Playlist {
+                id: FAVORITES_PLAYLIST_ID.into(),
+                name: "Favorites".into(),
+                track_ids: Vec::new(),
+            });
+            self.playlists
+                .last_mut()
+                .expect("the favorites playlist was added")
+        };
+
+        if let Some(position) = favorites
+            .track_ids
+            .iter()
+            .position(|track_id| track_id == id)
+        {
+            favorites.track_ids.remove(position);
+        } else {
+            favorites.track_ids.push(id.into());
+        }
+
+        self.persist_library()?;
+        Ok(self.library_snapshot())
     }
 
     pub fn update_track_metadata(
@@ -285,7 +322,7 @@ impl YouTubePlaybackProvider {
         entry.item.album = album;
         entry.item.label = label;
         entry.item.genres = genres;
-        self.sync_queue();
+        self.reconcile_queue();
         if self
             .snapshot
             .current_item
@@ -349,7 +386,7 @@ impl YouTubePlaybackProvider {
             entry.item.label = metadata.label;
             entry.item.genres = metadata.genres;
         }
-        self.sync_queue();
+        self.reconcile_queue();
         if let Some(current_id) = self
             .snapshot
             .current_item
@@ -395,7 +432,7 @@ impl YouTubePlaybackProvider {
                 .track_ids
                 .retain(|id| !track_ids.contains(id.as_str()));
         }
-        self.sync_queue();
+        self.reconcile_queue();
         if removed_current_track {
             self.pause()?;
             self.snapshot.current_item = None;
@@ -411,6 +448,11 @@ impl YouTubePlaybackProvider {
     ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
         let id = required_metadata_value(playlist.id, "playlist ID")?;
         let name = required_metadata_value(playlist.name, "playlist name")?;
+        if is_default_playlist(&id) {
+            return Err(YouTubePlaybackError::InvalidPlaylist(
+                "default playlists cannot be edited directly".into(),
+            ));
+        }
         let mut track_ids = Vec::new();
         for track_id in playlist.track_ids {
             if !self.entries.iter().any(|entry| entry.item.id == track_id) {
@@ -441,6 +483,11 @@ impl YouTubePlaybackProvider {
     }
 
     pub fn delete_playlist(&mut self, id: &str) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        if is_default_playlist(id) {
+            return Err(YouTubePlaybackError::InvalidPlaylist(
+                "default playlists cannot be deleted".into(),
+            ));
+        }
         let old_len = self.playlists.len();
         self.playlists.retain(|playlist| playlist.id != id);
         if self.playlists.len() == old_len {
@@ -476,7 +523,7 @@ impl YouTubePlaybackProvider {
             }
             entry.item.clone()
         };
-        self.sync_queue();
+        self.reconcile_queue();
         if self
             .snapshot
             .current_item
@@ -553,7 +600,7 @@ impl YouTubePlaybackProvider {
         let Some(current_index) = self.current_index() else {
             return Ok(());
         };
-        let next_index = (current_index + 1) % self.entries.len();
+        let next_index = (current_index + 1) % self.snapshot.queue.len();
         self.select_queue_index(next_index)
     }
 
@@ -562,7 +609,7 @@ impl YouTubePlaybackProvider {
             return Ok(());
         };
         let previous_index = if current_index == 0 {
-            self.entries.len() - 1
+            self.snapshot.queue.len() - 1
         } else {
             current_index - 1
         };
@@ -571,9 +618,10 @@ impl YouTubePlaybackProvider {
 
     pub fn play_track(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
         let index = self
-            .entries
+            .snapshot
+            .queue
             .iter()
-            .position(|entry| entry.item.id == id)
+            .position(|item| item.id == id)
             .ok_or_else(|| YouTubePlaybackError::TrackNotFound { id: id.into() })?;
 
         self.select_queue_index(index)?;
@@ -585,18 +633,39 @@ impl YouTubePlaybackProvider {
     }
 
     pub fn move_queue_item(&mut self, from: usize, to: usize) -> Result<(), YouTubePlaybackError> {
-        if from >= self.entries.len() {
+        if from >= self.snapshot.queue.len() {
             return Err(YouTubePlaybackError::QueueIndexOutOfBounds { index: from });
         }
-        if to >= self.entries.len() {
+        if to >= self.snapshot.queue.len() {
             return Err(YouTubePlaybackError::QueueIndexOutOfBounds { index: to });
         }
 
-        let entry = self.entries.remove(from);
-        self.entries.insert(to, entry);
-        self.sync_queue();
-        self.persist_library()?;
+        let item = self.snapshot.queue.remove(from);
+        self.snapshot.queue.insert(to, item);
         tracing::info!(from, to, "queue item moved");
+        Ok(())
+    }
+
+    pub fn replace_queue(&mut self, track_ids: &[String]) -> Result<(), YouTubePlaybackError> {
+        self.snapshot.queue = self.items_for_ids(track_ids)?;
+        self.snapshot.current_item = None;
+        self.snapshot.position_ms = 0;
+        self.snapshot.status = PlaybackStatus::Paused;
+        Ok(())
+    }
+
+    pub fn queue_track_next(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
+        let item = self.library_item(id)?;
+        self.snapshot.queue.retain(|queued| queued.id != id);
+        let insert_at = self.current_index().map_or(0, |index| index + 1);
+        self.snapshot.queue.insert(insert_at, item);
+        Ok(())
+    }
+
+    pub fn add_to_queue(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
+        let item = self.library_item(id)?;
+        self.snapshot.queue.retain(|queued| queued.id != id);
+        self.snapshot.queue.push(item);
         Ok(())
     }
 
@@ -614,28 +683,38 @@ impl YouTubePlaybackProvider {
 
     fn current_index(&self) -> Option<usize> {
         let current_id = &self.snapshot.current_item.as_ref()?.id;
-        self.entries
+        self.snapshot
+            .queue
             .iter()
-            .position(|entry| &entry.item.id == current_id)
+            .position(|item| &item.id == current_id)
     }
 
     fn select_queue_index(&mut self, index: usize) -> Result<(), YouTubePlaybackError> {
         let was_playing = self.snapshot.status == PlaybackStatus::Playing;
-        let entry = self
-            .entries
+        let item = self
+            .snapshot
+            .queue
             .get(index)
             .cloned()
             .ok_or(YouTubePlaybackError::QueueIndexOutOfBounds { index })?;
+        let source_url = self
+            .entries
+            .iter()
+            .find(|entry| entry.item.id == item.id)
+            .map(|entry| entry.source_url.clone())
+            .ok_or_else(|| YouTubePlaybackError::TrackNotFound {
+                id: item.id.clone(),
+            })?;
 
         self.player.load(
-            &entry.source_url,
+            &source_url,
             self.snapshot.volume_percent,
             self.session_cookie_path.as_deref(),
         )?;
         if !was_playing {
             self.player.set_paused(true)?;
         }
-        self.snapshot.current_item = Some(entry.item);
+        self.snapshot.current_item = Some(item);
         self.snapshot.position_ms = 0;
         if was_playing {
             let current_id = self
@@ -657,12 +736,83 @@ impl YouTubePlaybackProvider {
         Ok(())
     }
 
-    fn sync_queue(&mut self) {
-        self.snapshot.queue = self
+    fn library_item(&self, id: &str) -> Result<MediaItem, YouTubePlaybackError> {
+        self.entries
+            .iter()
+            .find(|entry| entry.item.id == id)
+            .map(|entry| entry.item.clone())
+            .ok_or_else(|| YouTubePlaybackError::TrackNotFound { id: id.into() })
+    }
+
+    fn items_for_ids(&self, track_ids: &[String]) -> Result<Vec<MediaItem>, YouTubePlaybackError> {
+        track_ids.iter().map(|id| self.library_item(id)).collect()
+    }
+
+    fn playlists_with_defaults(&self) -> Vec<Playlist> {
+        let favorite_track_ids = self
+            .playlists
+            .iter()
+            .find(|playlist| playlist.id == FAVORITES_PLAYLIST_ID)
+            .map(|playlist| playlist.track_ids.clone())
+            .unwrap_or_default();
+        let mut most_played = self
             .entries
             .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.item.play_count > 0)
+            .collect::<Vec<_>>();
+        most_played.sort_by(|(left_index, left), (right_index, right)| {
+            right
+                .item
+                .play_count
+                .cmp(&left.item.play_count)
+                .then_with(|| left_index.cmp(right_index))
+        });
+
+        let mut playlists = vec![
+            Playlist {
+                id: FAVORITES_PLAYLIST_ID.into(),
+                name: "Favorites".into(),
+                track_ids: favorite_track_ids,
+            },
+            Playlist {
+                id: MOST_PLAYED_PLAYLIST_ID.into(),
+                name: "Most Played".into(),
+                track_ids: most_played
+                    .into_iter()
+                    .map(|(_, entry)| entry.item.id.clone())
+                    .collect(),
+            },
+        ];
+        playlists.extend(
+            self.playlists
+                .iter()
+                .filter(|playlist| !is_default_playlist(&playlist.id))
+                .cloned(),
+        );
+        playlists
+    }
+
+    fn reconcile_queue(&mut self) {
+        self.snapshot.queue = self
+            .snapshot
+            .queue
+            .iter()
+            .filter_map(|item| self.entries.iter().find(|entry| entry.item.id == item.id))
             .map(|entry| entry.item.clone())
             .collect();
+        if let Some(current_id) = self
+            .snapshot
+            .current_item
+            .as_ref()
+            .map(|item| item.id.as_str())
+        {
+            self.snapshot.current_item = self
+                .entries
+                .iter()
+                .find(|entry| entry.item.id == current_id)
+                .map(|entry| entry.item.clone());
+        }
     }
 
     fn persist_library(&self) -> Result<(), YouTubePlaybackError> {
@@ -677,6 +827,10 @@ impl YouTubePlaybackProvider {
         );
         Ok(())
     }
+}
+
+fn is_default_playlist(id: &str) -> bool {
+    id == FAVORITES_PLAYLIST_ID || id == MOST_PLAYED_PLAYLIST_ID
 }
 
 impl Default for YouTubePlaybackProvider {
@@ -1937,7 +2091,6 @@ mod tests {
         let mut provider = YouTubePlaybackProvider::from_library_path(path.clone())
             .expect("an absent library should initialize empty");
         provider.entries = entries;
-        provider.sync_queue();
         provider
             .persist_library()
             .expect("the dirty discovery should persist");
@@ -1945,9 +2098,9 @@ mod tests {
 
         let mut restored = YouTubePlaybackProvider::from_library_path(path.clone())
             .expect("the persisted library should load");
-        let snapshot = restored.snapshot().expect("restored state is readable");
+        restored.snapshot().expect("restored state is readable");
 
-        assert!(snapshot.queue[0].metadata_dirty);
+        assert!(restored.library_snapshot().tracks[0].metadata_dirty);
         fs::remove_file(path).expect("temporary library should be removable");
     }
 
@@ -2146,6 +2299,76 @@ mod tests {
     }
 
     #[test]
+    fn keeps_a_loaded_library_out_of_the_new_play_queue() {
+        let entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+
+        assert_eq!(provider.library_snapshot().tracks.len(), 2);
+        assert!(provider.snapshot.queue.is_empty());
+
+        provider
+            .replace_queue(&["BaW_jenozKc".into(), "M7lc1UVf-VE".into()])
+            .expect("known library tracks create a play queue");
+        provider
+            .queue_track_next("M7lc1UVf-VE")
+            .expect("a library track can be placed next");
+        provider
+            .add_to_queue("BaW_jenozKc")
+            .expect("a library track can be added to the queue");
+
+        assert_eq!(
+            provider
+                .snapshot
+                .queue
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["M7lc1UVf-VE", "BaW_jenozKc"]
+        );
+        assert_eq!(provider.library_snapshot().tracks.len(), 2);
+    }
+
+    #[test]
+    fn maintains_favorites_and_most_played_default_playlists() {
+        let entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+
+        provider
+            .toggle_favorite("BaW_jenozKc")
+            .expect("a library track can be favorited");
+        provider
+            .record_playback_start("M7lc1UVf-VE", 10)
+            .expect("a library track can be played");
+        provider
+            .record_playback_start("BaW_jenozKc", 20)
+            .expect("a library track can be played");
+        provider
+            .record_playback_start("BaW_jenozKc", 30)
+            .expect("a library track can be played again");
+
+        let library = provider.library_snapshot();
+        assert_eq!(
+            library
+                .playlists
+                .iter()
+                .map(|playlist| (playlist.id.as_str(), playlist.name.as_str()))
+                .collect::<Vec<_>>(),
+            [("favorites", "Favorites"), ("most-played", "Most Played")]
+        );
+        assert_eq!(library.playlists[0].track_ids, ["BaW_jenozKc"]);
+        assert_eq!(
+            library.playlists[1].track_ids,
+            ["BaW_jenozKc", "M7lc1UVf-VE"]
+        );
+    }
+
+    #[test]
     fn updates_user_owned_track_metadata_without_changing_its_source() {
         let mut provider = YouTubePlaybackProvider::new();
         provider.entries = parse_import_metadata(
@@ -2185,7 +2408,6 @@ mod tests {
             r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
         )
         .expect("fixture metadata is valid");
-        provider.sync_queue();
         provider.playlists = vec![Playlist {
             id: "focus".into(),
             name: "Focus".into(),
@@ -2199,9 +2421,16 @@ mod tests {
         let library = provider.library_snapshot();
         assert_eq!(library.tracks.len(), 1);
         assert_eq!(library.tracks[0].id, "BaW_jenozKc");
-        assert_eq!(library.playlists[0].track_ids, ["BaW_jenozKc"]);
-        assert_eq!(provider.snapshot.queue.len(), 1);
-        assert_eq!(provider.snapshot.queue[0].id, "BaW_jenozKc");
+        assert_eq!(
+            library
+                .playlists
+                .iter()
+                .find(|playlist| playlist.id == "focus")
+                .expect("the custom playlist remains in the library")
+                .track_ids,
+            ["BaW_jenozKc"]
+        );
+        assert!(provider.snapshot.queue.is_empty());
     }
 
     #[test]
@@ -2334,7 +2563,6 @@ mod tests {
         let mut provider = YouTubePlaybackProvider::from_library_path(path.clone())
             .expect("an absent library should initialize empty");
         provider.entries = entries;
-        provider.sync_queue();
         provider
             .persist_library()
             .expect("the imported library should persist");
@@ -2344,9 +2572,7 @@ mod tests {
             .expect("the persisted library should load");
         let snapshot = restored.snapshot().expect("restored state is readable");
 
-        assert_eq!(snapshot.queue.len(), 2);
-        assert_eq!(snapshot.queue[0].title, "First track");
-        assert_eq!(snapshot.queue[1].title, "Second track");
+        assert!(snapshot.queue.is_empty());
         assert_eq!(snapshot.current_item, None);
 
         fs::remove_file(path).expect("temporary library should be removable");

@@ -1,35 +1,64 @@
 <script setup lang="ts">
 import {
-  CarFront,
-  CassetteTape,
-  CircleDot,
+  Clock3,
   Disc3,
   Heart,
   ListMusic,
   Mic2,
+  Pencil,
   Plus,
-  Sparkles,
 } from "lucide-vue-next";
+import { nextTick, ref, watch } from "vue";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { Playlist } from "@/api";
 import type { LibraryCollection } from "./types";
 
 const props = defineProps<{
   activeCollection: LibraryCollection;
+  activePlaylistId?: string;
+  isCreatingPlaylist?: boolean;
+  playlists: Playlist[];
 }>();
 
 const emit = defineEmits<{
   selectCollection: [collection: LibraryCollection];
+  selectPlaylist: [id: string];
+  createPlaylist: [name: string];
+  cancelPlaylistCreation: [];
+  newPlaylist: [];
+  editPlaylist: [playlist: Playlist];
   openImport: [];
 }>();
 
-const playlists = [
-  { href: "#favorites", icon: Heart, label: "Favorites" },
-  { href: "#chill-vibes", icon: Sparkles, label: "Chill Vibes" },
-  { href: "#focus", icon: CircleDot, label: "Focus" },
-  { href: "#road-trip", icon: CarFront, label: "Road Trip" },
-  { href: "#90s-mix", icon: CassetteTape, label: "90s Mix" },
-] as const;
+const newPlaylistName = ref("");
+const newPlaylistInput = ref<HTMLInputElement>();
+
+function saveNewPlaylist(): void {
+  const name = newPlaylistName.value.trim();
+  if (name) {
+    emit("createPlaylist", name);
+  }
+}
+
+function cancelNewPlaylist(): void {
+  emit("cancelPlaylistCreation");
+}
+
+function playlistIcon(id: string) {
+  return id === "favorites" ? Heart : id === "most-played" ? Clock3 : ListMusic;
+}
+
+watch(
+  () => props.isCreatingPlaylist,
+  async (isCreating) => {
+    newPlaylistName.value = "";
+    if (isCreating) {
+      await nextTick();
+      newPlaylistInput.value?.focus();
+    }
+  },
+);
 </script>
 
 <template>
@@ -98,21 +127,59 @@ const playlists = [
             </p>
             <button
               aria-label="New playlist"
-              class="grid size-6 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) [&>svg]:size-4"
+              :disabled="props.isCreatingPlaylist"
+              class="grid size-6 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) disabled:cursor-default disabled:opacity-40 [&>svg]:size-4"
               type="button"
+              @click="emit('newPlaylist')"
             >
               <Plus aria-hidden="true" />
             </button>
           </div>
-          <a
-            v-for="playlist in playlists"
-            :key="playlist.href"
-            class="flex min-h-8 items-center gap-2.5 rounded-md px-2.5 text-[0.79rem] text-(--muted-text) no-underline transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) [&>svg]:size-4"
-            :href="playlist.href"
+          <form
+            v-if="props.isCreatingPlaylist"
+            class="flex min-h-8 items-center gap-2 rounded-md bg-[oklch(0.7_0.03_262/0.15)] px-2.5"
+            data-new-playlist-editor
+            @submit.prevent="saveNewPlaylist"
           >
-            <component :is="playlist.icon" aria-hidden="true" />
-            {{ playlist.label }}
-          </a>
+            <ListMusic aria-hidden="true" class="size-4 shrink-0 text-accent" />
+            <input
+              ref="newPlaylistInput"
+              v-model="newPlaylistName"
+              aria-label="New playlist name"
+              class="min-w-0 flex-1 bg-transparent text-[0.79rem] text-(--text) outline-none placeholder:text-(--subtle-text)"
+              placeholder="New playlist"
+              @keydown.esc.prevent="cancelNewPlaylist"
+            />
+          </form>
+          <div
+            v-for="playlist in props.playlists"
+            :key="playlist.id"
+            class="group flex min-h-8 items-center gap-1 rounded-md text-[0.79rem] text-(--muted-text)"
+          >
+            <button
+              :aria-current="
+                props.activePlaylistId === playlist.id ? 'page' : undefined
+              "
+              class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 text-left transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-[current=page]:bg-[oklch(0.7_0.03_262/0.15)] aria-[current=page]:text-(--text) [&>svg]:size-4"
+              :data-playlist-id="playlist.id"
+              type="button"
+              @click="emit('selectPlaylist', playlist.id)"
+            >
+              <component :is="playlistIcon(playlist.id)" aria-hidden="true" />
+              <span class="truncate">{{ playlist.name }}</span>
+            </button>
+            <button
+              v-if="
+                playlist.id !== 'favorites' && playlist.id !== 'most-played'
+              "
+              :aria-label="`Edit ${playlist.name}`"
+              class="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--subtle-text) opacity-0 transition-opacity hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) group-hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
+              type="button"
+              @click="emit('editPlaylist', playlist)"
+            >
+              <Pencil aria-hidden="true" />
+            </button>
+          </div>
         </nav>
       </div>
     </ScrollArea>

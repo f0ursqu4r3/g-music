@@ -8,6 +8,7 @@ import {
   type MetadataRefreshSnapshot,
   type PlaybackSnapshot,
   type PlaybackTransport,
+  type Playlist,
 } from "@/api";
 
 export type PlaybackClient = Omit<
@@ -16,6 +17,11 @@ export type PlaybackClient = Omit<
   | "inspectMetadataRefreshes"
   | "inspectTransport"
   | "updateTracksMetadata"
+  | "toggleFavorite"
+  | "upsertPlaylist"
+  | "deletePlaylist"
+  | "playNext"
+  | "addToQueue"
 > &
   Partial<
     Pick<
@@ -24,6 +30,11 @@ export type PlaybackClient = Omit<
       | "inspectMetadataRefreshes"
       | "inspectTransport"
       | "updateTracksMetadata"
+      | "toggleFavorite"
+      | "upsertPlaylist"
+      | "deletePlaylist"
+      | "playNext"
+      | "addToQueue"
     >
   >;
 
@@ -46,13 +57,14 @@ function readErrorMessage(error: unknown): string {
 
 export function usePlayback(client: PlaybackClient = playbackApi) {
   const library = shallowRef<LibrarySnapshot | null>(null);
+  const queue = shallowRef<PlaybackSnapshot["queue"]>([]);
   const transport = ref<PlaybackTransport | null>(null);
   const snapshot = computed<PlaybackSnapshot | null>(() => {
-    if (!library.value || !transport.value) {
+    if (!transport.value) {
       return null;
     }
 
-    return { ...transport.value, queue: library.value.tracks };
+    return { ...transport.value, queue: queue.value };
   });
   const errorMessage = ref("");
   const importProgress = ref<ImportProgress | null>(null);
@@ -85,7 +97,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   function applySnapshot(nextSnapshot: PlaybackSnapshot): void {
-    library.value = { tracks: nextSnapshot.queue };
+    queue.value = nextSnapshot.queue;
     applyTransport(nextSnapshot);
   }
 
@@ -255,8 +267,22 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await execute(client.next);
   }
 
-  async function playTrack(id: string): Promise<void> {
-    await startPlayback(() => client.playTrack(id));
+  async function playTrack(id: string, queueIds?: string[]): Promise<void> {
+    await startPlayback(() =>
+      queueIds ? client.playTrack(id, queueIds) : client.playTrack(id),
+    );
+  }
+
+  async function playNext(id: string): Promise<void> {
+    if (client.playNext) {
+      await execute(() => client.playNext!(id));
+    }
+  }
+
+  async function addToQueue(id: string): Promise<void> {
+    if (client.addToQueue) {
+      await execute(() => client.addToQueue!(id));
+    }
   }
 
   async function updateTracksMetadata(
@@ -279,6 +305,54 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   async function seek(positionMs: number): Promise<void> {
     await execute(() => client.seek(positionMs));
+  }
+
+  async function toggleFavorite(id: string): Promise<void> {
+    if (isUpdating.value || !client.toggleFavorite) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      library.value = await client.toggleFavorite(id);
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
+  async function upsertPlaylist(playlist: Playlist): Promise<void> {
+    if (isUpdating.value || !client.upsertPlaylist) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      library.value = await client.upsertPlaylist(playlist);
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
+  async function deletePlaylist(id: string): Promise<void> {
+    if (isUpdating.value || !client.deletePlaylist) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+    try {
+      library.value = await client.deletePlaylist(id);
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
   }
 
   async function setVolume(volumePercent: number): Promise<void> {
@@ -328,7 +402,9 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   return {
+    addToQueue,
     applySnapshot,
+    deletePlaylist,
     errorMessage,
     importProgress,
     isImporting,
@@ -339,6 +415,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     importYouTubeUrls,
     moveQueueItem,
     next,
+    playNext,
     playTrack,
     previous,
     refresh,
@@ -348,9 +425,11 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     snapshot,
     sync,
     toggle,
+    toggleFavorite,
     toggleMute,
     transport,
     updateTracksMetadata,
+    upsertPlaylist,
     updateImportProgress,
     updateMetadataRefreshes,
   };

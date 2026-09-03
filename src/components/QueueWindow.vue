@@ -45,15 +45,23 @@ const currentItem = computed(
   () => props.queue.find((item) => item.id === props.currentItemId) ?? null,
 );
 const isPlaying = computed(() => props.status === "playing");
+const queueStartIndex = computed(() => {
+  const index = props.queue.findIndex(
+    (item) => item.id === props.currentItemId,
+  );
+
+  return index >= 0 ? index : 0;
+});
+const visibleQueue = computed(() => props.queue.slice(queueStartIndex.value));
 const totalDurationMs = computed(() =>
-  props.queue.reduce((total, item) => total + item.durationMs, 0),
+  visibleQueue.value.reduce((total, item) => total + item.durationMs, 0),
 );
 const queueSummary = computed(() => {
-  const count = props.queue.length;
+  const count = visibleQueue.value.length;
   return `${count} ${count === 1 ? "track" : "tracks"} · ${formatDuration(totalDurationMs.value)}`;
 });
 const queueList = ref<HTMLElement | null>(null);
-const reorderQueue = ref<MediaItem[]>([...props.queue]);
+const reorderQueue = ref<MediaItem[]>([...visibleQueue.value]);
 const activeReorderId = ref<string | null>(null);
 const isReorderPending = ref(false);
 const queueRowHeight = 52;
@@ -126,15 +134,17 @@ function finishQueueReorder(): void {
   activeReorderId.value = null;
 
   if (!itemId || props.isUpdating || props.isStarting) {
-    reorderQueue.value = [...props.queue];
+    reorderQueue.value = [...visibleQueue.value];
     return;
   }
 
   const from = props.queue.findIndex((item) => item.id === itemId);
-  const to = reorderQueue.value.findIndex((item) => item.id === itemId);
+  const to =
+    queueStartIndex.value +
+    reorderQueue.value.findIndex((item) => item.id === itemId);
 
   if (from === -1 || to === -1 || from === to) {
-    reorderQueue.value = [...props.queue];
+    reorderQueue.value = [...visibleQueue.value];
     return;
   }
 
@@ -142,20 +152,17 @@ function finishQueueReorder(): void {
   emit("move", from, to);
 }
 
-watch(
-  () => props.queue,
-  () => {
-    reorderQueue.value = [...props.queue];
-    activeReorderId.value = null;
-    isReorderPending.value = false;
-  },
-);
+watch([() => props.queue, () => props.currentItemId], () => {
+  reorderQueue.value = [...visibleQueue.value];
+  activeReorderId.value = null;
+  isReorderPending.value = false;
+});
 
 watch(
   () => props.isUpdating,
   (isUpdating) => {
     if (!isUpdating && isReorderPending.value) {
-      reorderQueue.value = [...props.queue];
+      reorderQueue.value = [...visibleQueue.value];
       isReorderPending.value = false;
     }
   },
@@ -185,7 +192,7 @@ watch(
       <h2 id="queue-list-heading" class="sr-only">Queue tracks</h2>
 
       <div
-        v-if="queue.length === 0"
+        v-if="visibleQueue.length === 0"
         class="grid min-h-0 flex-1 place-items-center px-6 text-center"
       >
         <div class="max-w-52">
@@ -226,7 +233,11 @@ watch(
           >
             <ReorderItem
               as="article"
-              :drag="isUpdating || isStarting ? false : 'y'"
+              :drag="
+                isUpdating || isStarting || item.id === currentItemId
+                  ? false
+                  : 'y'
+              "
               :drag-momentum="false"
               :on-drag-end="finishQueueReorder"
               :on-drag-start="() => startQueueReorder(item.id)"
@@ -286,9 +297,17 @@ watch(
                   class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                   size="icon-xs"
                   variant="ghost"
-                  :disabled="isUpdating || virtualItem.index === 0"
+                  :disabled="
+                    isUpdating ||
+                    item.id === currentItemId ||
+                    virtualItem.index === 0
+                  "
                   @click.stop="
-                    emit('move', virtualItem.index, virtualItem.index - 1)
+                    emit(
+                      'move',
+                      queueStartIndex + virtualItem.index,
+                      queueStartIndex + virtualItem.index - 1,
+                    )
                   "
                 >
                   <span aria-hidden="true">↑</span>
@@ -299,10 +318,16 @@ watch(
                   size="icon-xs"
                   variant="ghost"
                   :disabled="
-                    isUpdating || virtualItem.index === queue.length - 1
+                    isUpdating ||
+                    item.id === currentItemId ||
+                    virtualItem.index === visibleQueue.length - 1
                   "
                   @click.stop="
-                    emit('move', virtualItem.index, virtualItem.index + 1)
+                    emit(
+                      'move',
+                      queueStartIndex + virtualItem.index,
+                      queueStartIndex + virtualItem.index + 1,
+                    )
                   "
                 >
                   <span aria-hidden="true">↓</span>

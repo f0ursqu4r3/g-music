@@ -6,6 +6,7 @@ import type {
   MetadataRefreshSnapshot,
   PlaybackSnapshot,
   PlaybackTransport,
+  Playlist,
   TrackMetadataUpdate,
 } from "@/api";
 import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
@@ -20,6 +21,7 @@ import LibraryPlaybackFooter from "./library/LibraryPlaybackFooter.vue";
 import LibrarySidebar from "./library/LibrarySidebar.vue";
 import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
 import LibraryTrackList from "./library/LibraryTrackList.vue";
+import PlaylistEditor from "./library/PlaylistEditor.vue";
 import { buildLibraryArtists, groupItems } from "./library/collections";
 import type {
   AlbumGroup,
@@ -41,6 +43,7 @@ type SelectedLibraryItem =
 
 interface Props {
   snapshot?: PlaybackSnapshot;
+  playlists?: Playlist[];
   tracks?: MediaItem[];
   transport?: PlaybackTransport;
   isStarting?: boolean;
@@ -59,7 +62,12 @@ const emit = defineEmits<{
   setVolume: [percent: number];
   toggleMute: [];
   openImport: [];
-  playTrack: [id: string];
+  playTrack: [queueIds: string[], id: string];
+  playNext: [id: string];
+  addToQueue: [id: string];
+  toggleFavorite: [id: string];
+  upsertPlaylist: [playlist: Playlist];
+  deletePlaylist: [id: string];
   updateTracksMetadata: [updates: TrackMetadataUpdate[]];
 }>();
 
@@ -70,7 +78,10 @@ const gridItemSize = ref(176);
 const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
 const metadataEditorTarget = ref<MetadataEditTarget | null>(null);
+const playlistEditorTarget = ref<Playlist | null>(null);
+const isCreatingPlaylist = ref(false);
 const detailsSidebarOpen = ref(true);
+const activePlaylistId = ref<string>();
 const playback = computed<PlaybackTransport>(
   () =>
     props.transport ??
@@ -92,6 +103,25 @@ const trackFilter = ref<TrackFilter | null>(null);
 const isPlaying = computed(() => playback.value.status === "playing");
 const currentItem = computed(() => playback.value.currentItem);
 const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? []);
+const playlists = computed(() => props.playlists ?? []);
+const activePlaylist = computed(
+  () =>
+    playlists.value.find(
+      (playlist) => playlist.id === activePlaylistId.value,
+    ) ?? null,
+);
+const playlistTracks = computed(() => {
+  const playlist = activePlaylist.value;
+  if (!playlist) {
+    return allTracks.value;
+  }
+
+  const tracksById = new Map(allTracks.value.map((track) => [track.id, track]));
+  return playlist.trackIds.flatMap((id) => {
+    const track = tracksById.get(id);
+    return track ? [track] : [];
+  });
+});
 const selectedTrack = computed(() => {
   const selection = selectedLibraryItem.value;
   if (!selection || selection.kind !== "track") {
@@ -102,7 +132,7 @@ const selectedTrack = computed(() => {
 });
 const libraryTracks = computed(() => {
   const filteredTracks = trackFilter.value
-    ? allTracks.value.filter((track) => {
+    ? playlistTracks.value.filter((track) => {
         if (trackFilter.value?.type === "artist") {
           return track.artist === trackFilter.value.value;
         }
@@ -112,7 +142,7 @@ const libraryTracks = computed(() => {
           trackFilter.value?.value
         );
       })
-    : allTracks.value;
+    : playlistTracks.value;
 
   return sortCollection(filteredTracks, sortBy.value, "track");
 });
@@ -191,6 +221,9 @@ const groupedArtists = computed<ArtistGroup[]>(() =>
   ),
 );
 const collectionTitle = computed(() => {
+  if (activePlaylist.value) {
+    return activePlaylist.value.name;
+  }
   const titles: Record<LibraryCollection, string> = {
     albums: "Albums",
     artists: "Artists",
@@ -300,7 +333,51 @@ function groupCollection<T>(
 }
 
 function selectCollection(collection: LibraryCollection): void {
+  activePlaylistId.value = undefined;
   activeCollection.value = collection;
+}
+
+function selectPlaylist(id: string): void {
+  activePlaylistId.value = id;
+  activeCollection.value = "tracks";
+  displayMode.value = "list";
+  trackFilter.value = null;
+}
+
+function openPlaylistEditor(playlist: Playlist): void {
+  playlistEditorTarget.value = playlist;
+}
+
+function beginPlaylistCreation(): void {
+  isCreatingPlaylist.value = true;
+}
+
+function createPlaylist(name: string): void {
+  const playlist: Playlist = {
+    id: `playlist-${crypto.randomUUID()}`,
+    name,
+    trackIds: [],
+  };
+  activePlaylistId.value = playlist.id;
+  isCreatingPlaylist.value = false;
+  emit("upsertPlaylist", playlist);
+}
+
+function cancelPlaylistCreation(): void {
+  isCreatingPlaylist.value = false;
+}
+
+function savePlaylist(playlist: Playlist): void {
+  playlistEditorTarget.value = null;
+  emit("upsertPlaylist", playlist);
+}
+
+function deletePlaylist(id: string): void {
+  if (activePlaylistId.value === id) {
+    activePlaylistId.value = undefined;
+  }
+  playlistEditorTarget.value = null;
+  emit("deletePlaylist", id);
 }
 
 function setDisplayMode(mode: LibraryDisplayMode): void {
@@ -314,7 +391,13 @@ function selectTrack(track: MediaItem): void {
 function playTrack(track: MediaItem): void {
   selectTrack(track);
   if (!props.isUpdating) {
-    emit("playTrack", track.id);
+    emit(
+      "playTrack",
+      trackFilter.value
+        ? libraryTracks.value.map((item) => item.id)
+        : [track.id],
+      track.id,
+    );
   }
 }
 
@@ -417,8 +500,16 @@ function toggleMetadataRefresh(): void {
 
     <LibrarySidebar
       :active-collection="activeCollection"
+      :active-playlist-id="activePlaylistId"
+      :is-creating-playlist="isCreatingPlaylist"
+      :playlists="playlists"
+      @cancel-playlist-creation="cancelPlaylistCreation"
+      @create-playlist="createPlaylist"
+      @edit-playlist="openPlaylistEditor"
+      @new-playlist="beginPlaylistCreation"
       @open-import="emit('openImport')"
       @select-collection="selectCollection"
+      @select-playlist="selectPlaylist"
     />
 
     <section
@@ -450,10 +541,15 @@ function toggleMetadataRefresh(): void {
         :sort-by="sortBy"
         :track-filter="trackFilter"
         :tracks="libraryTracks"
+        :favorite-track-ids="
+          playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
+          []
+        "
         @clear-track-filter="trackFilter = null"
         @play-track="playTrack"
         @select-track="selectTrack"
         @set-sort="setSort"
+        @toggle-favorite="emit('toggleFavorite', $event)"
       />
       <LibraryTrackGrid
         v-else-if="activeCollection === 'tracks'"
@@ -491,9 +587,11 @@ function toggleMetadataRefresh(): void {
       :selected-album="selectedAlbum"
       :selected-artist="selectedArtist"
       :selected-track="selectedTrack"
+      @add-to-queue="emit('addToQueue', $event.id)"
       @edit-album="openAlbumMetadataEditor"
       @edit-artist="openArtistMetadataEditor"
       @edit-track="openTrackMetadataEditor"
+      @play-next="emit('playNext', $event.id)"
     />
 
     <LibraryPlaybackFooter
@@ -526,6 +624,14 @@ function toggleMetadataRefresh(): void {
       :target="metadataEditorTarget"
       @cancel="metadataEditorTarget = null"
       @save="saveMetadata"
+    />
+    <PlaylistEditor
+      v-if="playlistEditorTarget"
+      :playlist="playlistEditorTarget"
+      :tracks="allTracks"
+      @cancel="playlistEditorTarget = null"
+      @delete="deletePlaylist"
+      @save="savePlaylist"
     />
   </main>
 </template>

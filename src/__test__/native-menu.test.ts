@@ -32,4 +32,26 @@ describe("native menu and menu hotkeys", () => {
     expect(commandsSource).toContain('"playback.next"');
     expect(commandsSource).toContain('"playback-updated"');
   });
+
+  it("broadcasts queue changes made from a WebView", () => {
+    expect(commandsSource).toContain("fn emit_playback_updated");
+
+    for (const command of [
+      "pub fn play_track(",
+      "pub fn queue_track_next(",
+      "pub fn add_to_queue(",
+      "pub fn move_queue_item(",
+    ]) {
+      const start = commandsSource.lastIndexOf(command);
+      const end = commandsSource.indexOf(
+        "\n#[tauri::command]",
+        start + command.length,
+      );
+      const commandSource = commandsSource.slice(start, end);
+
+      expect(commandSource).toContain(
+        "emit_playback_updated(&app, &snapshot);",
+      );
+    }
+  });
 });

@@ -8,14 +8,14 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-} from "lucide-vue-next";
-import { computed } from "vue";
+} from 'lucide-vue-next';
+import { computed } from 'vue';
 
-import type { PlaybackSnapshot } from "@/api";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { formatDuration } from "@/lib/time";
-import YouTubeArtwork from "./YouTubeArtwork.vue";
+import type { PlaybackSnapshot } from '@/api';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
+import { formatDuration } from '@/lib/time';
+import YouTubeArtwork from './YouTubeArtwork.vue';
 
 interface Props {
   snapshot: PlaybackSnapshot;
@@ -35,15 +35,15 @@ const emit = defineEmits<{
 
 const currentItem = computed(() => props.snapshot.currentItem);
 const durationMs = computed(() => currentItem.value?.durationMs ?? 0);
-const isPlaying = computed(() => props.snapshot.status === "playing");
+const isPlaying = computed(() => props.snapshot.status === 'playing');
 const trackTitle = computed(
-  () => currentItem.value?.title ?? "Nothing selected",
+  () => currentItem.value?.title ?? 'Nothing selected'
 );
 const trackArtist = computed(
-  () => currentItem.value?.artist ?? "Choose a track to begin",
+  () => currentItem.value?.artist ?? 'Choose a track to begin'
 );
 const remainingMs = computed(() =>
-  Math.max(durationMs.value - props.snapshot.positionMs, 0),
+  Math.max(durationMs.value - props.snapshot.positionMs, 0)
 );
 const volumeIcon = computed(() => {
   if (props.snapshot.volumePercent === 0) {
@@ -61,14 +61,14 @@ const volumeIcon = computed(() => {
 function emitSeek(values: number[]): void {
   const value = values[0];
   if (Number.isFinite(value)) {
-    emit("seek", value);
+    emit('seek', value);
   }
 }
 
 function emitVolume(values: number[] | undefined): void {
   const value = values?.[0];
-  if (typeof value === "number" && Number.isFinite(value)) {
-    emit("setVolume", value);
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    emit('setVolume', value);
   }
 }
 </script>
@@ -79,13 +79,11 @@ function emitVolume(values: number[] | undefined): void {
     aria-label="Now playing"
   >
     <div
-      class="mini-drag-handle absolute top-1.75 right-26 left-47.5 z-3 grid min-h-3.25 cursor-grab auto-rows-0.75 grid-cols-[repeat(3,3px)] place-content-center gap-0.75 active:cursor-grabbing [&>span]:size-0.75 [&>span]:rounded-full [&>span]:bg-(--subtle-text) [&>span]:opacity-70"
+      class="absolute top-0 right-0 left-0 z-3 grid min-h-8"
       data-tauri-drag-region
       title="Drag to move mini player"
       aria-hidden="true"
-    >
-      <span v-for="dot in 9" :key="dot" />
-    </div>
+    ></div>
 
     <div
       class="album-art relative grid place-items-center overflow-hidden"
@@ -95,41 +93,13 @@ function emitVolume(values: number[] | undefined): void {
         class="absolute inset-0 size-full object-cover"
         :video-id="currentItem?.id"
       />
-      <span
-        class="absolute top-6.75 left-5.25 aspect-square w-24 rounded-full border-17 border-[oklch(0.98_0.01_90/0.17)]"
-      />
-      <span
-        class="absolute top-10.75 -right-6 h-14.5 w-29.5 rotate-[-26deg] bg-[oklch(0.96_0.012_90/0.18)]"
-      />
-      <span
-        class="absolute top-19.5 left-6.5 h-13 w-31.5 rotate-[-27deg] rounded-full border border-[oklch(0.98_0.01_90/0.38)]"
-      />
-      <div
-        class="absolute right-4.5 bottom-4 grid gap-px text-right text-[oklch(0.98_0.01_90/0.84)]"
-      >
-        <span class="text-[0.52rem] font-bold tracking-[0.14em]">G MUSIC</span>
-        <strong class="text-[1.15rem] font-[650] tracking-[-0.08em]">01</strong>
-      </div>
     </div>
 
     <div
       class="grid min-w-0 grid-rows-[auto_1fr_auto] pt-5 pr-11.5 pb-3.5 pl-5 max-[390px]:pl-4"
     >
-      <header class="min-w-0">
+      <header class="min-w-0 mt-4">
         <div class="min-w-0">
-          <p
-            class="mb-1.5 flex items-center gap-1.5 text-[0.59rem] font-[720] tracking-widest text-(--muted-text) uppercase"
-          >
-            <span
-              class="size-1.5 rounded-full bg-(--subtle-text) data-[playing=true]:bg-accent data-[playing=true]:shadow-[0_0_0_4px_var(--accent-soft)]"
-              :data-playing="isPlaying"
-            />
-            {{ isPlaying ? "Playing" : "Paused" }}
-            <span
-              class="track-source ml-auto inline-flex items-center gap-1.5 text-[0.51rem] tracking-[0.08em] text-(--subtle-text) max-[390px]:hidden"
-              >Local session</span
-            >
-          </p>
           <h1
             class="overflow-hidden text-[1.2rem] leading-[1.08] font-[680] tracking-[-0.045em] text-ellipsis whitespace-nowrap text-(--text)"
           >
@@ -204,8 +174,9 @@ function emitVolume(values: number[] | undefined): void {
           <span
             class="text-right text-[0.6rem] text-(--subtle-text) tabular-nums max-[390px]:hidden"
             aria-hidden="true"
-            >{{ snapshot.volumePercent }}</span
           >
+            {{ snapshot.volumePercent }}
+          </span>
         </div>
       </div>
 
@@ -236,34 +207,5 @@ function emitVolume(values: number[] | undefined): void {
     var(--artwork-b) 55%,
     var(--artwork-c)
   );
-}
-
-.album-art::before,
-.album-art::after {
-  position: absolute;
-  content: "";
-  pointer-events: none;
-}
-
-.album-art::before {
-  inset: 12px;
-  border: 1px solid oklch(0.98 0.01 90 / 0.22);
-  border-radius: 14px;
-}
-
-.album-art::after {
-  right: -48px;
-  bottom: -56px;
-  width: 150px;
-  height: 150px;
-  border: 1px solid oklch(0.98 0.01 90 / 0.3);
-  border-radius: 50%;
-}
-
-.track-source::before {
-  width: 14px;
-  height: 1px;
-  content: "";
-  background: var(--line-strong);
 }
 </style>

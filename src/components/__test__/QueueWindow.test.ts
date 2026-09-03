@@ -95,6 +95,35 @@ describe("QueueWindow", () => {
     ).toBe(false);
   });
 
+  it("shows the current item first and hides completed items", () => {
+    const wrapper = mount(QueueWindow, {
+      props: {
+        currentItemId: "track-2",
+        isStarting: false,
+        isUpdating: false,
+        positionMs: 0,
+        queue: [
+          queue[0]!,
+          queue[1]!,
+          {
+            id: "track-3",
+            title: "Sugar",
+            artist: "System of a Down",
+            durationMs: 155_000,
+          },
+        ],
+        status: "playing",
+      },
+    });
+
+    expect(wrapper.get("[data-queue-summary]").text()).toContain("2 tracks");
+    expect(wrapper.find("[data-queue-item-id='track-1']").exists()).toBe(false);
+    expect(
+      wrapper.get('[data-queue-item][data-queue-index="0"]').text(),
+    ).toContain("Toxicity");
+    expect(wrapper.get('[data-current="true"]').text()).toContain("Toxicity");
+  });
+
   it("mounts only visible queue rows for a large queue", () => {
     const largeQueue = Array.from({ length: 100 }, (_, index) => ({
       ...queue[index % queue.length]!,

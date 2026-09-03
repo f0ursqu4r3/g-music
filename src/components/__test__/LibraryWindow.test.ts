@@ -309,6 +309,10 @@ describe("LibraryWindow", () => {
       .get('[aria-label="Edit track YouTube Developers Live"]')
       .trigger("click");
     expect(wrapper.get('[role="dialog"]').text()).toContain("Edit Track");
+    expect(wrapper.get('[role="dialog"]').classes()).toContain("bg-black/60");
+    expect(wrapper.get('[role="dialog"] form').classes()).toContain(
+      "bg-[oklch(0.11_0.014_260/0.98)]",
+    );
 
     await wrapper
       .get('[data-metadata-field="title"]')
@@ -883,7 +887,7 @@ describe("LibraryWindow", () => {
     expect(wrapper.emitted("playTrack")).toBeUndefined();
   });
 
-  it("plays a track immediately from its hover control or double click", async () => {
+  it("creates a one-item queue when playing from the unfiltered Tracks list", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
@@ -904,9 +908,26 @@ describe("LibraryWindow", () => {
     await row.trigger("dblclick");
 
     expect(wrapper.emitted("playTrack")).toEqual([
-      ["BaW_jenozKc"],
-      ["BaW_jenozKc"],
+      [["BaW_jenozKc"], "BaW_jenozKc"],
+      [["BaW_jenozKc"], "BaW_jenozKc"],
     ]);
+  });
+
+  it("adds the selected track to the front or end of the play queue", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+    await wrapper
+      .get('button[aria-label="Play Creator Studio Session next"]')
+      .trigger("click");
+    await wrapper
+      .get('button[aria-label="Add Creator Studio Session to queue"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("playNext")).toEqual([["BaW_jenozKc"]]);
+    expect(wrapper.emitted("addToQueue")).toEqual([["BaW_jenozKc"]]);
   });
 
   it("uses dense square-corner track rows", () => {
@@ -1061,7 +1082,7 @@ describe("LibraryWindow", () => {
     expect(sidebar.classes()).toContain("opacity-100");
   });
 
-  it("toggles track favorites from the table", async () => {
+  it("delegates track favorite changes from the table", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
     });
@@ -1073,7 +1094,7 @@ describe("LibraryWindow", () => {
 
     await favorite.trigger("click");
 
-    expect(favorite.attributes("aria-pressed")).toBe("true");
+    expect(wrapper.emitted("toggleFavorite")).toEqual([["BaW_jenozKc"]]);
   });
 
   it("keeps the left sidebar navigation controls", () => {
@@ -1083,6 +1104,96 @@ describe("LibraryWindow", () => {
 
     expect(wrapper.findAll("[data-collection]")).toHaveLength(3);
     expect(wrapper.get("[data-library-sidebar]").text()).toContain("Library");
+  });
+
+  it("shows default playlists and filters tracks by their stable IDs", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [
+          {
+            id: "favorites",
+            name: "Favorites",
+            trackIds: ["BaW_jenozKc"],
+          },
+          { id: "most-played", name: "Most Played", trackIds: ["M7lc1UVf-VE"] },
+        ],
+        snapshot,
+      },
+    });
+
+    expect(wrapper.get('[data-playlist-id="favorites"]').text()).toContain(
+      "Favorites",
+    );
+    expect(wrapper.get('[data-playlist-id="most-played"]').text()).toContain(
+      "Most Played",
+    );
+
+    await wrapper.get('[data-playlist-id="favorites"]').trigger("click");
+
+    expect(wrapper.get("h1").text()).toBe("Favorites");
+    expect(wrapper.findAll("[data-track-id]")).toHaveLength(1);
+    expect(wrapper.get('[data-track-id="BaW_jenozKc"]').text()).toContain(
+      "Creator Studio Session",
+    );
+  });
+
+  it("creates an empty user playlist from an inline sidebar editor", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, playlists: [], snapshot },
+    });
+
+    await wrapper.get('button[aria-label="New playlist"]').trigger("click");
+    const editor = wrapper.get("[data-new-playlist-editor]");
+    await editor
+      .get('input[aria-label="New playlist name"]')
+      .setValue("Road Trip");
+    await editor.trigger("submit");
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+      [
+        expect.objectContaining({
+          name: "Road Trip",
+          trackIds: [],
+        }),
+      ],
+    ]);
+  });
+
+  it("edits and deletes a user playlist", async () => {
+    const playlist = {
+      id: "focus",
+      name: "Focus",
+      trackIds: ["M7lc1UVf-VE"],
+    };
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, playlists: [playlist], snapshot },
+    });
+
+    await wrapper.get('button[aria-label="Edit Focus"]').trigger("click");
+    const dialog = wrapper.get('[role="dialog"]');
+    await dialog.get('[data-playlist-field="name"]').setValue("Deep Focus");
+    await dialog
+      .get('[data-playlist-track="BaW_jenozKc"] input')
+      .setValue(true);
+    await dialog.get("form").trigger("submit");
+
+    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+      [
+        {
+          id: "focus",
+          name: "Deep Focus",
+          trackIds: ["M7lc1UVf-VE", "BaW_jenozKc"],
+        },
+      ],
+    ]);
+
+    await wrapper.get('button[aria-label="Edit Focus"]').trigger("click");
+    await wrapper.get("[data-playlist-editor-delete]").trigger("click");
+    await wrapper.get("[data-playlist-editor-delete]").trigger("click");
+
+    expect(wrapper.emitted("deletePlaylist")).toEqual([["focus"]]);
   });
 
   it("opens Import Music from the plus button beside Library", async () => {

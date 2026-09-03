@@ -94,6 +94,12 @@ impl AppState {
         })
     }
 
+    pub fn toggle_favorite(&self, id: &str) -> Result<LibrarySnapshot, CommandError> {
+        with_playback(self, "toggle_favorite", |playback| {
+            playback.toggle_favorite(id)
+        })
+    }
+
     pub fn remove_tracks(&self, ids: &[String]) -> Result<LibrarySnapshot, CommandError> {
         with_playback(self, "remove_tracks", |playback| {
             playback.remove_tracks(ids)
@@ -748,6 +754,12 @@ fn emit_import_progress(app: &AppHandle, progress: ImportProgress) {
     }
 }
 
+fn emit_playback_updated(app: &AppHandle, snapshot: &PlaybackSnapshot) {
+    if let Err(error) = app.emit("playback-updated", snapshot) {
+        tracing::debug!(%error, "could not deliver playback update");
+    }
+}
+
 #[tauri::command]
 pub fn show_import_window(app: AppHandle) -> Result<(), CommandError> {
     windows::show_import(&app).map_err(|error| CommandError {
@@ -768,6 +780,45 @@ pub fn update_tracks_metadata(
             .map(|update| (update.id, update.metadata))
             .collect(),
     )?;
+    if let Err(error) = app.emit("library-updated", ()) {
+        tracing::debug!(%error, "could not deliver library update event");
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn toggle_favorite(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<LibrarySnapshot, CommandError> {
+    let snapshot = state.toggle_favorite(&id)?;
+    if let Err(error) = app.emit("library-updated", ()) {
+        tracing::debug!(%error, "could not deliver library update event");
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn upsert_playlist(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    playlist: Playlist,
+) -> Result<LibrarySnapshot, CommandError> {
+    let snapshot = state.upsert_playlist(playlist)?;
+    if let Err(error) = app.emit("library-updated", ()) {
+        tracing::debug!(%error, "could not deliver library update event");
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn delete_playlist(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<LibrarySnapshot, CommandError> {
+    let snapshot = state.delete_playlist(&id)?;
     if let Err(error) = app.emit("library-updated", ()) {
         tracing::debug!(%error, "could not deliver library update event");
     }
@@ -869,11 +920,16 @@ pub fn play_track(
     app: AppHandle,
     state: State<'_, AppState>,
     id: String,
+    queue_ids: Option<Vec<String>>,
 ) -> Result<PlaybackSnapshot, CommandError> {
     let snapshot = with_playback(&state, "play_track", |playback| {
+        if let Some(queue_ids) = queue_ids {
+            playback.replace_queue(&queue_ids)?;
+        }
         playback.play_track(&id)?;
         playback.snapshot()
     })?;
+    emit_playback_updated(&app, &snapshot);
     if snapshot
         .current_item
         .as_ref()
@@ -882,6 +938,34 @@ pub fn play_track(
         state.start_dirty_refresh(app);
     }
 
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn queue_track_next(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<PlaybackSnapshot, CommandError> {
+    let snapshot = with_playback(&state, "queue_track_next", |playback| {
+        playback.queue_track_next(&id)?;
+        playback.snapshot()
+    })?;
+    emit_playback_updated(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn add_to_queue(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<PlaybackSnapshot, CommandError> {
+    let snapshot = with_playback(&state, "add_to_queue", |playback| {
+        playback.add_to_queue(&id)?;
+        playback.snapshot()
+    })?;
+    emit_playback_updated(&app, &snapshot);
     Ok(snapshot)
 }
 
@@ -905,14 +989,17 @@ pub fn set_volume(state: State<'_, AppState>, volume_percent: u8) -> Result<(), 
 
 #[tauri::command]
 pub fn move_queue_item(
+    app: AppHandle,
     state: State<'_, AppState>,
     from: usize,
     to: usize,
 ) -> Result<PlaybackSnapshot, CommandError> {
-    with_playback(&state, "move_queue_item", |playback| {
+    let snapshot = with_playback(&state, "move_queue_item", |playback| {
         playback.move_queue_item(from, to)?;
         playback.snapshot()
-    })
+    })?;
+    emit_playback_updated(&app, &snapshot);
+    Ok(snapshot)
 }
 
 #[cfg(test)]
@@ -996,7 +1083,14 @@ mod tests {
             .library_snapshot()
             .expect("library inspection succeeds");
         assert!(library.tracks.is_empty());
-        assert!(library.playlists.is_empty());
+        assert_eq!(
+            library
+                .playlists
+                .iter()
+                .map(|playlist| playlist.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Favorites", "Most Played"]
+        );
 
         let error = state
             .update_track_metadata(

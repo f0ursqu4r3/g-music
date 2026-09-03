@@ -6,6 +6,7 @@ import {
   type EditableTrackMetadata,
   type LibrarySnapshot,
   type PlaybackSnapshot,
+  type Playlist,
   windowApi,
   youtubeAuthApi,
 } from "../api";
@@ -54,17 +55,32 @@ describe("playbackApi", () => {
   it("plays a selected library track through the playback service", async () => {
     vi.mocked(invoke).mockResolvedValue(snapshot);
 
-    await expect(playbackApi.playTrack("M7lc1UVf-VE")).resolves.toEqual(
-      snapshot,
-    );
+    await expect(
+      playbackApi.playTrack("M7lc1UVf-VE", ["M7lc1UVf-VE"]),
+    ).resolves.toEqual(snapshot);
 
     expect(invoke).toHaveBeenCalledWith("play_track", {
       id: "M7lc1UVf-VE",
+      queueIds: ["M7lc1UVf-VE"],
+    });
+  });
+
+  it("adds a selected library track to the front or end of the play queue", async () => {
+    vi.mocked(invoke).mockResolvedValue(snapshot);
+
+    await playbackApi.playNext("M7lc1UVf-VE");
+    await playbackApi.addToQueue("BaW_jenozKc");
+
+    expect(invoke).toHaveBeenNthCalledWith(1, "queue_track_next", {
+      id: "M7lc1UVf-VE",
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, "add_to_queue", {
+      id: "BaW_jenozKc",
     });
   });
 
   it("updates selected library metadata through the batched command", async () => {
-    const library: LibrarySnapshot = { tracks: [] };
+    const library: LibrarySnapshot = { playlists: [], tracks: [] };
     const updates: Array<{ id: string; metadata: EditableTrackMetadata }> = [
       {
         id: "M7lc1UVf-VE",
@@ -84,6 +100,37 @@ describe("playbackApi", () => {
     );
 
     expect(invoke).toHaveBeenCalledWith("update_tracks_metadata", { updates });
+  });
+
+  it("toggles a track in the durable Favorites playlist", async () => {
+    const library: LibrarySnapshot = { playlists: [], tracks: [] };
+    vi.mocked(invoke).mockResolvedValue(library);
+
+    await expect(playbackApi.toggleFavorite("BaW_jenozKc")).resolves.toEqual(
+      library,
+    );
+
+    expect(invoke).toHaveBeenCalledWith("toggle_favorite", {
+      id: "BaW_jenozKc",
+    });
+  });
+
+  it("creates, updates, and deletes a user playlist through durable commands", async () => {
+    const library: LibrarySnapshot = { playlists: [], tracks: [] };
+    const playlist: Playlist = {
+      id: "focus",
+      name: "Focus",
+      trackIds: ["M7lc1UVf-VE"],
+    };
+    vi.mocked(invoke).mockResolvedValue(library);
+
+    await playbackApi.upsertPlaylist(playlist);
+    await playbackApi.deletePlaylist(playlist.id);
+
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ["upsert_playlist", { playlist }],
+      ["delete_playlist", { id: "focus" }],
+    ]);
   });
 });
 
