@@ -16,6 +16,7 @@ import type {
   LibraryDisplayMode,
   LibrarySortOption,
 } from "./types";
+import LibraryVirtualGrid from "./LibraryVirtualGrid.vue";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
 type AlbumSortColumn = "artist" | "duration" | "title" | "track-count";
@@ -77,9 +78,8 @@ function toggleSort(column: AlbumSortColumn): void {
     aria-label="Albums"
     :style="{ '--grid-item-min-size': `${props.gridItemSize}px` }"
   >
-    <ScrollArea class="size-full">
+    <ScrollArea v-if="props.displayMode === 'list'" class="size-full">
       <table
-        v-if="props.displayMode === 'list'"
         class="w-full table-fixed border-separate border-spacing-0 px-5 text-left"
         data-library-album-list
       >
@@ -245,74 +245,64 @@ function toggleSort(column: AlbumSortColumn): void {
           </template>
         </tbody>
       </table>
-      <div class="px-7 py-6">
-        <section
-          v-if="props.displayMode === 'grid'"
-          v-for="group in props.groups"
-          :key="group.label || 'all-albums'"
-          class="library-group"
-        >
-          <h2
-            v-if="group.label"
-            class="mb-3 text-xs font-semibold tracking-wide text-(--muted-text) uppercase"
-          >
-            {{ group.label }}
-          </h2>
-          <div class="library-grid">
-            <ContextMenu
-              v-for="album in group.items"
-              :key="album.key"
-              @update:open="(isOpen) => isOpen && emit('selectAlbum', album)"
-            >
-              <ContextMenuTrigger as-child>
-                <article
-                  class="album-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-                  :data-selected="props.selectedAlbumKey === album.key"
-                  tabindex="0"
-                  @click="emit('selectAlbum', album)"
-                  @dblclick="emit('openAlbum', album)"
-                  @keydown.enter.prevent="emit('openAlbum', album)"
-                >
-                  <div
-                    class="cover-art grid place-items-center rounded-lg [&>svg]:size-[34%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
-                    :class="'aspect-square w-full'"
-                  >
-                    <YouTubeArtwork
-                      class="absolute inset-0 size-full object-cover [&_svg]:size-[34%] [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
-                      :video-id="album.videoId"
-                      :missing-icon="Disc3"
-                    />
-                  </div>
-                  <div class="min-w-0">
-                    <h2
-                      class="mt-2 overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
-                    >
-                      {{ album.title }}
-                    </h2>
-                    <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
-                      {{ album.artist }} · {{ album.trackCount }}
-                      {{ album.trackCount === 1 ? "song" : "songs" }}
-                    </p>
-                  </div>
-                </article>
-              </ContextMenuTrigger>
-              <ContextMenuContent data-album-context-menu>
-                <ContextMenuItem @select="emit('playAlbum', album)">
-                  Play album
-                </ContextMenuItem>
-                <ContextMenuItem @select="emit('openAlbum', album)">
-                  Open tracks
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem @select="emit('editAlbum', album)">
-                  Edit metadata
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          </div>
-        </section>
-      </div>
     </ScrollArea>
+    <LibraryVirtualGrid
+      v-else
+      :get-item-key="(album) => album.key"
+      :grid-item-size="props.gridItemSize"
+      :groups="props.groups"
+    >
+      <template #item="{ item: album }">
+        <ContextMenu
+          @update:open="(isOpen) => isOpen && emit('selectAlbum', album)"
+        >
+          <ContextMenuTrigger as-child>
+            <article
+              class="album-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              :data-selected="props.selectedAlbumKey === album.key"
+              tabindex="0"
+              @click="emit('selectAlbum', album)"
+              @dblclick="emit('openAlbum', album)"
+              @keydown.enter.prevent="emit('openAlbum', album)"
+            >
+              <div
+                class="cover-art grid place-items-center rounded-lg [&>svg]:size-[34%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
+                :class="'aspect-square w-full'"
+              >
+                <YouTubeArtwork
+                  class="absolute inset-0 size-full object-cover [&_svg]:size-[34%] [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
+                  :video-id="album.videoId"
+                  :missing-icon="Disc3"
+                />
+              </div>
+              <div class="min-w-0">
+                <h2
+                  class="mt-2 overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+                >
+                  {{ album.title }}
+                </h2>
+                <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
+                  {{ album.artist }} · {{ album.trackCount }}
+                  {{ album.trackCount === 1 ? "song" : "songs" }}
+                </p>
+              </div>
+            </article>
+          </ContextMenuTrigger>
+          <ContextMenuContent data-album-context-menu>
+            <ContextMenuItem @select="emit('playAlbum', album)">
+              Play album
+            </ContextMenuItem>
+            <ContextMenuItem @select="emit('openAlbum', album)">
+              Open tracks
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem @select="emit('editAlbum', album)">
+              Edit metadata
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </template>
+    </LibraryVirtualGrid>
   </section>
 </template>
 
@@ -326,19 +316,5 @@ function toggleSort(column: AlbumSortColumn): void {
     var(--artwork-b) 58%,
     var(--artwork-c)
   );
-}
-
-.library-grid {
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(var(--grid-item-min-size, 176px), 100%), 1fr)
-  );
-  align-content: start;
-  gap: 1rem;
-}
-
-.library-group + .library-group {
-  margin-top: 1.5rem;
 }
 </style>

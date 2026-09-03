@@ -209,7 +209,7 @@ const selectedArtist = computed(() => {
 });
 const groupedTracks = computed<TrackGroup[]>(() => {
   if (groupBy.value === "none") {
-    return [{ items: libraryTracks.value, label: "" }];
+    return groupSortSections(libraryTracks.value, sortBy.value, "track");
   }
 
   return groupItems(libraryTracks.value, (track) =>
@@ -219,12 +219,12 @@ const groupedTracks = computed<TrackGroup[]>(() => {
   );
 });
 const groupedAlbums = computed<AlbumGroup[]>(() =>
-  groupCollection(libraryAlbums.value, (album) =>
+  groupGridCollection(libraryAlbums.value, "album", (album) =>
     groupBy.value === "artist" ? album.artist : album.title,
   ),
 );
 const groupedArtists = computed<ArtistGroup[]>(() =>
-  groupCollection(libraryArtists.value, (artist) =>
+  groupGridCollection(libraryArtists.value, "artist", (artist) =>
     groupBy.value === "album" ? "Artists" : artist.name,
   ),
 );
@@ -329,12 +329,64 @@ function sortValue(
   return track.title;
 }
 
-function groupCollection<T>(
+function alphabeticalSection(value: string): string {
+  const firstCharacter = Array.from(
+    value
+      .trim()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, ""),
+  )[0]?.toLocaleUpperCase();
+
+  return firstCharacter && /[A-Z]/.test(firstCharacter) ? firstCharacter : "#";
+}
+
+function durationSection(durationMs: number): string {
+  if (durationMs < 60_000) return "Under 1 min";
+  if (durationMs < 300_000) return "1–4 min";
+  if (durationMs < 600_000) return "5–9 min";
+  if (durationMs < 1_800_000) return "10–29 min";
+  if (durationMs < 3_600_000) return "30–59 min";
+  return "1 hr or more";
+}
+
+function sortSectionLabel(
+  item: MediaItem | LibraryAlbum | LibraryArtist,
+  option: LibrarySortOption,
+  kind: "album" | "artist" | "track",
+): string {
+  const value = sortValue(item, option, kind);
+
+  if (option.startsWith("duration")) {
+    return durationSection(Number(value));
+  }
+  if (kind === "album" && option.startsWith("track-count")) {
+    return `${value} ${value === 1 ? "track" : "tracks"}`;
+  }
+  if (kind === "artist" && option.startsWith("album-count")) {
+    return `${value} ${value === 1 ? "album" : "albums"}`;
+  }
+  if (kind === "artist" && option.startsWith("track-count")) {
+    return `${value} ${value === 1 ? "track" : "tracks"}`;
+  }
+
+  return alphabeticalSection(String(value));
+}
+
+function groupSortSections<T extends MediaItem | LibraryAlbum | LibraryArtist>(
   items: T[],
+  option: LibrarySortOption,
+  kind: "album" | "artist" | "track",
+): Array<{ items: T[]; label: string }> {
+  return groupItems(items, (item) => sortSectionLabel(item, option, kind));
+}
+
+function groupGridCollection<T extends LibraryAlbum | LibraryArtist>(
+  items: T[],
+  kind: "album" | "artist",
   getLabel: (item: T) => string,
 ): Array<{ items: T[]; label: string }> {
   if (groupBy.value === "none") {
-    return [{ items, label: "" }];
+    return groupSortSections(items, sortBy.value, kind);
   }
 
   return groupItems(items, getLabel);

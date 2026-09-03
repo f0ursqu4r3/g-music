@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Disc3, Volume2 } from "lucide-vue-next";
+import { Disc3, Volume2 } from 'lucide-vue-next';
 
-import type { MediaItem } from "@/api";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import YouTubeArtwork from "../YouTubeArtwork.vue";
-import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
-import type { TrackGroup } from "./types";
+import type { MediaItem } from '@/api';
+import YouTubeArtwork from '../YouTubeArtwork.vue';
+import LibraryTrackContextMenu from './LibraryTrackContextMenu.vue';
+import LibraryVirtualGrid from './LibraryVirtualGrid.vue';
+import type { TrackGroup } from './types';
 
 const props = defineProps<{
   groups: TrackGroup[];
@@ -28,7 +28,7 @@ const emit = defineEmits<{
 }>();
 
 function selectTrack(track: MediaItem): void {
-  emit("selectTrack", track);
+  emit('selectTrack', track);
 }
 </script>
 
@@ -38,81 +38,70 @@ function selectTrack(track: MediaItem): void {
     aria-label="Tracks grid"
     :style="{ '--grid-item-min-size': `${props.gridItemSize}px` }"
   >
-    <ScrollArea class="size-full">
-      <div class="px-7 py-6">
-        <section
-          v-for="group in props.groups"
-          :key="group.label || 'all-tracks'"
-          class="library-group"
+    <LibraryVirtualGrid
+      :get-item-key="(track) => track.id"
+      grid-class="track-grid"
+      :grid-item-size="props.gridItemSize"
+      :groups="props.groups"
+    >
+      <template #item="{ item: track }">
+        <LibraryTrackContextMenu
+          :is-favorite="props.favoriteTrackIds.includes(track.id)"
+          :track="track"
+          @add-to-queue="emit('addToQueue', $event)"
+          @edit="emit('editTrack', $event)"
+          @open-album="emit('openAlbum', $event)"
+          @open-artist="emit('openArtist', $event)"
+          @play="emit('playTrack', $event)"
+          @play-next="emit('playNext', $event)"
+          @remove="emit('removeTrack', $event)"
+          @select="selectTrack"
+          @toggle-favorite="emit('toggleFavorite', $event)"
         >
-          <h2
-            v-if="group.label"
-            class="mb-3 text-xs font-semibold tracking-wide text-(--muted-text) uppercase"
+          <article
+            :aria-label="`Play ${track.title}`"
+            :aria-selected="track.id === props.selectedTrackId"
+            class="track-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring) data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            :data-playing="track.id === props.playingItemId"
+            :data-selected="track.id === props.selectedTrackId"
+            :data-track-id="track.id"
+            tabindex="0"
+            @click="selectTrack(track)"
+            @keydown.enter.prevent="selectTrack(track)"
+            @keydown.space.prevent="selectTrack(track)"
           >
-            {{ group.label }}
-          </h2>
-          <div class="library-grid track-grid">
-            <LibraryTrackContextMenu
-              v-for="track in group.items"
-              :key="track.id"
-              :is-favorite="props.favoriteTrackIds.includes(track.id)"
-              :track="track"
-              @add-to-queue="emit('addToQueue', $event)"
-              @edit="emit('editTrack', $event)"
-              @open-album="emit('openAlbum', $event)"
-              @open-artist="emit('openArtist', $event)"
-              @play="emit('playTrack', $event)"
-              @play-next="emit('playNext', $event)"
-              @remove="emit('removeTrack', $event)"
-              @select="selectTrack"
-              @toggle-favorite="emit('toggleFavorite', $event)"
+            <div
+              class="cover-art grid aspect-square w-full place-items-center rounded-lg [&>svg]:size-[28%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
             >
-              <article
-                :aria-label="`Play ${track.title}`"
-                :aria-selected="track.id === props.selectedTrackId"
-                class="track-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring) data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
-                :data-playing="track.id === props.playingItemId"
-                :data-selected="track.id === props.selectedTrackId"
-                :data-track-id="track.id"
-                tabindex="0"
-                @click="selectTrack(track)"
-                @keydown.enter.prevent="selectTrack(track)"
-                @keydown.space.prevent="selectTrack(track)"
+              <YouTubeArtwork
+                class="absolute inset-0 size-full object-cover [&_svg]:size-[28%] [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
+                :video-id="track.id"
+                :missing-icon="Disc3"
+              />
+            </div>
+            <h2
+              class="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-semibold text-(--text)"
+            >
+              <Volume2
+                v-if="track.id === props.playingItemId"
+                class="track-playing-indicator size-3.5 shrink-0"
+                aria-label="Currently playing"
+              />
+              <span
+                class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
               >
-                <div
-                  class="cover-art grid aspect-square w-full place-items-center rounded-lg [&>svg]:size-[28%] [&>svg]:text-[oklch(0.98_0.01_90/0.74)]"
-                >
-                  <YouTubeArtwork
-                    class="absolute inset-0 size-full object-cover [&_svg]:size-[28%] [&_svg]:text-[oklch(0.98_0.01_90/0.74)]"
-                    :video-id="track.id"
-                    :missing-icon="Disc3"
-                  />
-                </div>
-                <h2
-                  class="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-semibold text-(--text)"
-                >
-                  <Volume2
-                    v-if="track.id === props.playingItemId"
-                    class="track-playing-indicator size-3.5 shrink-0"
-                    aria-label="Currently playing"
-                  />
-                  <span
-                    class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-                  >
-                    {{ track.title }}
-                  </span>
-                </h2>
-                <p
-                  class="mt-0.5 overflow-hidden text-[0.69rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
-                >
-                  {{ track.artist }}
-                </p>
-              </article>
-            </LibraryTrackContextMenu>
-          </div>
-        </section>
-      </div>
-    </ScrollArea>
+                {{ track.title }}
+              </span>
+            </h2>
+            <p
+              class="mt-0.5 overflow-hidden text-[0.69rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
+            >
+              {{ track.artist }}
+            </p>
+          </article>
+        </LibraryTrackContextMenu>
+      </template>
+    </LibraryVirtualGrid>
   </section>
 </template>
 
@@ -126,19 +115,5 @@ function selectTrack(track: MediaItem): void {
     var(--artwork-b) 58%,
     var(--artwork-c)
   );
-}
-
-.library-grid {
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(var(--grid-item-min-size, 176px), 100%), 1fr)
-  );
-  align-content: start;
-  gap: 1rem;
-}
-
-.library-group + .library-group {
-  margin-top: 1.5rem;
 }
 </style>

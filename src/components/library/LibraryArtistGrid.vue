@@ -16,6 +16,7 @@ import type {
   LibraryDisplayMode,
   LibrarySortOption,
 } from "./types";
+import LibraryVirtualGrid from "./LibraryVirtualGrid.vue";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
 type ArtistSortColumn = "album-count" | "duration" | "title" | "track-count";
@@ -77,9 +78,8 @@ function toggleSort(column: ArtistSortColumn): void {
     aria-label="Artists"
     :style="{ '--grid-item-min-size': `${props.gridItemSize}px` }"
   >
-    <ScrollArea class="size-full">
+    <ScrollArea v-if="props.displayMode === 'list'" class="size-full">
       <table
-        v-if="props.displayMode === 'list'"
         class="w-full table-fixed border-separate border-spacing-0 px-5 text-left"
         data-library-artist-list
       >
@@ -241,73 +241,64 @@ function toggleSort(column: ArtistSortColumn): void {
           </template>
         </tbody>
       </table>
-      <div class="px-7 py-6">
-        <section
-          v-if="props.displayMode === 'grid'"
-          v-for="group in props.groups"
-          :key="group.label || 'all-artists'"
-          class="library-group"
-        >
-          <h2
-            v-if="group.label"
-            class="mb-3 text-xs font-semibold tracking-wide text-(--muted-text) uppercase"
-          >
-            {{ group.label }}
-          </h2>
-          <div class="library-grid">
-            <ContextMenu
-              v-for="artist in group.items"
-              :key="artist.name"
-              @update:open="(isOpen) => isOpen && emit('selectArtist', artist)"
-            >
-              <ContextMenuTrigger as-child>
-                <article
-                  class="artist-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-                  :data-selected="props.selectedArtistName === artist.name"
-                  tabindex="0"
-                  @click="emit('selectArtist', artist)"
-                  @dblclick="emit('openArtist', artist)"
-                  @keydown.enter.prevent="emit('openArtist', artist)"
-                >
-                  <div
-                    class="cover-art grid place-items-center rounded-full [&>svg]:size-6 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
-                    :class="'aspect-square w-full'"
-                  >
-                    <YouTubeArtwork
-                      class="absolute inset-0 size-full object-cover [&_svg]:size-6 [&_svg]:text-[oklch(0.98_0.01_90/0.76)]"
-                      :video-id="artist.videoId"
-                      :missing-icon="Mic2"
-                    />
-                  </div>
-                  <div class="min-w-0">
-                    <h2
-                      class="overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
-                    >
-                      {{ artist.name }}
-                    </h2>
-                    <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
-                      {{ artist.detail }}
-                    </p>
-                  </div>
-                </article>
-              </ContextMenuTrigger>
-              <ContextMenuContent data-artist-context-menu>
-                <ContextMenuItem @select="emit('playArtist', artist)">
-                  Play artist
-                </ContextMenuItem>
-                <ContextMenuItem @select="emit('openArtist', artist)">
-                  Open tracks
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem @select="emit('editArtist', artist)">
-                  Edit metadata
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          </div>
-        </section>
-      </div>
     </ScrollArea>
+    <LibraryVirtualGrid
+      v-else
+      :get-item-key="(artist) => artist.name"
+      :grid-item-size="props.gridItemSize"
+      :groups="props.groups"
+      :item-height-padding="40"
+    >
+      <template #item="{ item: artist }">
+        <ContextMenu
+          @update:open="(isOpen) => isOpen && emit('selectArtist', artist)"
+        >
+          <ContextMenuTrigger as-child>
+            <article
+              class="artist-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              :data-selected="props.selectedArtistName === artist.name"
+              tabindex="0"
+              @click="emit('selectArtist', artist)"
+              @dblclick="emit('openArtist', artist)"
+              @keydown.enter.prevent="emit('openArtist', artist)"
+            >
+              <div
+                class="cover-art grid place-items-center rounded-full [&>svg]:size-6 [&>svg]:text-[oklch(0.98_0.01_90/0.76)]"
+                :class="'aspect-square w-full'"
+              >
+                <YouTubeArtwork
+                  class="absolute inset-0 size-full object-cover [&_svg]:size-6 [&_svg]:text-[oklch(0.98_0.01_90/0.76)]"
+                  :video-id="artist.videoId"
+                  :missing-icon="Mic2"
+                />
+              </div>
+              <div class="min-w-0">
+                <h2
+                  class="overflow-hidden text-[0.78rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
+                >
+                  {{ artist.name }}
+                </h2>
+                <p class="mt-0.5 text-[0.69rem] text-(--muted-text)">
+                  {{ artist.detail }}
+                </p>
+              </div>
+            </article>
+          </ContextMenuTrigger>
+          <ContextMenuContent data-artist-context-menu>
+            <ContextMenuItem @select="emit('playArtist', artist)">
+              Play artist
+            </ContextMenuItem>
+            <ContextMenuItem @select="emit('openArtist', artist)">
+              Open tracks
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem @select="emit('editArtist', artist)">
+              Edit metadata
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </template>
+    </LibraryVirtualGrid>
   </section>
 </template>
 
@@ -321,19 +312,5 @@ function toggleSort(column: ArtistSortColumn): void {
     var(--artwork-b) 58%,
     var(--artwork-c)
   );
-}
-
-.library-grid {
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(var(--grid-item-min-size, 176px), 100%), 1fr)
-  );
-  align-content: start;
-  gap: 1rem;
-}
-
-.library-group + .library-group {
-  margin-top: 1.5rem;
 }
 </style>

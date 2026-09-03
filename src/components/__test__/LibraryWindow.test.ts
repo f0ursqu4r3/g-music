@@ -130,6 +130,98 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("sections grid entries by the active sort field", async () => {
+    const sectionTracks: MediaItem[] = [
+      { ...importedTracks[0], id: "alpha", title: "Alpha" },
+      { ...importedTracks[1], id: "beta", title: "Beta" },
+      { ...importedTracks[0], id: "another", title: "Another" },
+    ];
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: {
+          ...snapshot,
+          currentItem: sectionTracks[0],
+          queue: sectionTracks,
+        },
+      },
+    });
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+
+    expect(
+      wrapper
+        .findAll("[data-library-section]")
+        .map((section) => section.text()),
+    ).toEqual(["A", "B"]);
+    expect(
+      wrapper
+        .findAll(".library-group")
+        .map((group) => group.findAll("[data-track-id]").length),
+    ).toEqual([2, 1]);
+
+    await wrapper
+      .get('button[aria-label="More library options"]')
+      .trigger("click");
+    await wrapper.get('[data-sort="title-desc"]').trigger("click");
+
+    expect(
+      wrapper
+        .findAll("[data-library-section]")
+        .map((section) => section.text()),
+    ).toEqual(["B", "A"]);
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    expect(
+      wrapper
+        .findAll("[data-library-section]")
+        .map((section) => section.text()),
+    ).toEqual(["C", "A"]);
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    expect(
+      wrapper
+        .findAll("[data-library-section]")
+        .map((section) => section.text()),
+    ).toEqual(["Y", "G"]);
+  });
+
+  it("virtualizes every library grid collection", async () => {
+    const tracks = Array.from({ length: 240 }, (_, index) => ({
+      ...importedTracks[index % importedTracks.length]!,
+      album: `Album ${index.toString().padStart(3, "0")}`,
+      artist: `Artist ${index.toString().padStart(3, "0")}`,
+      id: `track-${index}`,
+      title: `Track ${index.toString().padStart(3, "0")}`,
+    }));
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, currentItem: tracks[0], queue: tracks },
+      },
+    });
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    expect(wrapper.get("[data-library-grid-virtualizer]")).toBeDefined();
+    expect(wrapper.findAll("[data-track-id]").length).toBeLessThan(
+      tracks.length,
+    );
+
+    const trackGrid = wrapper.get(
+      '[aria-label="Tracks grid"] [data-slot="scroll-area-viewport"]',
+    );
+    trackGrid.element.scrollTop = 10_000;
+    await trackGrid.trigger("scroll");
+    expect(wrapper.find('[data-track-id="track-200"]').exists()).toBe(true);
+    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false);
+
+    await wrapper.get('[data-collection="albums"]').trigger("click");
+    expect(wrapper.findAll(".album-tile").length).toBeLessThan(tracks.length);
+
+    await wrapper.get('[data-collection="artists"]').trigger("click");
+    expect(wrapper.findAll(".artist-tile").length).toBeLessThan(tracks.length);
+  });
+
   it("sorts tracks from table column headers", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },

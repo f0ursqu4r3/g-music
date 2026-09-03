@@ -49,7 +49,7 @@ const sortOptions: ReadonlyArray<readonly [LibrarySortOption, string]> = [
   ["duration-asc", "Shortest first"],
 ];
 const groupOptions: ReadonlyArray<readonly [LibraryGroupOption, string]> = [
-  ["none", "No grouping"],
+  ["none", "Sort sections"],
   ["artist", "Artist"],
   ["album", "Album"],
 ];
