@@ -124,6 +124,43 @@ describe("QueueWindow", () => {
     expect(wrapper.get('[data-current="true"]').text()).toContain("Toxicity");
   });
 
+  it("shows the active shuffled playback order", async () => {
+    const wrapper = mount(QueueWindow, {
+      props: {
+        currentItemId: "track-1",
+        isStarting: false,
+        isUpdating: false,
+        playbackOrder: ["track-1", "track-3", "track-2"],
+        positionMs: 0,
+        queue: [
+          queue[0]!,
+          queue[1]!,
+          {
+            id: "track-3",
+            title: "Sugar",
+            artist: "System of a Down",
+            durationMs: 155_000,
+          },
+        ],
+        shuffleEnabled: true,
+        status: "playing",
+      },
+    });
+
+    expect(
+      wrapper.get('[data-queue-item][data-queue-index="1"]').text(),
+    ).toContain("Sugar");
+    expect(
+      wrapper.get('[data-queue-item][data-queue-index="2"]').text(),
+    ).toContain("Toxicity");
+
+    await wrapper
+      .get('button[aria-label="Remove Toxicity from queue"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("remove")).toEqual([[1]]);
+  });
+
   it("mounts only visible queue rows for a large queue", () => {
     const largeQueue = Array.from({ length: 100 }, (_, index) => ({
       ...queue[index % queue.length]!,

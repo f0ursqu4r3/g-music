@@ -152,6 +152,7 @@ pub struct PlaybackSnapshot {
     pub shuffle_enabled: bool,
     pub repeat_mode: RepeatMode,
     pub queue: Vec<MediaItem>,
+    pub playback_order: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

@@ -32,13 +32,16 @@ impl FakePlaybackProvider {
                 shuffle_enabled: false,
                 repeat_mode: RepeatMode::Off,
                 queue,
+                playback_order: Vec::new(),
             },
             shuffle_order: Vec::new(),
         }
     }
 
     pub fn snapshot(&self) -> PlaybackSnapshot {
-        self.snapshot.clone()
+        let mut snapshot = self.snapshot.clone();
+        snapshot.playback_order = self.shuffle_order.clone();
+        snapshot
     }
 
     pub fn play(&mut self) {
@@ -286,6 +289,11 @@ mod tests {
 
         assert!(provider.snapshot().shuffle_enabled);
         assert_eq!(provider.snapshot().queue, initial_queue);
+        assert_eq!(
+            serde_json::to_value(provider.snapshot())
+                .expect("the playback snapshot is serializable")["playbackOrder"],
+            serde_json::json!(provider.shuffle_order)
+        );
 
         provider.next();
         assert_eq!(

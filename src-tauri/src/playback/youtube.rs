@@ -187,6 +187,7 @@ impl YouTubePlaybackProvider {
                 shuffle_enabled: false,
                 repeat_mode: RepeatMode::Off,
                 queue: Vec::new(),
+                playback_order: Vec::new(),
             },
         }
     }
@@ -582,7 +583,9 @@ impl YouTubePlaybackProvider {
     pub fn snapshot(&mut self) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
         self.update_transport()?;
 
-        Ok(self.snapshot.clone())
+        let mut snapshot = self.snapshot.clone();
+        snapshot.playback_order = self.shuffle_order.clone();
+        Ok(snapshot)
     }
 
     pub fn transport(&mut self) -> Result<PlaybackTransport, YouTubePlaybackError> {
@@ -2590,6 +2593,13 @@ mod tests {
                 .map(|item| item.id.as_str())
                 .collect::<Vec<_>>(),
             queue_ids
+        );
+        assert_eq!(
+            provider
+                .snapshot()
+                .expect("the shuffled playback snapshot is available")
+                .playback_order,
+            provider.shuffle_order
         );
 
         provider.toggle_shuffle().expect("shuffle can be disabled");

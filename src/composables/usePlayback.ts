@@ -68,13 +68,20 @@ function readErrorMessage(error: unknown): string {
 export function usePlayback(client: PlaybackClient = playbackApi) {
   const library = shallowRef<LibrarySnapshot | null>(null);
   const queue = shallowRef<PlaybackSnapshot["queue"]>([]);
+  const playbackOrder = shallowRef<string[]>([]);
   const transport = ref<PlaybackTransport | null>(null);
   const snapshot = computed<PlaybackSnapshot | null>(() => {
     if (!transport.value) {
       return null;
     }
 
-    return { ...transport.value, queue: queue.value };
+    return {
+      ...transport.value,
+      ...(playbackOrder.value.length > 0
+        ? { playbackOrder: playbackOrder.value }
+        : {}),
+      queue: queue.value,
+    };
   });
   const errorMessage = ref("");
   const importProgress = ref<ImportProgress | null>(null);
@@ -113,6 +120,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   function applySnapshot(nextSnapshot: PlaybackSnapshot): void {
+    playbackOrder.value = nextSnapshot.playbackOrder ?? [];
     queue.value = nextSnapshot.queue;
     applyTransport(nextSnapshot);
   }
@@ -167,13 +175,13 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     isUpdating.value = true;
     errorMessage.value = "";
     try {
-      if (client.inspectLibrary && client.inspectTransport) {
-        const [nextLibrary, nextTransport] = await Promise.all([
+      if (client.inspectLibrary) {
+        const [nextLibrary, nextSnapshot] = await Promise.all([
           client.inspectLibrary(),
-          client.inspectTransport(),
+          client.inspect(),
         ]);
         library.value = nextLibrary;
-        transport.value = nextTransport;
+        applySnapshot(nextSnapshot);
       } else {
         applySnapshot(await client.inspect());
       }

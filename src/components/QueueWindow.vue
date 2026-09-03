@@ -34,8 +34,10 @@ import YouTubeArtwork from "./YouTubeArtwork.vue";
 
 interface Props {
   queue: MediaItem[];
+  playbackOrder?: string[];
   currentItemId: string | undefined;
   status: PlaybackStatus;
+  shuffleEnabled?: boolean;
   positionMs: number;
   isStarting: boolean;
   isUpdating: boolean;
@@ -51,18 +53,44 @@ const emit = defineEmits<{
   remove: [index: number];
 }>();
 
+const displayQueue = computed(() => {
+  if (
+    !props.shuffleEnabled ||
+    !props.playbackOrder ||
+    props.playbackOrder.length !== props.queue.length ||
+    new Set(props.playbackOrder).size !== props.queue.length
+  ) {
+    return props.queue;
+  }
+
+  const itemsById = new Map(props.queue.map((item) => [item.id, item]));
+  const orderedQueue: MediaItem[] = [];
+  for (const id of props.playbackOrder) {
+    const item = itemsById.get(id);
+    if (!item) {
+      return props.queue;
+    }
+    orderedQueue.push(item);
+  }
+
+  return orderedQueue;
+});
+const isShuffled = computed(() => displayQueue.value !== props.queue);
 const currentItem = computed(
-  () => props.queue.find((item) => item.id === props.currentItemId) ?? null,
+  () =>
+    displayQueue.value.find((item) => item.id === props.currentItemId) ?? null,
 );
 const isPlaying = computed(() => props.status === "playing");
 const queueStartIndex = computed(() => {
-  const index = props.queue.findIndex(
+  const index = displayQueue.value.findIndex(
     (item) => item.id === props.currentItemId,
   );
 
   return index >= 0 ? index : 0;
 });
-const visibleQueue = computed(() => props.queue.slice(queueStartIndex.value));
+const visibleQueue = computed(() =>
+  displayQueue.value.slice(queueStartIndex.value),
+);
 const totalDurationMs = computed(() =>
   visibleQueue.value.reduce((total, item) => total + item.durationMs, 0),
 );
@@ -131,6 +159,10 @@ function playTrack(id: string): void {
   }
 }
 
+function queueIndex(id: string): number {
+  return props.queue.findIndex((item) => item.id === id);
+}
+
 function startQueueReorder(itemId: string): void {
   activeReorderId.value = itemId;
 }
@@ -143,7 +175,7 @@ function finishQueueReorder(): void {
   const itemId = activeReorderId.value;
   activeReorderId.value = null;
 
-  if (!itemId || props.isUpdating || props.isStarting) {
+  if (!itemId || props.isUpdating || props.isStarting || isShuffled.value) {
     reorderQueue.value = [...visibleQueue.value];
     return;
   }
@@ -162,11 +194,19 @@ function finishQueueReorder(): void {
   emit("move", from, to);
 }
 
-watch([() => props.queue, () => props.currentItemId], () => {
-  reorderQueue.value = [...visibleQueue.value];
-  activeReorderId.value = null;
-  isReorderPending.value = false;
-});
+watch(
+  [
+    () => props.queue,
+    () => props.currentItemId,
+    () => props.playbackOrder,
+    () => props.shuffleEnabled,
+  ],
+  () => {
+    reorderQueue.value = [...visibleQueue.value];
+    activeReorderId.value = null;
+    isReorderPending.value = false;
+  },
+);
 
 watch(
   () => props.isUpdating,
@@ -246,7 +286,10 @@ watch(
                 <ReorderItem
                   as="article"
                   :drag="
-                    isUpdating || isStarting || item.id === currentItemId
+                    isShuffled ||
+                    isUpdating ||
+                    isStarting ||
+                    item.id === currentItemId
                       ? false
                       : 'y'
                   "
@@ -310,6 +353,7 @@ watch(
                       size="icon-xs"
                       variant="ghost"
                       :disabled="
+                        isShuffled ||
                         isUpdating ||
                         item.id === currentItemId ||
                         virtualItem.index === 0
@@ -330,6 +374,7 @@ watch(
                       size="icon-xs"
                       variant="ghost"
                       :disabled="
+                        isShuffled ||
                         isUpdating ||
                         item.id === currentItemId ||
                         virtualItem.index === visibleQueue.length - 1
@@ -351,9 +396,7 @@ watch(
                       size="icon-xs"
                       variant="ghost"
                       :disabled="isUpdating || isStarting"
-                      @click.stop="
-                        emit('remove', queueStartIndex + virtualItem.index)
-                      "
+                      @click.stop="emit('remove', queueIndex(item.id))"
                     >
                       <Trash2 aria-hidden="true" />
                     </Button>
@@ -372,6 +415,7 @@ watch(
                 <ContextMenuSeparator />
                 <ContextMenuItem
                   :disabled="
+                    isShuffled ||
                     isUpdating ||
                     isStarting ||
                     item.id === currentItemId ||
@@ -389,6 +433,7 @@ watch(
                 </ContextMenuItem>
                 <ContextMenuItem
                   :disabled="
+                    isShuffled ||
                     isUpdating ||
                     isStarting ||
                     item.id === currentItemId ||
@@ -409,7 +454,7 @@ watch(
                   v-if="item.id !== currentItemId"
                   variant="destructive"
                   :disabled="isUpdating || isStarting"
-                  @select="emit('remove', queueStartIndex + virtualItem.index)"
+                  @select="emit('remove', queueIndex(item.id))"
                 >
                   Remove from queue
                 </ContextMenuItem>

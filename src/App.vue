@@ -331,8 +331,10 @@ onUnmounted(() => {
     <QueueWindow
       v-else-if="view === 'queue'"
       :queue="playbackSnapshot.queue"
+      :playback-order="playbackSnapshot.playbackOrder"
       :current-item-id="playbackSnapshot.currentItem?.id"
       :status="playbackSnapshot.status"
+      :shuffle-enabled="playbackSnapshot.shuffleEnabled"
       :position-ms="playbackSnapshot.positionMs"
       :is-starting="playback.isStarting.value"
       :is-updating="playback.isUpdating.value"

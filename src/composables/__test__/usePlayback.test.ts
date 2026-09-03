@@ -137,15 +137,16 @@ describe("usePlayback", () => {
       status: "playing" as const,
       volumePercent: 70,
     };
+    const initialSnapshot: PlaybackSnapshot = {
+      ...initialTransport,
+      queue: [library.tracks[0]!],
+    };
     const advancedTransport = { ...initialTransport, positionMs: 2_000 };
     const client = {
       importYouTubeUrls: vi.fn(),
-      inspect: vi.fn(),
+      inspect: vi.fn().mockResolvedValue(initialSnapshot),
       inspectLibrary: vi.fn().mockResolvedValue(library),
-      inspectTransport: vi
-        .fn()
-        .mockResolvedValueOnce(initialTransport)
-        .mockResolvedValueOnce(advancedTransport),
+      inspectTransport: vi.fn().mockResolvedValue(advancedTransport),
       moveQueueItem: vi.fn(),
       next: vi.fn(),
       pause: vi.fn(),
@@ -163,8 +164,57 @@ describe("usePlayback", () => {
 
     expect(playback.library.value).toBe(loadedLibrary);
     expect(playback.transport.value?.positionMs).toBe(2_000);
+    expect(playback.snapshot.value?.queue).toEqual(initialSnapshot.queue);
+    expect(client.inspect).toHaveBeenCalledOnce();
     expect(client.inspectLibrary).toHaveBeenCalledOnce();
-    expect(client.inspectTransport).toHaveBeenCalledTimes(2);
+    expect(client.inspectTransport).toHaveBeenCalledOnce();
+  });
+
+  it("loads the full queue before transport-only synchronization", async () => {
+    const queuedTrack = {
+      artist: "YouTube Creators",
+      durationMs: 207_000,
+      id: "BaW_jenozKc",
+      title: "Creator Studio Session",
+    };
+    const snapshot: PlaybackSnapshot = {
+      currentItem: queuedTrack,
+      positionMs: 1_000,
+      queue: [queuedTrack],
+      status: "playing",
+      volumePercent: 70,
+    };
+    const client = {
+      importYouTubeUrls: vi.fn(),
+      inspect: vi.fn().mockResolvedValue(snapshot),
+      inspectLibrary: vi.fn().mockResolvedValue({
+        playlists: [],
+        tracks: [queuedTrack],
+      }),
+      inspectTransport: vi.fn().mockResolvedValue({
+        ...snapshot,
+        positionMs: 2_000,
+      }),
+      moveQueueItem: vi.fn(),
+      next: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      playTrack: vi.fn(),
+      previous: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const playback = usePlayback(client);
+
+    await playback.refresh();
+    await playback.sync();
+
+    expect(playback.snapshot.value).toEqual({
+      ...snapshot,
+      positionMs: 2_000,
+    });
+    expect(client.inspect).toHaveBeenCalledOnce();
+    expect(client.inspectTransport).toHaveBeenCalledOnce();
   });
 
   it("starts import work without blocking playback commands", async () => {
@@ -293,7 +343,7 @@ describe("usePlayback", () => {
     };
     const client = {
       importYouTubeUrls: vi.fn(),
-      inspect: vi.fn(),
+      inspect: vi.fn().mockResolvedValue({ ...transport, queue: [] }),
       inspectLibrary: vi.fn().mockResolvedValue(library),
       inspectTransport: vi.fn().mockResolvedValue(transport),
       moveQueueItem: vi.fn(),

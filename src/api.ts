@@ -45,6 +45,7 @@ export interface PlaybackSnapshot {
   shuffleEnabled?: boolean;
   repeatMode?: RepeatMode;
   queue: MediaItem[];
+  playbackOrder?: string[];
 }
 
 export interface PlaybackTransport {
