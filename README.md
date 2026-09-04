@@ -96,10 +96,21 @@ also run the bridge directly for protocol debugging:
 bun run mcp
 ```
 
-## Library drag and drop
+## Library controls
+
+Click a track to select it. Command-click or Control-click toggles individual
+tracks. Shift-click selects a range. The context menu applies playback, queue,
+Favorites, and removal actions to the selected tracks.
+
+To remove tracks from a custom playlist, open the playlist, select the tracks,
+and choose **Remove from playlist** from the context menu. This keeps the tracks
+in the library, other playlists, and the play queue. **Remove from library** is
+a separate action that requires confirmation.
 
 Drag selected tracks from the list or grid onto a custom playlist to add them.
-Favorites and Most Played are not drop targets.
+Favorites and Most Played are not drop targets. Drag the sidebar's right edge
+to resize it. When the resize control has keyboard focus, use the arrow keys,
+Home, or End to change its width.
 
 The Library window uses HTML drag and drop. Keep Tauri's native file-drop
 handler disabled: `dragDropEnabled: false` in the startup window configuration

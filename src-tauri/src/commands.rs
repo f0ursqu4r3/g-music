@@ -508,13 +508,18 @@ pub fn inspect_playback(state: State<'_, AppState>) -> Result<PlaybackSnapshot, 
 
 #[tauri::command]
 pub fn inspect_playback_transport(
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<PlaybackTransport, CommandError> {
-    with_playback(
+    let (transport, snapshot_update) = with_playback(
         &state,
         "inspect_playback_transport",
-        YouTubePlaybackProvider::transport,
-    )
+        YouTubePlaybackProvider::transport_with_snapshot_update,
+    )?;
+    if let Some(snapshot) = snapshot_update {
+        emit_playback_updated(&app, &snapshot);
+    }
+    Ok(transport)
 }
 
 #[tauri::command]

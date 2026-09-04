@@ -15,19 +15,25 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LibraryAlbum, LibraryArtist } from "./types";
 import YouTubeArtwork from "../YouTubeArtwork.vue";
 
-const props = defineProps<{
-  isOpen: boolean;
-  selectedTrack: MediaItem | null;
-  selectedAlbum: LibraryAlbum | null;
-  selectedArtist: LibraryArtist | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    isOpen: boolean;
+    selectedTrack: MediaItem | null;
+    selectedTracks?: MediaItem[];
+    selectedAlbum: LibraryAlbum | null;
+    selectedArtist: LibraryArtist | null;
+  }>(),
+  {
+    selectedTracks: () => [],
+  },
+);
 
 const emit = defineEmits<{
   editTrack: [track: MediaItem];
   editAlbum: [album: LibraryAlbum];
   editArtist: [artist: LibraryArtist];
-  playNext: [track: MediaItem];
-  addToQueue: [track: MediaItem];
+  playNext: [tracks: MediaItem[]];
+  addToQueue: [tracks: MediaItem[]];
 }>();
 
 interface TrackDetail {
@@ -43,6 +49,10 @@ const timestampFormat = new Intl.DateTimeFormat(undefined, {
 const isDescriptionExpanded = ref(false);
 const hasLongDescription = computed(
   () => (props.selectedTrack?.description?.length ?? 0) > 280,
+);
+const hasMultipleTracks = computed(() => props.selectedTracks.length > 1);
+const selectedTracksDurationMs = computed(() =>
+  props.selectedTracks.reduce((total, track) => total + track.durationMs, 0),
 );
 const trackDetails = computed<TrackDetail[]>(() => {
   const track = props.selectedTrack;
@@ -133,13 +143,15 @@ watch(
         : 'translate-x-3 pointer-events-none opacity-0'
     "
     :data-library-info="
-      props.selectedTrack
-        ? 'track'
-        : props.selectedAlbum
-          ? 'album'
-          : props.selectedArtist
-            ? 'artist'
-            : 'empty'
+      hasMultipleTracks
+        ? 'tracks'
+        : props.selectedTrack
+          ? 'track'
+          : props.selectedAlbum
+            ? 'album'
+            : props.selectedArtist
+              ? 'artist'
+              : 'empty'
     "
     data-library-selected-sidebar
     :aria-hidden="props.isOpen ? undefined : 'true'"
@@ -148,7 +160,40 @@ watch(
   >
     <ScrollArea class="size-full">
       <div class="p-5">
-        <div v-if="props.selectedTrack" data-library-info="track">
+        <div v-if="hasMultipleTracks" data-library-info="tracks">
+          <p
+            class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
+          >
+            Tracks
+          </p>
+          <h2 class="m-0 text-lg font-semibold text-(--text)">
+            {{ props.selectedTracks.length }} tracks selected
+          </h2>
+          <p class="mt-1 text-sm text-(--muted-text)">
+            {{ formatDuration(selectedTracksDurationMs) }}
+          </p>
+          <div class="mt-5 grid grid-cols-2 gap-2">
+            <button
+              class="inline-flex items-center justify-center gap-1.5 rounded-md bg-(--text) px-2.5 py-1.5 text-xs font-medium text-(--accent-ink) hover:bg-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+              :aria-label="`Play ${props.selectedTracks.length} tracks next`"
+              type="button"
+              @click="emit('playNext', props.selectedTracks)"
+            >
+              <Play aria-hidden="true" fill="currentColor" />
+              Play next
+            </button>
+            <button
+              class="inline-flex items-center justify-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+              :aria-label="`Add ${props.selectedTracks.length} tracks to queue`"
+              type="button"
+              @click="emit('addToQueue', props.selectedTracks)"
+            >
+              <ListPlus aria-hidden="true" />
+              Add to queue
+            </button>
+          </div>
+        </div>
+        <div v-else-if="props.selectedTrack" data-library-info="track">
           <div
             class="cover-art -mx-5 -mt-5 mb-5 aspect-square w-[calc(100%+2.5rem)]"
             data-library-info-artwork
@@ -175,7 +220,7 @@ watch(
               class="inline-flex items-center justify-center gap-1.5 rounded-md bg-(--text) px-2.5 py-1.5 text-xs font-medium text-(--accent-ink) hover:bg-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
               :aria-label="`Play ${props.selectedTrack.title} next`"
               type="button"
-              @click="emit('playNext', props.selectedTrack)"
+              @click="emit('playNext', [props.selectedTrack])"
             >
               <Play aria-hidden="true" fill="currentColor" />
               Play next
@@ -184,7 +229,7 @@ watch(
               class="inline-flex items-center justify-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
               :aria-label="`Add ${props.selectedTrack.title} to queue`"
               type="button"
-              @click="emit('addToQueue', props.selectedTrack)"
+              @click="emit('addToQueue', [props.selectedTrack])"
             >
               <ListPlus aria-hidden="true" />
               Add to queue

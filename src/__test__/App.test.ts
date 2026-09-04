@@ -247,7 +247,9 @@ describe("application landmarks", () => {
     wrapper.getComponent(QueueWindow).vm.$emit("move", 0, 1);
 
     expect(wrapper.getComponent(QueueWindow).props("status")).toBe("paused");
-    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive");
+    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive", [
+      "night-drive",
+    ]);
     expect(playbackMocks.moveQueueItem).toHaveBeenCalledWith(0, 1);
   });
 

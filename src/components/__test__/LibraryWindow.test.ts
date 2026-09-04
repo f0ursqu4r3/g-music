@@ -38,6 +38,40 @@ const transport: PlaybackTransport = {
   volumePercent: 64,
 };
 
+function createTrackDataTransfer(): DataTransfer {
+  const values = new Map<string, string>();
+  const types: string[] = [];
+
+  return {
+    effectAllowed: "uninitialized",
+    getData: (type: string) => values.get(type) ?? "",
+    setData: (type: string, value: string) => {
+      values.set(type, value);
+      if (!types.includes(type)) {
+        types.push(type);
+      }
+    },
+    types,
+  } as unknown as DataTransfer;
+}
+
+function createPlainTextTrackDataTransfer(
+  types: string[] = ["text/plain"],
+): DataTransfer {
+  const values = new Map<string, string>();
+
+  return {
+    effectAllowed: "uninitialized",
+    getData: (type: string) => values.get(type) ?? "",
+    setData: (type: string, value: string) => {
+      if (type === "text/plain") {
+        values.set(type, value);
+      }
+    },
+    types,
+  } as unknown as DataTransfer;
+}
+
 describe("LibraryWindow", () => {
   it("renders from stable library tracks and separate transport state", () => {
     const wrapper = mount(LibraryWindow, {
@@ -681,6 +715,22 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("applies sidebar resize updates to the library grid", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: { isUpdating: false, snapshot },
+    });
+
+    expect(wrapper.get("main").attributes("style")).toContain(
+      "--library-sidebar-width: 244px",
+    );
+
+    await wrapper.getComponent(LibrarySidebar).vm.$emit("resizeSidebar", 300);
+
+    expect(wrapper.get("main").attributes("style")).toContain(
+      "--library-sidebar-width: 300px",
+    );
+  });
+
   it("uses shared scroll areas for library content surfaces", async () => {
     const wrapper = mount(LibraryWindow, {
       props: { isUpdating: false, snapshot },
@@ -942,7 +992,9 @@ describe("LibraryWindow", () => {
     const titleResizeHandle = wrapper.get(
       '[role="separator"][aria-label="Resize Title column"]',
     );
-    expect(wrapper.findAll('[role="separator"]')).toHaveLength(4);
+    expect(
+      wrapper.findAll('[role="separator"][aria-label$="column"]'),
+    ).toHaveLength(4);
 
     await titleResizeHandle.trigger("keydown", { key: "ArrowRight" });
 
@@ -981,6 +1033,241 @@ describe("LibraryWindow", () => {
       "Creator Studio Session",
     );
     expect(wrapper.emitted("playTrack")).toBeUndefined();
+  });
+
+  it("selects multiple tracks and updates their shared details and context actions", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: { isUpdating: false, snapshot },
+    });
+
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+    await wrapper
+      .get('[data-track-id="BaW_jenozKc"]')
+      .trigger("click", { metaKey: true });
+
+    expect(
+      wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes("data-selected"),
+    ).toBe("true");
+    expect(
+      wrapper.get('[data-track-id="BaW_jenozKc"]').attributes("data-selected"),
+    ).toBe("true");
+    expect(wrapper.get('[data-library-info="tracks"]').text()).toContain(
+      "2 tracks selected",
+    );
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    expect(
+      wrapper
+        .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
+        .attributes("data-selected"),
+    ).toBe("true");
+    expect(
+      wrapper
+        .get('.track-grid [data-track-id="BaW_jenozKc"]')
+        .attributes("data-selected"),
+    ).toBe("true");
+    await wrapper.get('button[aria-label="List view"]').trigger("click");
+
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+
+    const menu = document.body.querySelector("[data-track-context-menu]");
+    expect(menu?.textContent).toContain("Play 2 tracks");
+    expect(menu?.textContent).toContain("Add 2 tracks to queue");
+    expect(menu?.textContent).toContain("Remove 2 tracks from library…");
+    expect(menu?.textContent).not.toContain("Go to album");
+    expect(menu?.textContent).not.toContain("Edit metadata");
+
+    await document
+      .querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')
+      ?.click();
+    expect(wrapper.get('[role="dialog"]').text()).toContain(
+      "Remove 2 tracks from your library",
+    );
+
+    await wrapper.get("[data-confirm-track-removal]").trigger("click");
+    expect(wrapper.emitted("removeTracks")).toEqual([
+      [["BaW_jenozKc", "M7lc1UVf-VE"]],
+    ]);
+    wrapper.unmount();
+  });
+
+  it("adds selected tracks to a user playlist when dropped in the sidebar", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [{ id: "focus", name: "Focus", trackIds: ["M7lc1UVf-VE"] }],
+        snapshot,
+      },
+    });
+    const dataTransfer = createTrackDataTransfer();
+
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+    await wrapper
+      .get('[data-track-id="BaW_jenozKc"]')
+      .trigger("click", { metaKey: true });
+    await wrapper
+      .get('[data-track-id="BaW_jenozKc"]')
+      .trigger("dragstart", { dataTransfer });
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("dragover", { dataTransfer });
+
+    expect(
+      wrapper
+        .get('[data-playlist-reorder-item="focus"]')
+        .attributes("data-drop-target"),
+    ).toBe("true");
+
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("drop", { dataTransfer });
+
+    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+      [
+        {
+          id: "focus",
+          name: "Focus",
+          trackIds: ["M7lc1UVf-VE", "BaW_jenozKc"],
+        },
+      ],
+    ]);
+  });
+
+  it("enables native WebKit dragging from list and grid track items", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: { isUpdating: false, snapshot },
+    });
+    const dataTransfer = createTrackDataTransfer();
+    const setDragImage = vi.fn();
+    dataTransfer.setDragImage = setDragImage;
+
+    const listTrack = wrapper.get('[data-track-id="BaW_jenozKc"]');
+    expect(listTrack.attributes("draggable")).toBe("true");
+    expect(listTrack.classes()).toContain("library-track-drag-source");
+
+    await listTrack.trigger("dragstart", { dataTransfer });
+
+    expect(setDragImage).toHaveBeenCalledOnce();
+    const dragImage = setDragImage.mock.calls[0]?.[0] as HTMLElement;
+    expect(document.body.contains(dragImage)).toBe(true);
+    expect(dragImage.style.transform).toBe("none");
+
+    await listTrack.trigger("dragend", { dataTransfer });
+    expect(document.body.contains(dragImage)).toBe(false);
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+
+    const gridTrack = wrapper.get('.track-grid [data-track-id="BaW_jenozKc"]');
+    expect(gridTrack.attributes("draggable")).toBe("true");
+    expect(gridTrack.classes()).toContain("library-track-drag-source");
+
+    wrapper.unmount();
+  });
+
+  it("adds selected tracks when WebKit exposes only text/plain drag data", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
+        snapshot,
+      },
+    });
+    const dataTransfer = createPlainTextTrackDataTransfer();
+
+    await wrapper
+      .get('[data-track-id="BaW_jenozKc"]')
+      .trigger("dragstart", { dataTransfer });
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("dragover", { dataTransfer });
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("drop", { dataTransfer });
+
+    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+      [
+        {
+          id: "focus",
+          name: "Focus",
+          trackIds: ["BaW_jenozKc"],
+        },
+      ],
+    ]);
+  });
+
+  it("adds selected tracks when WebKit withholds drag type metadata", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
+        snapshot,
+      },
+    });
+    const dataTransfer = createPlainTextTrackDataTransfer([]);
+
+    await wrapper
+      .get('[data-track-id="BaW_jenozKc"]')
+      .trigger("dragstart", { dataTransfer });
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("dragover", { dataTransfer });
+
+    expect(
+      wrapper
+        .get('[data-playlist-reorder-item="focus"]')
+        .attributes("data-drop-target"),
+    ).toBe("true");
+
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("drop", { dataTransfer });
+
+    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+      [
+        {
+          id: "focus",
+          name: "Focus",
+          trackIds: ["BaW_jenozKc"],
+        },
+      ],
+    ]);
+  });
+
+  it("adds selected grid tracks to a user playlist when dropped in the sidebar", async () => {
+    const wrapper = mount(LibraryWindow, {
+      props: {
+        isUpdating: false,
+        playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
+        snapshot,
+      },
+    });
+    const dataTransfer = createTrackDataTransfer();
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    await wrapper
+      .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
+      .trigger("click");
+    await wrapper
+      .get('.track-grid [data-track-id="BaW_jenozKc"]')
+      .trigger("click", { metaKey: true });
+    await wrapper
+      .get('.track-grid [data-track-id="BaW_jenozKc"]')
+      .trigger("dragstart", { dataTransfer });
+    await wrapper
+      .get('[data-playlist-reorder-item="focus"]')
+      .trigger("drop", { dataTransfer });
+
+    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+      [
+        {
+          id: "focus",
+          name: "Focus",
+          trackIds: ["BaW_jenozKc", "M7lc1UVf-VE"],
+        },
+      ],
+    ]);
   });
 
   it("routes shuffle and repeat mode controls through the library command boundary", async () => {
@@ -1109,8 +1396,8 @@ describe("LibraryWindow", () => {
       .get('button[aria-label="Add Creator Studio Session to queue"]')
       .trigger("click");
 
-    expect(wrapper.emitted("playNext")).toEqual([["BaW_jenozKc"]]);
-    expect(wrapper.emitted("addToQueue")).toEqual([["BaW_jenozKc"]]);
+    expect(wrapper.emitted("playNext")).toEqual([[["BaW_jenozKc"]]]);
+    expect(wrapper.emitted("addToQueue")).toEqual([[["BaW_jenozKc"]]]);
   });
 
   it("opens a track action menu with the current library actions", async () => {
@@ -1147,7 +1434,7 @@ describe("LibraryWindow", () => {
       )
       ?.click();
 
-    expect(wrapper.emitted("playNext")).toEqual([["BaW_jenozKc"]]);
+    expect(wrapper.emitted("playNext")).toEqual([[["BaW_jenozKc"]]]);
 
     wrapper.unmount();
   });
@@ -1371,7 +1658,7 @@ describe("LibraryWindow", () => {
 
     await favorite.trigger("click");
 
-    expect(wrapper.emitted("toggleFavorite")).toEqual([["BaW_jenozKc"]]);
+    expect(wrapper.emitted("toggleFavorite")).toEqual([[["BaW_jenozKc"]]]);
   });
 
   it("keeps the left sidebar navigation controls", () => {

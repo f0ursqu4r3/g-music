@@ -152,6 +152,29 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     }
   }
 
+  /** Run a sequential batch of single-id commands inside one isUpdating guard. */
+  async function executeBatch(
+    ids: string[],
+    action: (id: string) => Promise<PlaybackSnapshot>,
+  ): Promise<void> {
+    if (isUpdating.value || ids.length === 0) {
+      return;
+    }
+
+    isUpdating.value = true;
+    errorMessage.value = "";
+
+    try {
+      for (const id of ids) {
+        applySnapshot(await action(id));
+      }
+    } catch (error) {
+      errorMessage.value = readErrorMessage(error);
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
   async function startPlayback(
     action: () => Promise<PlaybackSnapshot>,
   ): Promise<void> {
@@ -309,16 +332,16 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     );
   }
 
-  async function playNext(id: string): Promise<void> {
-    if (client.playNext) {
-      await execute(() => client.playNext!(id));
-    }
+  async function playNext(id: string | string[]): Promise<void> {
+    if (!client.playNext) return;
+    const ids = Array.isArray(id) ? id : [id];
+    await executeBatch(ids, (singleId) => client.playNext!(singleId));
   }
 
-  async function addToQueue(id: string): Promise<void> {
-    if (client.addToQueue) {
-      await execute(() => client.addToQueue!(id));
-    }
+  async function addToQueue(id: string | string[]): Promise<void> {
+    if (!client.addToQueue) return;
+    const ids = Array.isArray(id) ? id : [id];
+    await executeBatch(ids, (singleId) => client.addToQueue!(singleId));
   }
 
   async function updateTracksMetadata(
@@ -343,15 +366,20 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await execute(() => client.seek(positionMs));
   }
 
-  async function toggleFavorite(id: string): Promise<void> {
+  async function toggleFavorite(id: string | string[]): Promise<void> {
     if (isUpdating.value || !client.toggleFavorite) {
       return;
     }
 
+    const ids = Array.isArray(id) ? [...new Set(id)] : [id];
+    if (ids.length === 0) return;
+
     isUpdating.value = true;
     errorMessage.value = "";
     try {
-      library.value = await client.toggleFavorite(id);
+      for (const singleId of ids) {
+        library.value = await client.toggleFavorite(singleId);
+      }
     } catch (error) {
       errorMessage.value = readErrorMessage(error);
     } finally {

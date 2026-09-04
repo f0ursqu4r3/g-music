@@ -303,7 +303,7 @@ watch(
                   :data-current="item.id === currentItemId"
                   :data-queue-index="virtualItem.index"
                   :data-queue-item-id="item.id"
-                  class="queue-row group grid h-13 w-full cursor-grab grid-cols-[2.25rem_minmax(0,1fr)_3.5rem_5rem] items-center border-b border-(--line) outline-none active:cursor-grabbing hover:bg-[oklch(0.72_0.025_258/0.08)] data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                  class="queue-row group grid h-13 w-full cursor-grab grid-cols-[2.25rem_minmax(0,1fr)_2rem_2.25rem] items-center border-b border-(--line) outline-none active:cursor-grabbing hover:bg-[oklch(0.72_0.025_258/0.08)] data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
                   data-queue-item
                   role="listitem"
                 >
@@ -347,48 +347,6 @@ watch(
                   <div
                     class="flex items-center justify-end gap-0.5 pr-2 text-(--subtle-text)"
                   >
-                    <Button
-                      :aria-label="`Move ${item.title} up`"
-                      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                      size="icon-xs"
-                      variant="ghost"
-                      :disabled="
-                        isShuffled ||
-                        isUpdating ||
-                        item.id === currentItemId ||
-                        virtualItem.index === 0
-                      "
-                      @click.stop="
-                        emit(
-                          'move',
-                          queueStartIndex + virtualItem.index,
-                          queueStartIndex + virtualItem.index - 1,
-                        )
-                      "
-                    >
-                      <span aria-hidden="true">↑</span>
-                    </Button>
-                    <Button
-                      :aria-label="`Move ${item.title} down`"
-                      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                      size="icon-xs"
-                      variant="ghost"
-                      :disabled="
-                        isShuffled ||
-                        isUpdating ||
-                        item.id === currentItemId ||
-                        virtualItem.index === visibleQueue.length - 1
-                      "
-                      @click.stop="
-                        emit(
-                          'move',
-                          queueStartIndex + virtualItem.index,
-                          queueStartIndex + virtualItem.index + 1,
-                        )
-                      "
-                    >
-                      <span aria-hidden="true">↓</span>
-                    </Button>
                     <Button
                       v-if="item.id !== currentItemId"
                       :aria-label="`Remove ${item.title} from queue`"

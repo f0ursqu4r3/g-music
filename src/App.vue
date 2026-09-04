@@ -341,7 +341,13 @@ onUnmounted(() => {
       @toggle="playback.toggle"
       @previous="playback.previous"
       @next="playback.next"
-      @play-track="playback.playTrack"
+      @play-track="
+        (id) =>
+          playback.playTrack(
+            id,
+            playbackSnapshot.queue.map((item) => item.id),
+          )
+      "
       @move="playback.moveQueueItem"
       @remove="playback.removeQueueItem"
     />

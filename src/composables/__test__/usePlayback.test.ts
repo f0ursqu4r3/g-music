@@ -554,4 +554,94 @@ describe("usePlayback", () => {
       "could not resolve YouTube metadata",
     );
   });
+
+  // --- Bulk-action regression: all IDs in a batch must reach the client ---
+
+  function bulkClient(overrides: Record<string, unknown> = {}) {
+    return {
+      inspect: vi.fn().mockResolvedValue(paused),
+      play: vi.fn().mockResolvedValue(playing),
+      pause: vi.fn().mockResolvedValue(paused),
+      previous: vi.fn().mockResolvedValue(paused),
+      next: vi.fn().mockResolvedValue(paused),
+      seek: vi.fn().mockResolvedValue(paused),
+      setVolume: vi.fn(),
+      moveQueueItem: vi.fn().mockResolvedValue(paused),
+      playTrack: vi.fn().mockResolvedValue(paused),
+      importYouTubeUrls: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("calls client.playNext for every id in a batch, preserving order", async () => {
+    const playNextMock = vi.fn().mockResolvedValue(paused);
+    const playback = usePlayback(bulkClient({ playNext: playNextMock }));
+
+    await playback.playNext(["track-1", "track-2", "track-3"]);
+
+    expect(playNextMock).toHaveBeenCalledTimes(3);
+    expect(playNextMock.mock.calls.map((c) => c[0])).toEqual([
+      "track-1",
+      "track-2",
+      "track-3",
+    ]);
+  });
+
+  it("calls client.addToQueue for every id in a batch, preserving order", async () => {
+    const addToQueueMock = vi.fn().mockResolvedValue(paused);
+    const playback = usePlayback(bulkClient({ addToQueue: addToQueueMock }));
+
+    await playback.addToQueue(["track-a", "track-b"]);
+
+    expect(addToQueueMock).toHaveBeenCalledTimes(2);
+    expect(addToQueueMock.mock.calls.map((c) => c[0])).toEqual([
+      "track-a",
+      "track-b",
+    ]);
+  });
+
+  it("calls client.toggleFavorite for every id in a batch", async () => {
+    const toggleFavoriteMock = vi
+      .fn()
+      .mockResolvedValue({ playlists: [], tracks: [] });
+    const playback = usePlayback(
+      bulkClient({ toggleFavorite: toggleFavoriteMock }),
+    );
+
+    await playback.toggleFavorite(["fav-1", "fav-2", "fav-3"]);
+
+    expect(toggleFavoriteMock).toHaveBeenCalledTimes(3);
+    expect(toggleFavoriteMock.mock.calls.map((c) => c[0])).toEqual([
+      "fav-1",
+      "fav-2",
+      "fav-3",
+    ]);
+  });
+
+  it("preserves single-id call site for playNext (backward compat)", async () => {
+    const playNextMock = vi.fn().mockResolvedValue(paused);
+    const playback = usePlayback(bulkClient({ playNext: playNextMock }));
+
+    await playback.playNext("solo-track");
+
+    expect(playNextMock).toHaveBeenCalledOnce();
+    expect(playNextMock).toHaveBeenCalledWith("solo-track");
+  });
+
+  it("propagates the error message when a bulk toggleFavorite call fails and releases isUpdating", async () => {
+    const toggleFavoriteMock = vi
+      .fn()
+      .mockResolvedValueOnce({ playlists: [], tracks: [] })
+      .mockRejectedValueOnce(new Error("server busy"));
+    const playback = usePlayback(
+      bulkClient({ toggleFavorite: toggleFavoriteMock }),
+    );
+
+    await playback.toggleFavorite(["ok-1", "fail-2"]);
+
+    expect(playback.errorMessage.value).toBe("server busy");
+    expect(playback.isUpdating.value).toBe(false);
+    // First id succeeded before failure stopped the batch.
+    expect(toggleFavoriteMock).toHaveBeenCalledTimes(2);
+  });
 });

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Playlist } from "@/api";
 import LibrarySidebar from "../LibrarySidebar.vue";
+import { LIBRARY_TRACK_IDS_MIME_TYPE } from "../types";
 
 interface MotionReorderHarness {
   vm: {
@@ -23,6 +24,72 @@ const playlists: Playlist[] = [
 ];
 
 describe("LibrarySidebar", () => {
+  it("shows a fixed playlist add action in the Playlist heading", async () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: {
+        activeCollection: "tracks",
+        playlists,
+      },
+    });
+
+    const addPlaylist = wrapper.get("[data-new-playlist]");
+    expect(addPlaylist.attributes("aria-label")).toBe("New playlist");
+    expect(addPlaylist.classes()).toContain("shrink-0");
+
+    await addPlaylist.trigger("click");
+
+    expect(wrapper.emitted("newPlaylist")).toEqual([[]]);
+  });
+
+  it("clips long playlist names within the sidebar", () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: {
+        activeCollection: "tracks",
+        playlists: [
+          ...playlists,
+          {
+            id: "ambient",
+            name: "Cryo Chamber: Dark Ambient Drone Soundscapes",
+            trackIds: [],
+          },
+        ],
+      },
+    });
+
+    const playlist = wrapper.get('[data-playlist-reorder-item="ambient"]');
+    const title = playlist.get("span");
+
+    expect(playlist.classes()).toEqual(
+      expect.arrayContaining(["min-w-0", "overflow-hidden"]),
+    );
+    expect(title.classes()).toEqual(
+      expect.arrayContaining(["min-w-0", "flex-1", "truncate"]),
+    );
+  });
+
+  it("resizes the sidebar with its accessible divider", async () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: {
+        activeCollection: "tracks",
+        playlists,
+        sidebarWidth: 244,
+      },
+    });
+
+    const divider = wrapper.get("[data-library-sidebar-resize]");
+    expect(divider.attributes("aria-label")).toBe("Resize library sidebar");
+    expect(divider.attributes("aria-valuenow")).toBe("244");
+
+    await divider.trigger("keydown", { key: "ArrowRight" });
+    expect(wrapper.emitted("resizeSidebar")).toEqual([[260]]);
+
+    await divider.trigger("mousedown", { button: 0, clientX: 300 });
+    window.dispatchEvent(new MouseEvent("mousemove", { clientX: 356 }));
+    window.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(wrapper.emitted("resizeSidebar")).toEqual([[260], [300]]);
+  });
+
   it("colors the selected playlist icon with the accent color", async () => {
     const wrapper = mount(LibrarySidebar, {
       props: {
@@ -86,6 +153,30 @@ describe("LibrarySidebar", () => {
 
     expect(wrapper.get("[data-new-playlist-editor]").classes()).toEqual(
       expect.arrayContaining(["-mx-4", "w-[calc(100%+2rem)]", "rounded-none"]),
+    );
+  });
+
+  it("clearly highlights an eligible playlist drop target", async () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: {
+        activeCollection: "tracks",
+        playlists,
+      },
+    });
+    const target = wrapper.get('[data-playlist-reorder-item="focus"]');
+    const dataTransfer = {
+      types: [LIBRARY_TRACK_IDS_MIME_TYPE],
+    } as unknown as DataTransfer;
+
+    await target.trigger("dragenter", { dataTransfer });
+
+    expect(target.attributes("data-drop-target")).toBe("true");
+    expect(target.classes()).toEqual(
+      expect.arrayContaining([
+        "data-[drop-target=true]:bg-accent/25",
+        "data-[drop-target=true]:ring-1",
+        "data-[drop-target=true]:ring-accent",
+      ]),
     );
   });
 
@@ -162,7 +253,7 @@ describe("LibrarySidebar", () => {
     ).toEqual(["road-trip", "focus"]);
   });
 
-  it("moves a user playlist title with the accessible controls", async () => {
+  it("uses drag reorder without arrow controls", () => {
     const wrapper = mount(LibrarySidebar, {
       props: {
         activeCollection: "tracks",
@@ -172,17 +263,9 @@ describe("LibrarySidebar", () => {
       },
     });
 
-    await wrapper
-      .get('button[aria-label="Move Road Trip up"]')
-      .trigger("click");
-
-    expect(wrapper.emitted("reorderPlaylists")).toEqual([
-      [["road-trip", "focus"]],
-    ]);
-    expect(
-      wrapper
-        .findAll("[data-playlist-reorder-item]")
-        .map((item) => item.attributes("data-playlist-reorder-item")),
-    ).toEqual(["road-trip", "focus"]);
+    expect(wrapper.find('[aria-label="Move Focus up"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Move Road Trip down"]').exists()).toBe(
+      false,
+    );
   });
 });

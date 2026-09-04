@@ -1,5 +1,8 @@
 import type { MediaItem } from "@/api";
 
+export const LIBRARY_TRACK_IDS_MIME_TYPE = "application/x-gmusic-track-ids";
+export const LIBRARY_TRACK_IDS_TEXT_PREFIX = "gmusic-track-ids:";
+
 export type LibraryCollection = "tracks" | "albums" | "artists";
 export type LibraryDisplayMode = "grid" | "list";
 export type LibrarySortOption =
@@ -39,6 +42,11 @@ export interface TrackFilter {
   label: string;
   type: "album" | "artist";
   value: string;
+}
+
+export interface TrackSelectionModifiers {
+  additive: boolean;
+  range: boolean;
 }
 
 export interface TrackGroup {

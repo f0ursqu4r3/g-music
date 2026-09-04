@@ -592,16 +592,37 @@ impl YouTubePlaybackProvider {
 
     pub fn snapshot(&mut self) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
         self.update_transport()?;
-
-        let mut snapshot = self.snapshot.clone();
-        snapshot.playback_order = self.shuffle_order.clone();
-        Ok(snapshot)
+        Ok(self.complete_snapshot())
     }
 
     pub fn transport(&mut self) -> Result<PlaybackTransport, YouTubePlaybackError> {
         self.update_transport()?;
-
         Ok(PlaybackTransport::from(&self.snapshot))
+    }
+
+    pub fn transport_with_snapshot_update(
+        &mut self,
+    ) -> Result<(PlaybackTransport, Option<PlaybackSnapshot>), YouTubePlaybackError> {
+        let before = self.snapshot.clone();
+        self.update_transport()?;
+        let transport = PlaybackTransport::from(&self.snapshot);
+        let snapshot_update = Self::snapshot_requires_broadcast(&before, &self.snapshot)
+            .then(|| self.complete_snapshot());
+
+        Ok((transport, snapshot_update))
+    }
+
+    fn complete_snapshot(&self) -> PlaybackSnapshot {
+        let mut snapshot = self.snapshot.clone();
+        snapshot.playback_order = self.shuffle_order.clone();
+        snapshot
+    }
+
+    fn snapshot_requires_broadcast(before: &PlaybackSnapshot, after: &PlaybackSnapshot) -> bool {
+        before.current_item != after.current_item
+            || before.queue != after.queue
+            || before.repeat_mode != after.repeat_mode
+            || before.shuffle_enabled != after.shuffle_enabled
     }
 
     fn update_transport(&mut self) -> Result<(), YouTubePlaybackError> {
@@ -846,21 +867,16 @@ impl YouTubePlaybackProvider {
             return self.select_queue_index(current_index);
         }
         if self.snapshot.shuffle_enabled {
+            self.reconcile_shuffle_order();
             let Some(current_order_index) = self.current_shuffle_order_index() else {
-                return Ok(());
+                return self.finish_queue();
             };
             let next_order_index = if current_order_index + 1 < self.shuffle_order.len() {
                 current_order_index + 1
             } else if self.snapshot.repeat_mode == RepeatMode::All {
                 0
             } else {
-                self.snapshot.status = PlaybackStatus::Paused;
-                self.snapshot.position_ms = self
-                    .snapshot
-                    .current_item
-                    .as_ref()
-                    .map_or(0, |item| item.duration_ms);
-                return Ok(());
+                return self.finish_queue();
             };
             let next_id = &self.shuffle_order[next_order_index];
             let next_index = self
@@ -880,12 +896,15 @@ impl YouTubePlaybackProvider {
             return self.select_queue_index(0);
         }
 
+        self.finish_queue()
+    }
+
+    fn finish_queue(&mut self) -> Result<(), YouTubePlaybackError> {
+        self.snapshot.queue.clear();
+        self.snapshot.current_item = None;
         self.snapshot.status = PlaybackStatus::Paused;
-        self.snapshot.position_ms = self
-            .snapshot
-            .current_item
-            .as_ref()
-            .map_or(0, |item| item.duration_ms);
+        self.snapshot.position_ms = 0;
+        self.reconcile_shuffle_order();
         Ok(())
     }
 
@@ -2219,7 +2238,9 @@ mod tests {
         parse_streamed_metadata, resolve_metadata, spawn_parent_exit_watchdog,
         validate_youtube_url,
     };
-    use crate::playback::{EditableTrackMetadata, PlaybackStatus, Playlist, RepeatMode};
+    use crate::playback::{
+        EditableTrackMetadata, PlaybackSnapshot, PlaybackStatus, Playlist, RepeatMode,
+    };
 
     #[test]
     fn accepts_supported_youtube_urls() {
@@ -2965,6 +2986,72 @@ mod tests {
     }
 
     #[test]
+    fn removes_the_final_track_from_a_non_repeating_queue_when_it_ends() {
+        let entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Final","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider
+            .replace_queue(&["M7lc1UVf-VE".into(), "BaW_jenozKc".into()])
+            .expect("known library tracks create a play queue");
+        provider.snapshot.current_item = Some(provider.snapshot.queue[1].clone());
+        provider.snapshot.status = PlaybackStatus::Playing;
+        provider.snapshot.position_ms = 90_000;
+
+        provider
+            .advance_from(1)
+            .expect("the final queue track can finish");
+
+        assert!(provider.snapshot.queue.is_empty());
+        assert!(provider.snapshot.current_item.is_none());
+        assert_eq!(provider.snapshot.position_ms, 0);
+        assert_eq!(provider.snapshot.status, PlaybackStatus::Paused);
+    }
+
+    #[test]
+    fn queue_completion_requires_a_playback_snapshot_broadcast() {
+        let entries = parse_import_metadata(
+            r#"{"id":"M7lc1UVf-VE","title":"Finished","channel":"Artist","duration":90}"#,
+        )
+        .expect("fixture metadata is valid");
+        let item = entries[0].item.clone();
+        let before = PlaybackSnapshot {
+            current_item: Some(item.clone()),
+            playback_order: vec![item.id.clone()],
+            position_ms: item.duration_ms,
+            queue: vec![item],
+            repeat_mode: RepeatMode::Off,
+            shuffle_enabled: false,
+            status: PlaybackStatus::Playing,
+            volume_percent: 72,
+        };
+        let after = PlaybackSnapshot {
+            current_item: None,
+            playback_order: vec![],
+            position_ms: 0,
+            queue: vec![],
+            repeat_mode: RepeatMode::Off,
+            shuffle_enabled: false,
+            status: PlaybackStatus::Paused,
+            volume_percent: 72,
+        };
+
+        assert!(YouTubePlaybackProvider::snapshot_requires_broadcast(
+            &before, &after
+        ));
+
+        let position_only = PlaybackSnapshot {
+            position_ms: 1_000,
+            ..before.clone()
+        };
+        assert!(!YouTubePlaybackProvider::snapshot_requires_broadcast(
+            &before,
+            &position_only
+        ));
+    }
+
+    #[test]
     fn toggling_shuffle_preserves_the_authoritative_queue_order() {
         let entries = parse_import_metadata(
             r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90},{"id":"aqz-KE-bpKQ","title":"Third","channel":"Artist","duration":100}]}"#,
@@ -3196,6 +3283,84 @@ mod tests {
             provider.playlists[0].track_ids,
             ["BaW_jenozKc", "M7lc1UVf-VE"]
         );
+    }
+
+    #[test]
+    fn removing_playlist_membership_preserves_the_library_and_other_playlists() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "gmusic-playlist-removal-{}-{unique}.sqlite",
+            std::process::id()
+        ));
+        let mut provider = YouTubePlaybackProvider::from_library_path(path.clone())
+            .expect("a temporary library should initialize");
+        provider.entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Channel","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Channel","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+        let ids = vec!["M7lc1UVf-VE".into(), "BaW_jenozKc".into()];
+        provider
+            .replace_queue(&ids)
+            .expect("known tracks can be queued");
+        let before = provider.snapshot.clone();
+        for id in ["focus", "other"] {
+            provider
+                .upsert_playlist(Playlist {
+                    id: id.into(),
+                    name: id.into(),
+                    track_ids: ids.clone(),
+                })
+                .expect("known tracks can be added to a playlist");
+        }
+        provider
+            .toggle_favorite("M7lc1UVf-VE")
+            .expect("known tracks can be favorited");
+        provider
+            .upsert_playlist(Playlist {
+                id: "focus".into(),
+                name: "focus".into(),
+                track_ids: vec!["BaW_jenozKc".into()],
+            })
+            .expect("playlist membership can be removed");
+        assert_eq!(provider.snapshot, before);
+        drop(provider);
+
+        let restored = YouTubePlaybackProvider::from_library_path(path.clone())
+            .expect("the updated library should reload");
+        let library = restored.library_snapshot();
+        assert_eq!(library.tracks.len(), 2);
+        assert_eq!(
+            library
+                .playlists
+                .iter()
+                .find(|p| p.id == "focus")
+                .unwrap()
+                .track_ids,
+            ["BaW_jenozKc"]
+        );
+        assert_eq!(
+            library
+                .playlists
+                .iter()
+                .find(|p| p.id == "other")
+                .unwrap()
+                .track_ids,
+            ids
+        );
+        assert_eq!(
+            library
+                .playlists
+                .iter()
+                .find(|p| p.id == "favorites")
+                .unwrap()
+                .track_ids,
+            ["M7lc1UVf-VE"]
+        );
+        drop(restored);
+        fs::remove_file(path).expect("temporary library should be removable");
     }
 
     #[test]

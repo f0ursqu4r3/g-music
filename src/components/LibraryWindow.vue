@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 
 import type {
   MediaItem,
@@ -34,6 +34,11 @@ import type {
   LibrarySortOption,
   TrackFilter,
   TrackGroup,
+  TrackSelectionModifiers,
+} from "./library/types";
+import {
+  LIBRARY_TRACK_IDS_MIME_TYPE,
+  LIBRARY_TRACK_IDS_TEXT_PREFIX,
 } from "./library/types";
 
 type SelectedLibraryItem =
@@ -66,9 +71,9 @@ const emit = defineEmits<{
   cycleRepeatMode: [];
   openImport: [];
   playTrack: [queueIds: string[], id: string];
-  playNext: [id: string];
-  addToQueue: [id: string];
-  toggleFavorite: [id: string];
+  playNext: [ids: string[]];
+  addToQueue: [ids: string[]];
+  toggleFavorite: [ids: string[]];
   upsertPlaylist: [playlist: Playlist];
   reorderPlaylists: [playlistIds: string[]];
   deletePlaylist: [id: string];
@@ -83,10 +88,11 @@ const libraryOptionsOpen = ref(false);
 const metadataRefreshDrawerOpen = ref(false);
 const metadataEditorTarget = ref<MetadataEditTarget | null>(null);
 const playlistEditorTarget = ref<Playlist | null>(null);
-const trackRemovalTarget = ref<MediaItem | null>(null);
+const trackRemovalTarget = ref<MediaItem[]>([]);
 const isCreatingPlaylist = ref(false);
 const detailsSidebarOpen = ref(false);
 const activePlaylistId = ref<string>();
+const sidebarWidth = ref(244);
 const playback = computed<PlaybackTransport>(
   () =>
     props.transport ??
@@ -102,6 +108,15 @@ const selectedLibraryItem = ref<SelectedLibraryItem | null>(
     ? { id: playback.value.currentItem.id, kind: "track" }
     : null,
 );
+const selectedTrackIds = ref<Set<string>>(
+  playback.value.currentItem
+    ? new Set([playback.value.currentItem.id])
+    : new Set(),
+);
+const trackSelectionAnchorId = ref<string | null>(
+  playback.value.currentItem?.id ?? null,
+);
+let trackDragImage: HTMLElement | null = null;
 const sortBy = ref<LibrarySortOption>("title-asc");
 const trackFilter = ref<TrackFilter | null>(null);
 
@@ -118,6 +133,12 @@ const activePlaylist = computed(
       (playlist) => playlist.id === activePlaylistId.value,
     ) ?? null,
 );
+const canRemoveFromPlaylist = computed(
+  () =>
+    activePlaylist.value !== null &&
+    activePlaylist.value.id !== "favorites" &&
+    activePlaylist.value.id !== "most-played",
+);
 const playlistTracks = computed(() => {
   const playlist = activePlaylist.value;
   if (!playlist) {
@@ -131,12 +152,12 @@ const playlistTracks = computed(() => {
   });
 });
 const selectedTrack = computed(() => {
-  const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== "track") {
+  if (selectedTrackIds.value.size !== 1) {
     return null;
   }
 
-  return allTracks.value.find((track) => track.id === selection.id) ?? null;
+  const [id] = selectedTrackIds.value;
+  return allTracks.value.find((track) => track.id === id) ?? null;
 });
 const libraryTracks = computed(() => {
   const filteredTracks = trackFilter.value
@@ -154,6 +175,9 @@ const libraryTracks = computed(() => {
 
   return sortCollection(filteredTracks, sortBy.value, "track");
 });
+const selectedTracks = computed(() =>
+  libraryTracks.value.filter((track) => selectedTrackIds.value.has(track.id)),
+);
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
   const albums = new Map<string, LibraryAlbum>();
 
@@ -395,6 +419,9 @@ function groupGridCollection<T extends LibraryAlbum | LibraryArtist>(
 function selectCollection(collection: LibraryCollection): void {
   activePlaylistId.value = undefined;
   activeCollection.value = collection;
+  if (collection !== "tracks") {
+    clearTrackSelection();
+  }
 }
 
 function selectPlaylist(id: string): void {
@@ -402,6 +429,7 @@ function selectPlaylist(id: string): void {
   activeCollection.value = "tracks";
   displayMode.value = "list";
   trackFilter.value = null;
+  clearTrackSelection();
 }
 
 function openPlaylistEditor(playlist: Playlist): void {
@@ -432,6 +460,41 @@ function savePlaylist(playlist: Playlist): void {
   emit("upsertPlaylist", playlist);
 }
 
+function addTracksToPlaylist(playlist: Playlist, trackIds: string[]): void {
+  if (
+    props.isUpdating ||
+    playlist.id === "favorites" ||
+    playlist.id === "most-played"
+  ) {
+    return;
+  }
+
+  const ids = new Set(playlist.trackIds);
+  for (const id of trackIds) {
+    ids.add(id);
+  }
+  emit("upsertPlaylist", {
+    ...playlist,
+    trackIds: [...ids],
+  });
+}
+
+function removeTracksFromPlaylist(tracks: MediaItem[]): void {
+  const playlist = activePlaylist.value;
+  if (props.isUpdating || !playlist || !canRemoveFromPlaylist.value) {
+    return;
+  }
+
+  const removedIds = new Set(tracks.map((track) => track.id));
+  const trackIds = playlist.trackIds.filter((id) => !removedIds.has(id));
+  if (trackIds.length === playlist.trackIds.length) {
+    return;
+  }
+
+  emit("upsertPlaylist", { ...playlist, trackIds });
+  clearTrackSelection();
+}
+
 function deletePlaylist(id: string): void {
   if (activePlaylistId.value === id) {
     activePlaylistId.value = undefined;
@@ -444,21 +507,113 @@ function setDisplayMode(mode: LibraryDisplayMode): void {
   displayMode.value = mode;
 }
 
-function selectTrack(track: MediaItem): void {
-  selectedLibraryItem.value = { id: track.id, kind: "track" };
+function clearTrackSelection(): void {
+  selectedTrackIds.value = new Set();
+  trackSelectionAnchorId.value = null;
 }
 
-function playTrack(track: MediaItem): void {
-  selectTrack(track);
-  if (!props.isUpdating) {
-    emit(
-      "playTrack",
-      trackFilter.value
-        ? libraryTracks.value.map((item) => item.id)
-        : [track.id],
-      track.id,
-    );
+function selectTrack(
+  track: MediaItem,
+  modifiers: TrackSelectionModifiers = { additive: false, range: false },
+): void {
+  const next = new Set(selectedTrackIds.value);
+  const anchorId = trackSelectionAnchorId.value;
+  const anchorIndex = anchorId
+    ? libraryTracks.value.findIndex((item) => item.id === anchorId)
+    : -1;
+  const trackIndex = libraryTracks.value.findIndex(
+    (item) => item.id === track.id,
+  );
+
+  if (modifiers.range && anchorIndex !== -1 && trackIndex !== -1) {
+    const start = Math.min(anchorIndex, trackIndex);
+    const end = Math.max(anchorIndex, trackIndex);
+    const range = libraryTracks.value
+      .slice(start, end + 1)
+      .map((item) => item.id);
+    selectedTrackIds.value = modifiers.additive
+      ? new Set([...next, ...range])
+      : new Set(range);
+  } else if (modifiers.additive) {
+    if (next.has(track.id)) {
+      next.delete(track.id);
+    } else {
+      next.add(track.id);
+    }
+    selectedTrackIds.value = next;
+    trackSelectionAnchorId.value = track.id;
+  } else {
+    selectedTrackIds.value = new Set([track.id]);
+    trackSelectionAnchorId.value = track.id;
   }
+
+  selectedLibraryItem.value = selectedTrackIds.value.size
+    ? { id: track.id, kind: "track" }
+    : null;
+}
+
+function selectContextMenuTarget(track: MediaItem): void {
+  if (!selectedTrackIds.value.has(track.id)) {
+    selectTrack(track);
+  }
+}
+
+function startTrackDrag(track: MediaItem, event: DragEvent): void {
+  if (!selectedTrackIds.value.has(track.id)) {
+    selectTrack(track);
+  }
+
+  const trackIds = selectedTracks.value.map((item) => item.id);
+  if (!event.dataTransfer || trackIds.length === 0) {
+    return;
+  }
+
+  event.dataTransfer.effectAllowed = "copy";
+  event.dataTransfer.setData(
+    LIBRARY_TRACK_IDS_MIME_TYPE,
+    JSON.stringify(trackIds),
+  );
+  event.dataTransfer.setData(
+    "text/plain",
+    [LIBRARY_TRACK_IDS_TEXT_PREFIX, ...trackIds].join("\n"),
+  );
+
+  const source = event.target;
+  if (
+    !(source instanceof HTMLElement) ||
+    typeof event.dataTransfer.setDragImage !== "function"
+  ) {
+    return;
+  }
+
+  finishTrackDrag();
+  const sourceBounds = source.getBoundingClientRect();
+  const dragImage = source.cloneNode(true) as HTMLElement;
+  dragImage.removeAttribute("data-track-id");
+  dragImage.setAttribute("aria-hidden", "true");
+  Object.assign(dragImage.style, {
+    height: `${sourceBounds.height}px`,
+    left: `${sourceBounds.left}px`,
+    margin: "0",
+    pointerEvents: "none",
+    position: "fixed",
+    top: `${sourceBounds.top}px`,
+    transform: "none",
+    width: `${sourceBounds.width}px`,
+    zIndex: "2147483647",
+  });
+  document.body.append(dragImage);
+  event.dataTransfer.setDragImage(
+    dragImage,
+    Math.max(0, event.clientX - sourceBounds.left),
+    Math.max(0, event.clientY - sourceBounds.top),
+  );
+  trackDragImage = dragImage;
+}
+
+function finishTrackDrag(): void {
+  trackDragImage?.remove();
+  trackDragImage = null;
 }
 
 function playTracks(tracks: MediaItem[]): void {
@@ -467,12 +622,44 @@ function playTracks(tracks: MediaItem[]): void {
     return;
   }
 
-  selectTrack(track);
+  if (!selectedTrackIds.value.has(track.id)) {
+    selectTrack(track);
+  }
   emit(
     "playTrack",
     tracks.map((item) => item.id),
     track.id,
   );
+}
+
+function playTracksNext(tracks: MediaItem[]): void {
+  if (props.isUpdating) {
+    return;
+  }
+
+  // Emit all IDs in a single batch event (reversed so first resolves first in queue).
+  const ids = [...tracks].reverse().map((t) => t.id);
+  if (ids.length > 0) {
+    emit("playNext", ids);
+  }
+}
+
+function addTracksToQueue(tracks: MediaItem[]): void {
+  if (props.isUpdating) {
+    return;
+  }
+
+  const ids = tracks.map((t) => t.id);
+  if (ids.length > 0) {
+    emit("addToQueue", ids);
+  }
+}
+
+function toggleFavorites(ids: string[]): void {
+  const deduplicated = [...new Set(ids)];
+  if (deduplicated.length > 0) {
+    emit("toggleFavorite", deduplicated);
+  }
 }
 
 function playAlbum(album: LibraryAlbum): void {
@@ -501,10 +688,12 @@ function playActivePlaylist(): void {
 }
 
 function selectAlbum(album: LibraryAlbum): void {
+  clearTrackSelection();
   selectedLibraryItem.value = { key: album.key, kind: "album" };
 }
 
 function selectArtist(artist: LibraryArtist): void {
+  clearTrackSelection();
   selectedLibraryItem.value = { kind: "artist", name: artist.name };
 }
 
@@ -536,18 +725,18 @@ function openTrackArtist(track: MediaItem): void {
   }
 }
 
-function requestTrackRemoval(track: MediaItem): void {
-  trackRemovalTarget.value = track;
+function requestTrackRemoval(tracks: MediaItem[]): void {
+  trackRemovalTarget.value = tracks;
 }
 
 function confirmTrackRemoval(): void {
-  const track = trackRemovalTarget.value;
-  if (!track) {
+  if (trackRemovalTarget.value.length === 0) {
     return;
   }
 
-  trackRemovalTarget.value = null;
-  emit("removeTracks", [track.id]);
+  const ids = trackRemovalTarget.value.map((track) => track.id);
+  trackRemovalTarget.value = [];
+  emit("removeTracks", ids);
 }
 
 function openAlbumMetadataEditor(album: LibraryAlbum): void {
@@ -613,16 +802,23 @@ function toggleOptions(): void {
 function toggleMetadataRefresh(): void {
   metadataRefreshDrawerOpen.value = !metadataRefreshDrawerOpen.value;
 }
+
+function resizeSidebar(width: number): void {
+  sidebarWidth.value = Math.min(360, Math.max(180, Math.round(width)));
+}
+
+onBeforeUnmount(finishTrackDrag);
 </script>
 
 <template>
   <main
-    class="library-window window-shell window-surface grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[244px_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
+    class="library-window window-shell window-surface grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
     :class="
       detailsSidebarOpen
-        ? 'grid-cols-[244px_minmax(0,1fr)_272px]'
-        : 'grid-cols-[244px_minmax(0,1fr)_0px]'
+        ? 'grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)_272px]'
+        : 'grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)_0px]'
     "
+    :style="{ '--library-sidebar-width': `${sidebarWidth}px` }"
     aria-label="Music library"
   >
     <div
@@ -637,9 +833,11 @@ function toggleMetadataRefresh(): void {
       :is-creating-playlist="isCreatingPlaylist"
       :is-updating="props.isUpdating"
       :playlists="playlists"
+      :sidebar-width="sidebarWidth"
       @cancel-playlist-creation="cancelPlaylistCreation"
       @create-playlist="createPlaylist"
       @delete-playlist="openPlaylistEditor"
+      @drop-tracks="addTracksToPlaylist"
       @edit-playlist="openPlaylistEditor"
       @new-playlist="beginPlaylistCreation"
       @open-import="emit('openImport')"
@@ -647,6 +845,7 @@ function toggleMetadataRefresh(): void {
       @reorder-playlists="emit('reorderPlaylists', $event)"
       @select-collection="selectCollection"
       @select-playlist="selectPlaylist"
+      @resize-sidebar="resizeSidebar"
     />
 
     <section
@@ -679,7 +878,7 @@ function toggleMetadataRefresh(): void {
       <LibraryTrackList
         v-if="activeCollection === 'tracks' && displayMode === 'list'"
         :playing-item-id="playingItemId"
-        :selected-track-id="selectedTrack?.id"
+        :selected-track-ids="[...selectedTrackIds]"
         :sort-by="sortBy"
         :track-filter="trackFilter"
         :tracks="libraryTracks"
@@ -688,36 +887,48 @@ function toggleMetadataRefresh(): void {
           []
         "
         @clear-track-filter="trackFilter = null"
-        @add-to-queue="emit('addToQueue', $event)"
+        @add-to-queue="addTracksToQueue"
+        @drag-tracks="startTrackDrag"
+        @drag-tracks-end="finishTrackDrag"
         @edit-track="openTrackMetadataEditor"
         @open-album="openTrackAlbum"
         @open-artist="openTrackArtist"
-        @play-track="playTrack"
-        @play-next="emit('playNext', $event)"
+        @open-track-context="selectContextMenuTarget"
+        @play-track="playTracks"
+        @play-next="playTracksNext"
+        :can-remove-from-playlist="canRemoveFromPlaylist"
+        :is-updating="props.isUpdating"
+        @remove-from-playlist="removeTracksFromPlaylist"
         @remove-track="requestTrackRemoval"
         @select-track="selectTrack"
         @set-sort="setSort"
-        @toggle-favorite="emit('toggleFavorite', $event)"
+        @toggle-favorite="toggleFavorites"
       />
       <LibraryTrackGrid
         v-else-if="activeCollection === 'tracks'"
         :playing-item-id="playingItemId"
-        :selected-track-id="selectedTrack?.id"
+        :selected-track-ids="[...selectedTrackIds]"
         :favorite-track-ids="
           playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
           []
         "
         :grid-item-size="gridItemSize"
         :groups="groupedTracks"
-        @add-to-queue="emit('addToQueue', $event)"
+        @add-to-queue="addTracksToQueue"
+        @drag-tracks="startTrackDrag"
+        @drag-tracks-end="finishTrackDrag"
         @edit-track="openTrackMetadataEditor"
         @open-album="openTrackAlbum"
         @open-artist="openTrackArtist"
-        @play-next="emit('playNext', $event)"
-        @play-track="playTrack"
+        @open-track-context="selectContextMenuTarget"
+        @play-next="playTracksNext"
+        @play-track="playTracks"
+        :can-remove-from-playlist="canRemoveFromPlaylist"
+        :is-updating="props.isUpdating"
+        @remove-from-playlist="removeTracksFromPlaylist"
         @remove-track="requestTrackRemoval"
         @select-track="selectTrack"
-        @toggle-favorite="emit('toggleFavorite', $event)"
+        @toggle-favorite="toggleFavorites"
       />
       <LibraryAlbumGrid
         v-else-if="activeCollection === 'albums'"
@@ -752,11 +963,12 @@ function toggleMetadataRefresh(): void {
       :selected-album="selectedAlbum"
       :selected-artist="selectedArtist"
       :selected-track="selectedTrack"
-      @add-to-queue="emit('addToQueue', $event.id)"
+      :selected-tracks="selectedTracks"
+      @add-to-queue="addTracksToQueue"
       @edit-album="openAlbumMetadataEditor"
       @edit-artist="openArtistMetadataEditor"
       @edit-track="openTrackMetadataEditor"
-      @play-next="emit('playNext', $event.id)"
+      @play-next="playTracksNext"
     />
 
     <LibraryPlaybackFooter
@@ -801,13 +1013,13 @@ function toggleMetadataRefresh(): void {
       @save="savePlaylist"
     />
     <section
-      v-if="trackRemovalTarget"
+      v-if="trackRemovalTarget.length"
       aria-labelledby="track-removal-title"
       aria-modal="true"
       class="absolute inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm"
       role="dialog"
-      @click.self="trackRemovalTarget = null"
-      @keydown.esc="trackRemovalTarget = null"
+      @click.self="trackRemovalTarget = []"
+      @keydown.esc="trackRemovalTarget = []"
     >
       <div
         class="w-full max-w-100 rounded-2xl border border-(--line-strong) bg-[oklch(0.11_0.014_260/0.98)] p-6 shadow-2xl"
@@ -819,14 +1031,20 @@ function toggleMetadataRefresh(): void {
           Remove from library?
         </h2>
         <p class="mt-2 text-sm text-(--muted-text)">
-          Remove {{ trackRemovalTarget.title }} from your library and every
-          playlist?
+          <template v-if="trackRemovalTarget.length === 1">
+            Remove {{ trackRemovalTarget[0]?.title }} from your library and
+            every playlist?
+          </template>
+          <template v-else>
+            Remove {{ trackRemovalTarget.length }} tracks from your library and
+            every playlist?
+          </template>
         </p>
         <div class="mt-6 flex justify-end gap-3">
           <button
             class="rounded-md px-3 py-2 text-sm font-medium text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
             type="button"
-            @click="trackRemovalTarget = null"
+            @click="trackRemovalTarget = []"
           >
             Cancel
           </button>
@@ -836,7 +1054,7 @@ function toggleMetadataRefresh(): void {
             type="button"
             @click="confirmTrackRemoval"
           >
-            Remove track
+            Remove {{ trackRemovalTarget.length === 1 ? "track" : "tracks" }}
           </button>
         </div>
       </div>

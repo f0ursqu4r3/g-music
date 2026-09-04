@@ -25,31 +25,41 @@ import type { MediaItem } from "@/api";
 import { formatDuration } from "@/lib/time";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
-import type { LibrarySortOption, TrackFilter } from "./types";
+import type {
+  LibrarySortOption,
+  TrackFilter,
+  TrackSelectionModifiers,
+} from "./types";
 
 type TrackSortColumn = "album" | "artist" | "duration" | "title";
 
 const props = defineProps<{
+  canRemoveFromPlaylist?: boolean;
+  isUpdating?: boolean;
   tracks: MediaItem[];
   playingItemId: string | undefined;
-  selectedTrackId: string | undefined;
+  selectedTrackIds: string[];
   favoriteTrackIds: string[];
   sortBy: LibrarySortOption;
   trackFilter: TrackFilter | null;
 }>();
 
 const emit = defineEmits<{
-  addToQueue: [id: string];
-  selectTrack: [track: MediaItem];
-  playTrack: [track: MediaItem];
-  playNext: [id: string];
+  addToQueue: [tracks: MediaItem[]];
+  dragTracks: [track: MediaItem, event: DragEvent];
+  dragTracksEnd: [];
+  selectTrack: [track: MediaItem, modifiers: TrackSelectionModifiers];
+  playTrack: [tracks: MediaItem[]];
+  playNext: [tracks: MediaItem[]];
   clearTrackFilter: [];
   editTrack: [track: MediaItem];
   openAlbum: [track: MediaItem];
   openArtist: [track: MediaItem];
-  removeTrack: [track: MediaItem];
+  openTrackContext: [track: MediaItem];
+  removeTrack: [tracks: MediaItem[]];
+  removeFromPlaylist: [tracks: MediaItem[]];
   setSort: [option: LibrarySortOption];
-  toggleFavorite: [id: string];
+  toggleFavorite: [ids: string[]];
 }>();
 
 const columnWidths = ref([6, 29, 25, 25, 9, 6]);
@@ -107,6 +117,19 @@ const virtualTrackHeight = computed(
 
 function isFavorite(trackId: string): boolean {
   return props.favoriteTrackIds.includes(trackId);
+}
+
+function isSelected(trackId: string): boolean {
+  return props.selectedTrackIds.includes(trackId);
+}
+
+function selectionModifiers(
+  event: MouseEvent | KeyboardEvent,
+): TrackSelectionModifiers {
+  return {
+    additive: event.metaKey || event.ctrlKey,
+    range: event.shiftKey,
+  };
 }
 
 function sortDirection(
@@ -393,35 +416,46 @@ onBeforeUnmount(() => {
           v-for="{ track, virtualItem } in virtualTracks"
           :key="String(virtualItem.key)"
           :is-favorite="isFavorite(track.id)"
+          :selected-tracks="props.tracks.filter((item) => isSelected(item.id))"
           :track="track"
+          :can-remove-from-playlist="props.canRemoveFromPlaylist"
+          :is-updating="props.isUpdating"
           @add-to-queue="emit('addToQueue', $event)"
           @edit="emit('editTrack', $event)"
           @open-album="emit('openAlbum', $event)"
           @open-artist="emit('openArtist', $event)"
+          @open="emit('openTrackContext', $event)"
           @play="emit('playTrack', $event)"
           @play-next="emit('playNext', $event)"
           @remove="emit('removeTrack', $event)"
-          @select="emit('selectTrack', $event)"
+          @remove-from-playlist="emit('removeFromPlaylist', $event)"
           @toggle-favorite="emit('toggleFavorite', $event)"
         >
           <div
             :aria-label="`${track.title} by ${track.artist}`"
-            :aria-selected="track.id === props.selectedTrackId"
-            class="group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+            :aria-selected="isSelected(track.id)"
+            class="library-track-drag-source group absolute left-0 grid h-9 w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
             :data-index="virtualItem.index"
             :data-playing="track.id === props.playingItemId"
-            :data-selected="track.id === props.selectedTrackId"
+            :data-selected="isSelected(track.id)"
             :data-track-id="track.id"
+            draggable="true"
             role="row"
             tabindex="0"
             :style="{
               gridTemplateColumns: trackGridTemplateColumns,
               transform: `translateY(${virtualItem.start}px)`,
             }"
-            @click="emit('selectTrack', track)"
-            @dblclick="emit('playTrack', track)"
-            @keydown.enter.prevent="emit('selectTrack', track)"
-            @keydown.space.prevent="emit('selectTrack', track)"
+            @click="emit('selectTrack', track, selectionModifiers($event))"
+            @dblclick="emit('playTrack', [track])"
+            @dragend="emit('dragTracksEnd')"
+            @dragstart="emit('dragTracks', track, $event)"
+            @keydown.enter.prevent="
+              emit('selectTrack', track, selectionModifiers($event))
+            "
+            @keydown.space.prevent="
+              emit('selectTrack', track, selectionModifiers($event))
+            "
           >
             <div
               class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
@@ -438,7 +472,7 @@ onBeforeUnmount(() => {
                 class="absolute grid size-7 cursor-pointer place-items-center border-0 bg-transparent p-0 text-(--muted-text) opacity-0 transition-[color,opacity] group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--text) focus-visible:opacity-100 [&>svg]:size-3.5"
                 data-track-action="play"
                 type="button"
-                @click.stop="emit('playTrack', track)"
+                @click.stop="emit('playTrack', [track])"
                 @dblclick.stop
               >
                 <Play aria-hidden="true" />
@@ -500,7 +534,7 @@ onBeforeUnmount(() => {
                 :aria-pressed="isFavorite(track.id)"
                 class="grid size-7 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--subtle-text) transition-colors hover:bg-[oklch(0.74_0.05_300/0.1)] hover:text-(--text) aria-pressed:text-accent [&>svg]:size-4"
                 type="button"
-                @click.stop="emit('toggleFavorite', track.id)"
+                @click.stop="emit('toggleFavorite', [track.id])"
               >
                 <Heart
                   aria-hidden="true"
@@ -519,5 +553,9 @@ onBeforeUnmount(() => {
 .library-track-scroll {
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 24px);
   mask-image: linear-gradient(to bottom, transparent, black 24px);
+}
+
+.library-track-drag-source {
+  -webkit-user-drag: element;
 }
 </style>
