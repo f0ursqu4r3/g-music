@@ -96,6 +96,17 @@ also run the bridge directly for protocol debugging:
 bun run mcp
 ```
 
+## Library drag and drop
+
+Drag selected tracks from the list or grid onto a custom playlist to add them.
+Favorites and Most Played are not drop targets.
+
+The Library window uses HTML drag and drop. Keep Tauri's native file-drop
+handler disabled: `dragDropEnabled: false` in the startup window configuration
+and `disable_drag_drop_handler()` when Rust recreates the Library window.
+The native handler intercepts DOM drag events on macOS. Restart the native app
+after changing this setting; frontend hot reload does not recreate its WebView.
+
 ## Verification
 
 ```sh

@@ -21,6 +21,22 @@ function mainWindow(): MainWindowConfiguration {
   return configuration.app.windows[0];
 }
 
+describe("library HTML drag and drop", () => {
+  it("leaves DOM drag events enabled in the startup library window", () => {
+    expect(mainWindow()).toMatchObject({ dragDropEnabled: false });
+  });
+
+  it("disables native file-drop interception when recreating the library window", () => {
+    const windowsSource = readFileSync("src-tauri/src/windows.rs", "utf8");
+    const showSurface = windowsSource
+      .split("fn show_surface")[1]
+      ?.split("pub fn show_import")[0];
+
+    expect(showSurface).toContain("if surface == WindowSurface::Library");
+    expect(showSurface).toContain("builder.disable_drag_drop_handler()");
+  });
+});
+
 describe("main window chrome", () => {
   it("uses a dark overlay title bar for a seamless glass surface", () => {
     expect(mainWindow()).toMatchObject({

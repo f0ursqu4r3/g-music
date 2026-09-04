@@ -15,6 +15,7 @@
     "windows": [
       {
         "title": "G Music",
+        "dragDropEnabled": false,
         "width": 1180,
         "height": 640,
         "minWidth": 780,

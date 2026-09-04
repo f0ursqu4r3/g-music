@@ -273,6 +273,13 @@ fn show_surface<R: Runtime>(app: &AppHandle<R>, surface: WindowSurface) -> tauri
     .transparent(spec.transparent)
     .resizable(spec.resizable);
 
+    // Library tracks use DOM drag/drop, not Tauri's native file-drop handler.
+    let builder = if surface == WindowSurface::Library {
+        builder.disable_drag_drop_handler()
+    } else {
+        builder
+    };
+
     #[cfg(target_os = "macos")]
     let builder = if spec.overlay_titlebar {
         builder
