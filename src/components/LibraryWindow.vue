@@ -750,6 +750,37 @@ function playTracks(tracks: MediaItem[]): void {
   );
 }
 
+function selectedPlaybackTracks(): MediaItem[] {
+  if (selectedTracks.value.length > 0) {
+    return selectedTracks.value;
+  }
+  if (selectedAlbum.value) {
+    return searchedTracks.value.filter(
+      (track) =>
+        track.artist === selectedAlbum.value?.artist &&
+        track.album?.trim() === selectedAlbum.value?.title,
+    );
+  }
+  if (selectedArtist.value) {
+    return searchedTracks.value.filter(
+      (track) => track.artist === selectedArtist.value?.name,
+    );
+  }
+  return [];
+}
+
+function togglePlayback(): void {
+  if (isPlaying.value) {
+    emit("toggle");
+    return;
+  }
+
+  const tracks = selectedPlaybackTracks();
+  if (tracks.length > 0) {
+    playTracks(tracks);
+  }
+}
+
 function playTracksNext(tracks: MediaItem[]): void {
   if (props.isUpdating) {
     return;
@@ -1198,7 +1229,7 @@ onBeforeUnmount(finishTrackDrag);
       @set-volume="emit('setVolume', $event)"
       @toggle-shuffle="emit('toggleShuffle')"
       @toggle-mute="emit('toggleMute')"
-      @toggle="emit('toggle')"
+      @toggle="togglePlayback"
       @cycle-repeat-mode="emit('cycleRepeatMode')"
       @toggle-details="detailsSidebarOpen = !detailsSidebarOpen"
     />

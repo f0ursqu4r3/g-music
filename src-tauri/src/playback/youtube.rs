@@ -1092,19 +1092,27 @@ impl YouTubePlaybackProvider {
     }
 
     pub fn queue_track_next(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
+        let should_start = self.snapshot.status != PlaybackStatus::Playing;
         let item = self.library_item(id)?;
         self.snapshot.queue.retain(|queued| queued.id != id);
         let insert_at = self.current_index().map_or(0, |index| index + 1);
         self.snapshot.queue.insert(insert_at, item);
         self.reconcile_shuffle_order();
+        if should_start {
+            self.play_track(id)?;
+        }
         Ok(())
     }
 
     pub fn add_to_queue(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
+        let should_start = self.snapshot.status != PlaybackStatus::Playing;
         let item = self.library_item(id)?;
         self.snapshot.queue.retain(|queued| queued.id != id);
         self.snapshot.queue.push(item);
         self.reconcile_shuffle_order();
+        if should_start {
+            self.play_track(id)?;
+        }
         Ok(())
     }
 
@@ -3924,6 +3932,52 @@ mod tests {
             ["M7lc1UVf-VE", "BaW_jenozKc"]
         );
         assert_eq!(provider.library_snapshot().tracks.len(), 2);
+    }
+
+    #[test]
+    fn queue_actions_start_the_added_track_when_playback_is_idle() {
+        let entries = parse_import_metadata(
+            r#"{"id":"PL-example","title":"Playlist","entries":[{"id":"M7lc1UVf-VE","title":"First","channel":"Artist","duration":120},{"id":"BaW_jenozKc","title":"Second","channel":"Artist","duration":90}]}"#,
+        )
+        .expect("fixture metadata is valid");
+
+        for (queue_action, expected_id) in [
+            (
+                YouTubePlaybackProvider::queue_track_next
+                    as fn(&mut YouTubePlaybackProvider, &str) -> Result<(), _>,
+                "M7lc1UVf-VE",
+            ),
+            (
+                YouTubePlaybackProvider::add_to_queue
+                    as fn(&mut YouTubePlaybackProvider, &str) -> Result<(), _>,
+                "BaW_jenozKc",
+            ),
+        ] {
+            let mut provider = YouTubePlaybackProvider::with_entries(entries.clone(), None);
+            provider.player.test_commands = Some(Default::default());
+
+            queue_action(&mut provider, expected_id)
+                .expect("a queued library track should start playback");
+
+            assert_eq!(provider.snapshot.status, PlaybackStatus::Playing);
+            assert_eq!(
+                provider
+                    .snapshot
+                    .current_item
+                    .as_ref()
+                    .map(|item| item.id.as_str()),
+                Some(expected_id)
+            );
+            assert_eq!(
+                provider
+                    .snapshot
+                    .queue
+                    .iter()
+                    .map(|item| item.id.as_str())
+                    .collect::<Vec<_>>(),
+                [expected_id]
+            );
+        }
     }
 
     #[test]

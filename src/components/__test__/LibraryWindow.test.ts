@@ -441,6 +441,93 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("plays a selected track, album, or artist when playback is idle", async () => {
+    const idleSnapshot = { ...snapshot, currentItem: null, queue: [] };
+
+    const trackWindow = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot: idleSnapshot,
+        tracks: importedTracks,
+      },
+    });
+    await trackWindow.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+    await trackWindow.get('button[aria-label="Play"]').trigger("click");
+    expect(trackWindow.emitted("playTrack")).toEqual([
+      [["BaW_jenozKc"], "BaW_jenozKc"],
+    ]);
+
+    const albumWindow = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot: idleSnapshot,
+        tracks: importedTracks,
+      },
+    });
+    await albumWindow.get('[data-collection="albums"]').trigger("click");
+    await albumWindow.get(".album-tile").trigger("click");
+    await albumWindow.get('button[aria-label="Play"]').trigger("click");
+    expect(albumWindow.emitted("playTrack")).toEqual([
+      [["M7lc1UVf-VE"], "M7lc1UVf-VE"],
+    ]);
+
+    const artistWindow = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot: idleSnapshot,
+        tracks: importedTracks,
+      },
+    });
+    await artistWindow.get('[data-collection="artists"]').trigger("click");
+    await artistWindow.get(".artist-tile").trigger("click");
+    await artistWindow.get('button[aria-label="Play"]').trigger("click");
+    expect(artistWindow.emitted("playTrack")).toEqual([
+      [["M7lc1UVf-VE"], "M7lc1UVf-VE"],
+    ]);
+  });
+
+  it("does nothing when playback is idle and no library item is selected", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, currentItem: null, queue: [] },
+        tracks: importedTracks,
+      },
+    });
+
+    await wrapper.get('button[aria-label="Play"]').trigger("click");
+
+    expect(wrapper.emitted("playTrack")).toBeUndefined();
+    expect(wrapper.emitted("toggle")).toBeUndefined();
+  });
+
+  it("queues selected tracks in playback order when playback is idle", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot: { ...snapshot, currentItem: null, queue: [] },
+        tracks: importedTracks,
+      },
+    });
+
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+    await wrapper
+      .get('[data-track-id="BaW_jenozKc"]')
+      .trigger("click", { metaKey: true });
+    await wrapper
+      .get('button[aria-label="Play 2 tracks next"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("playNext")).toEqual([
+      [["M7lc1UVf-VE", "BaW_jenozKc"]],
+    ]);
+  });
+
   it("edits the selected track metadata in a modal", async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
