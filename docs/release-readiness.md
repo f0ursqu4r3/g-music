@@ -85,6 +85,17 @@ Default tests must not contact YouTube, open the real library, or play audio.
 Use temporary directories and deterministic extractor/IPC fixtures for
 regressions. Live checks must be explicit and bounded.
 
+Check the installed mpv through the application's actual diagnostics path from
+`src-tauri`. This probe does not play audio or read the library:
+
+```sh
+cargo test installed_mpv_is_reported_available -- --ignored --nocapture
+```
+
+Dependency availability follows a successful version command, not whether its
+version text matches a known format. Both `mpv 0.40.0` and `mpv v0.41.0` are
+recognized; an unknown format must not mark a working tool as missing.
+
 Run the existing public metadata probes from `src-tauri`:
 
 ```sh
