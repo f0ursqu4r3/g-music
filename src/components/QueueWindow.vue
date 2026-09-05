@@ -9,14 +9,14 @@ import {
   SkipForward,
   Trash2,
   Volume2,
-} from "lucide-vue-next";
+} from 'lucide-vue-next';
 import {
   observeElementRect,
   type Rect,
   useVirtualizer,
   type Virtualizer,
-} from "@tanstack/vue-virtual";
-import { ReorderGroup, ReorderItem } from "motion-v";
+} from '@tanstack/vue-virtual';
+import { ReorderGroup, ReorderItem } from 'motion-v';
 import {
   DialogContent,
   DialogDescription,
@@ -25,21 +25,21 @@ import {
   DialogRoot,
   DialogTitle,
   DialogTrigger,
-} from "reka-ui";
-import { type ComponentPublicInstance, computed, ref, watch } from "vue";
+} from 'reka-ui';
+import { type ComponentPublicInstance, computed, ref, watch } from 'vue';
 
-import type { MediaItem, PlaybackStatus, Playlist } from "@/api";
-import { Button } from "@/components/ui/button";
+import type { MediaItem, PlaybackStatus, Playlist } from '@/api';
+import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatDuration } from "@/lib/time";
-import YouTubeArtwork from "./YouTubeArtwork.vue";
+} from '@/components/ui/context-menu';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatDuration } from '@/lib/time';
+import YouTubeArtwork from './YouTubeArtwork.vue';
 
 interface Props {
   queue: MediaItem[];
@@ -89,26 +89,26 @@ const displayQueue = computed(() => {
 const isShuffled = computed(() => displayQueue.value !== props.queue);
 const currentItem = computed(
   () =>
-    displayQueue.value.find((item) => item.id === props.currentItemId) ?? null,
+    displayQueue.value.find((item) => item.id === props.currentItemId) ?? null
 );
-const isPlaying = computed(() => props.status === "playing");
+const isPlaying = computed(() => props.status === 'playing');
 const clearOpen = ref(false);
 const saveOpen = ref(false);
 const actionPending = ref(false);
-const actionError = ref("");
-const playlistName = ref("");
-const playlistId = ref("");
+const actionError = ref('');
+const playlistName = ref('');
+const playlistId = ref('');
 const playlistTrackIds = ref<string[]>([]);
 const actionDisabled = computed(
   () =>
     props.queue.length === 0 ||
     props.isUpdating ||
     props.isStarting ||
-    actionPending.value,
+    actionPending.value
 );
 
 function errorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "message" in error)
+  if (error && typeof error === 'object' && 'message' in error)
     return String(error.message);
   return String(error);
 }
@@ -116,7 +116,7 @@ function errorMessage(error: unknown): string {
 function openSave(open: boolean): void {
   if (actionPending.value) return;
   if (open) {
-    actionError.value = "";
+    actionError.value = '';
     playlistId.value = `playlist-${crypto.randomUUID()}`;
     playlistTrackIds.value = displayQueue.value.map((item) => item.id);
   }
@@ -125,14 +125,14 @@ function openSave(open: boolean): void {
 
 function openClear(open: boolean): void {
   if (actionPending.value) return;
-  actionError.value = "";
+  actionError.value = '';
   clearOpen.value = open;
 }
 
 async function clear(): Promise<void> {
   if (!props.clearQueue || actionPending.value) return;
   actionPending.value = true;
-  actionError.value = "";
+  actionError.value = '';
   try {
     await props.clearQueue();
     clearOpen.value = false;
@@ -147,7 +147,7 @@ async function save(): Promise<void> {
   const name = playlistName.value.trim();
   if (!name || !props.savePlaylist || actionPending.value) return;
   actionPending.value = true;
-  actionError.value = "";
+  actionError.value = '';
   try {
     await props.savePlaylist({
       id: playlistId.value,
@@ -155,7 +155,7 @@ async function save(): Promise<void> {
       trackIds: [...playlistTrackIds.value],
     });
     saveOpen.value = false;
-    playlistName.value = "";
+    playlistName.value = '';
   } catch (error) {
     actionError.value = `${errorMessage(error)}. Your playlist draft is kept. Try Save playlist again.`;
   } finally {
@@ -164,20 +164,20 @@ async function save(): Promise<void> {
 }
 const queueStartIndex = computed(() => {
   const index = displayQueue.value.findIndex(
-    (item) => item.id === props.currentItemId,
+    (item) => item.id === props.currentItemId
   );
 
   return index >= 0 ? index : 0;
 });
 const visibleQueue = computed(() =>
-  displayQueue.value.slice(queueStartIndex.value),
+  displayQueue.value.slice(queueStartIndex.value)
 );
 const totalDurationMs = computed(() =>
-  visibleQueue.value.reduce((total, item) => total + item.durationMs, 0),
+  visibleQueue.value.reduce((total, item) => total + item.durationMs, 0)
 );
 const queueSummary = computed(() => {
   const count = visibleQueue.value.length;
-  return `${count} ${count === 1 ? "track" : "tracks"} · ${formatDuration(totalDurationMs.value)}`;
+  return `${count} ${count === 1 ? 'track' : 'tracks'} · ${formatDuration(totalDurationMs.value)}`;
 });
 const queueList = ref<HTMLElement | null>(null);
 const reorderQueue = ref<MediaItem[]>([...visibleQueue.value]);
@@ -187,11 +187,11 @@ const queueRowHeight = 52;
 const queueReorderTransition = {
   damping: 42,
   stiffness: 650,
-  type: "spring" as const,
+  type: 'spring' as const,
 };
 
 function viewportHeight(): number {
-  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
+  return typeof window === 'undefined' ? 600 : window.innerHeight || 600;
 }
 
 function setQueueList(element: Element | ComponentPublicInstance | null): void {
@@ -200,7 +200,7 @@ function setQueueList(element: Element | ComponentPublicInstance | null): void {
 
 function observeQueueListRect(
   instance: Virtualizer<HTMLElement, Element>,
-  callback: (rect: Rect) => void,
+  callback: (rect: Rect) => void
 ): (() => void) | undefined {
   return observeElementRect(instance, (rect) => {
     callback(rect.height > 0 ? rect : { ...rect, height: viewportHeight() });
@@ -228,15 +228,15 @@ const virtualQueueItems = computed(() =>
     const item = reorderQueue.value[virtualItem.index];
 
     return item ? [{ item, virtualItem }] : [];
-  }),
+  })
 );
 const virtualQueueHeight = computed(
-  () => `${queueVirtualizer.value.getTotalSize()}px`,
+  () => `${queueVirtualizer.value.getTotalSize()}px`
 );
 
 function playTrack(id: string): void {
   if (!props.isUpdating && !props.isStarting) {
-    emit("playTrack", id);
+    emit('playTrack', id);
   }
 }
 
@@ -272,7 +272,7 @@ function finishQueueReorder(): void {
   }
 
   isReorderPending.value = true;
-  emit("move", from, to);
+  emit('move', from, to);
 }
 
 watch(
@@ -286,7 +286,7 @@ watch(
     reorderQueue.value = [...visibleQueue.value];
     activeReorderId.value = null;
     isReorderPending.value = false;
-  },
+  }
 );
 
 watch(
@@ -296,7 +296,7 @@ watch(
       reorderQueue.value = [...visibleQueue.value];
       isReorderPending.value = false;
     }
-  },
+  }
 );
 </script>
 
@@ -327,8 +327,9 @@ watch(
             size="sm"
             variant="outline"
             :disabled="actionDisabled || !savePlaylist"
-            >Save as playlist</Button
           >
+            Save as playlist
+          </Button>
         </DialogTrigger>
         <DialogPortal>
           <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
@@ -337,13 +338,13 @@ watch(
             @escape-key-down="actionPending && $event.preventDefault()"
             @interact-outside.prevent
           >
-            <DialogTitle class="text-lg font-semibold"
-              >Save queue as playlist</DialogTitle
-            >
-            <DialogDescription class="mt-1 text-sm text-(--muted-text)"
-              >Save all {{ playlistTrackIds.length }} queue tracks in their
-              current playback order.</DialogDescription
-            >
+            <DialogTitle class="text-lg font-semibold">
+              Save queue as playlist
+            </DialogTitle>
+            <DialogDescription class="mt-1 text-sm text-(--muted-text)">
+              Save all {{ playlistTrackIds.length }} queue tracks in their
+              current playback order.
+            </DialogDescription>
             <form
               class="mt-4 flex min-h-0 flex-col gap-4"
               @submit.prevent="save"
@@ -382,7 +383,7 @@ watch(
                   type="submit"
                   :disabled="!playlistName.trim() || actionPending"
                 >
-                  {{ actionPending ? "Saving…" : "Save playlist" }}
+                  {{ actionPending ? 'Saving…' : 'Save playlist' }}
                 </Button>
               </div>
             </form>
@@ -396,8 +397,9 @@ watch(
             size="sm"
             variant="ghost"
             :disabled="actionDisabled || !clearQueue"
-            >Clear queue</Button
           >
+            Clear queue
+          </Button>
         </DialogTrigger>
         <DialogPortal>
           <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
@@ -406,14 +408,14 @@ watch(
             @escape-key-down="actionPending && $event.preventDefault()"
             @interact-outside.prevent
           >
-            <DialogTitle class="text-lg font-semibold"
-              >Clear queue?</DialogTitle
-            >
+            <DialogTitle class="text-lg font-semibold">
+              Clear queue?
+            </DialogTitle>
             <div class="min-h-0 overflow-y-auto">
-              <DialogDescription class="mt-2 text-sm text-(--muted-text)"
-                >This will stop playback and remove all tracks from the queue.
-                Your library and playlists are kept.</DialogDescription
-              >
+              <DialogDescription class="mt-2 text-sm text-(--muted-text)">
+                This will stop playback and remove all tracks from the queue.
+                Your library and playlists are kept.
+              </DialogDescription>
               <p
                 v-if="actionError"
                 role="alert"
@@ -427,11 +429,12 @@ watch(
                 variant="outline"
                 :disabled="actionPending"
                 @click="openClear(false)"
-                >Cancel</Button
               >
-              <Button :disabled="actionPending" @click="clear">{{
-                actionPending ? "Clearing…" : "Stop and clear queue"
-              }}</Button>
+                Cancel
+              </Button>
+              <Button :disabled="actionPending" @click="clear">
+                {{ actionPending ? 'Clearing…' : 'Stop and clear queue' }}
+              </Button>
             </div>
           </DialogContent>
         </DialogPortal>
@@ -589,7 +592,7 @@ watch(
                     emit(
                       'move',
                       queueStartIndex + virtualItem.index,
-                      queueStartIndex + virtualItem.index - 1,
+                      queueStartIndex + virtualItem.index - 1
                     )
                   "
                 >
@@ -607,7 +610,7 @@ watch(
                     emit(
                       'move',
                       queueStartIndex + virtualItem.index,
-                      queueStartIndex + virtualItem.index + 1,
+                      queueStartIndex + virtualItem.index + 1
                     )
                   "
                 >
