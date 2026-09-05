@@ -247,7 +247,22 @@ server.registerTool(
   async ({ confirmed, updates }) => {
     try {
       requireConfirmation(confirmed);
-      return textResult(await invokeAgent("tracks.update", { updates }));
+      return textResult(
+        await invokeAgent("tracks.update", {
+          updates: updates.map(
+            ({ id, title, artist, album, label, genres }) => ({
+              id,
+              metadata: {
+                title,
+                artist,
+                album: album ?? null,
+                label: label ?? null,
+                genres,
+              },
+            }),
+          ),
+        }),
+      );
     } catch (error) {
       return toolError(error);
     }
@@ -338,7 +353,7 @@ server.registerTool(
   async ({ confirmed, from, to }) => {
     try {
       requireConfirmation(confirmed);
-      return textResult(await invokeAgent("queue.move", { from, to }));
+      return textResult(await invokeAgent("library.move", { from, to }));
     } catch (error) {
       return toolError(error);
     }

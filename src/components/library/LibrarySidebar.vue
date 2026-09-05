@@ -33,6 +33,7 @@ const props = defineProps<{
   isUpdating?: boolean;
   playlists: Playlist[];
   sidebarWidth?: number;
+  creationError?: string;
 }>();
 
 const emit = defineEmits<{
@@ -71,6 +72,7 @@ const playlistReorderTransition = {
 };
 
 function saveNewPlaylist(): void {
+  if (props.isUpdating) return;
   const name = newPlaylistName.value.trim();
   if (name) {
     emit("createPlaylist", name);
@@ -465,12 +467,37 @@ onBeforeUnmount(() => {
             <input
               ref="newPlaylistInput"
               v-model="newPlaylistName"
+              :disabled="props.isUpdating"
               aria-label="New playlist name"
               class="min-w-0 flex-1 bg-transparent text-[0.79rem] text-(--text) outline-none placeholder:text-(--subtle-text)"
               placeholder="New playlist"
               @keydown.esc.prevent="cancelNewPlaylist"
             />
+            <button
+              aria-label="Save new playlist"
+              :disabled="props.isUpdating || !newPlaylistName.trim()"
+              type="submit"
+              class="shrink-0 text-xs text-(--text) disabled:opacity-40"
+            >
+              Save
+            </button>
+            <button
+              aria-label="Cancel new playlist"
+              :disabled="props.isUpdating"
+              type="button"
+              class="shrink-0 text-xs text-(--muted-text)"
+              @click="cancelNewPlaylist"
+            >
+              Cancel
+            </button>
           </form>
+          <p
+            v-if="props.creationError"
+            role="alert"
+            class="break-words px-2 py-1 text-xs text-(--error-text)"
+          >
+            {{ props.creationError }}
+          </p>
         </nav>
       </div>
     </ScrollArea>

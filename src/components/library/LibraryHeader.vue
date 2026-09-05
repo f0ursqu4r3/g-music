@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { Ellipsis, Grid2X2, List, Loader, Play } from "lucide-vue-next";
+import { Ellipsis, Grid2X2, List, Loader, Play, Search } from "lucide-vue-next";
+import {
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "reka-ui";
 
 import { Slider } from "@/components/ui/slider";
 import type {
@@ -12,6 +19,7 @@ withDefaults(
   defineProps<{
     collectionTitle: string;
     collectionSummary: string;
+    searchOpen?: boolean;
     playlistName?: string;
     canPlayPlaylist?: boolean;
     isUpdating?: boolean;
@@ -30,12 +38,13 @@ withDefaults(
 
 const emit = defineEmits<{
   setDisplayMode: [mode: LibraryDisplayMode];
-  toggleOptions: [];
+  toggleOptions: [open: boolean];
   setSort: [option: LibrarySortOption];
   setGroup: [option: LibraryGroupOption];
   setGridItemSize: [size: number];
   toggleMetadataRefresh: [];
   playPlaylist: [];
+  toggleSearch: [];
 }>();
 
 const sortOptions: ReadonlyArray<readonly [LibrarySortOption, string]> = [
@@ -63,10 +72,10 @@ function emitGridItemSize(values: number[]): void {
 </script>
 
 <template>
-  <header class="window-header gap-6">
-    <div>
-      <div class="flex items-center gap-3">
-        <h1 class="window-title">
+  <header class="window-header flex-wrap gap-x-3 gap-y-2 py-3">
+    <div class="min-w-0 flex-1">
+      <div class="flex min-w-0 items-center gap-3">
+        <h1 class="window-title min-w-0 truncate" :title="collectionTitle">
           {{ collectionTitle }}
         </h1>
         <button
@@ -86,7 +95,7 @@ function emitGridItemSize(values: number[]): void {
         class="mt-1 flex items-center gap-2 text-[0.77rem] text-(--muted-text)"
       >
         <span data-library-summary>{{ collectionSummary }}</span>
-        <template v-if="hasActiveMetadataRefresh">
+        <template v-if="metadataRefreshRemaining > 0">
           ·
           <button
             :aria-expanded="metadataRefreshDrawerOpen"
@@ -96,7 +105,11 @@ function emitGridItemSize(values: number[]): void {
             type="button"
             @click="emit('toggleMetadataRefresh')"
           >
-            <Loader class="size-3 animate-spin" aria-hidden="true" />
+            <Loader
+              class="size-3"
+              :class="{ 'animate-spin': hasActiveMetadataRefresh }"
+              aria-hidden="true"
+            />
             {{ metadataRefreshRemaining }}
           </button>
         </template>
@@ -105,13 +118,28 @@ function emitGridItemSize(values: number[]): void {
 
     <p
       v-if="errorMessage"
-      class="m-0 max-w-xl flex-1 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-sm text-red-300"
+      class="order-last m-0 max-h-20 w-full overflow-y-auto break-words rounded-lg border border-(--line-strong) bg-(--error-surface) px-3 py-2 text-sm text-(--error-text)"
       role="alert"
     >
       {{ errorMessage }}
     </p>
 
     <nav class="flex items-center gap-1" aria-label="Library view options">
+      <button
+        :aria-label="
+          searchOpen ? 'Close library search' : 'Open library search'
+        "
+        :aria-expanded="!!searchOpen"
+        :aria-controls="searchOpen ? 'library-search' : undefined"
+        aria-keyshortcuts="Meta+f Control+f"
+        title="Toggle library search (⌘F / Ctrl+F)"
+        data-library-search-toggle
+        class="grid size-8.5 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-expanded:bg-[oklch(0.72_0.025_258/0.13)] aria-expanded:text-(--text) [&>svg]:size-4.5"
+        type="button"
+        @click="emit('toggleSearch')"
+      >
+        <Search aria-hidden="true" />
+      </button>
       <button
         aria-label="List view"
         :aria-pressed="displayMode === 'list'"
@@ -131,60 +159,67 @@ function emitGridItemSize(values: number[]): void {
         <Grid2X2 aria-hidden="true" />
       </button>
 
-      <div class="relative">
-        <button
+      <DropdownMenuRoot
+        :open="libraryOptionsOpen"
+        @update:open="emit('toggleOptions', $event)"
+      >
+        <DropdownMenuTrigger
           aria-label="More library options"
           :aria-expanded="libraryOptionsOpen"
           aria-haspopup="menu"
           class="grid size-8.5 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) [&>svg]:size-4.5"
           type="button"
-          @click="emit('toggleOptions')"
         >
           <Ellipsis aria-hidden="true" />
-        </button>
-        <div
-          v-if="libraryOptionsOpen"
-          class="library-options-menu absolute top-10 right-0 z-20 grid w-52 gap-1 rounded-lg border border-(--line) bg-(--glass-window) p-2 shadow-xl backdrop-blur-lg"
-          role="menu"
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          :side-offset="6"
+          :collision-padding="8"
+          align="end"
+          class="library-options-menu z-50 grid max-h-[var(--reka-dropdown-menu-content-available-height)] w-52 gap-1 overflow-y-auto rounded-lg border border-(--line) bg-(--menu-surface,var(--surface)) p-2"
         >
           <p
             class="px-2 py-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
           >
             Sort by
           </p>
-          <button
-            v-for="option in sortOptions"
-            :key="option[0]"
-            :data-sort="option[0]"
-            :aria-pressed="sortBy === option[0]"
-            class="flex cursor-pointer items-center justify-between rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-xs text-(--muted-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-pressed:text-(--text)"
-            role="menuitemradio"
-            type="button"
-            @click="emit('setSort', option[0])"
+          <DropdownMenuRadioGroup
+            :model-value="sortBy"
+            @update:model-value="emit('setSort', $event as LibrarySortOption)"
           >
-            {{ option[1] }}
-            <span v-if="sortBy === option[0]" aria-hidden="true">✓</span>
-          </button>
+            <DropdownMenuRadioItem
+              v-for="option in sortOptions"
+              :key="option[0]"
+              :data-sort="option[0]"
+              :value="option[0]"
+              class="flex cursor-pointer items-center justify-between rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-xs text-(--muted-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-pressed:text-(--text)"
+            >
+              {{ option[1] }}
+              <span v-if="sortBy === option[0]" aria-hidden="true">✓</span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
           <p
             class="mt-1 px-2 py-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
           >
             Group in grid
           </p>
-          <button
-            v-for="option in groupOptions"
-            :key="option[0]"
-            :data-group="option[0]"
-            :aria-pressed="groupBy === option[0]"
-            class="flex cursor-pointer items-center justify-between rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-xs text-(--muted-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-pressed:text-(--text)"
-            role="menuitemradio"
-            type="button"
-            @click="emit('setGroup', option[0])"
+          <DropdownMenuRadioGroup
+            :model-value="groupBy"
+            @update:model-value="emit('setGroup', $event as LibraryGroupOption)"
           >
-            {{ option[1] }}
-            <span v-if="groupBy === option[0]" aria-hidden="true">✓</span>
-          </button>
-        </div>
-      </div>
+            <DropdownMenuRadioItem
+              v-for="option in groupOptions"
+              :key="option[0]"
+              :data-group="option[0]"
+              :value="option[0]"
+              class="flex cursor-pointer items-center justify-between rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-xs text-(--muted-text) hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) aria-pressed:text-(--text)"
+            >
+              {{ option[1] }}
+              <span v-if="groupBy === option[0]" aria-hidden="true">✓</span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenuRoot>
       <label
         v-if="displayMode === 'grid'"
         class="ml-2 flex w-28 items-center gap-2 text-(--muted-text) [&>svg]:size-3.5"

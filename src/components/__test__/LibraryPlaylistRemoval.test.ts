@@ -1,4 +1,5 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
+const body = () => new DOMWrapper(document.body);
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { MediaItem, PlaybackSnapshot, Playlist } from "@/api";
@@ -60,7 +61,7 @@ describe("playlist track removal", () => {
       const updated = { ...playlists[0]!, trackIds: ["track-c", "track-b"] };
       expect(wrapper.emitted("upsertPlaylist")).toEqual([[updated]]);
       expect(wrapper.emitted("removeTracks")).toBeUndefined();
-      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+      expect(body().find('[role="dialog"]').exists()).toBe(false);
       expect(wrapper.props("tracks")).toEqual(tracks);
       expect(wrapper.props("snapshot")).toEqual(snapshot);
       expect(wrapper.props("playlists")).toEqual(playlists);

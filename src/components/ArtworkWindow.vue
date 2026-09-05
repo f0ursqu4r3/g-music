@@ -2,9 +2,12 @@
 import {
   Disc3,
   Heart,
+  LoaderCircle,
   Pause,
   Play,
   Repeat2,
+  Repeat1,
+  Repeat,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -28,10 +31,14 @@ interface Props {
   snapshot: PlaybackSnapshot;
   isUpdating: boolean;
   isWindowFocused?: boolean;
+  isStarting?: boolean;
+  favoriteTrackIds?: string[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isWindowFocused: true,
+  isStarting: false,
+  favoriteTrackIds: () => [],
 });
 const emit = defineEmits<{
   toggle: [];
@@ -39,10 +46,32 @@ const emit = defineEmits<{
   next: [];
   seek: [positionMs: number];
   toggleFavorite: [id: string];
+  toggleShuffle: [];
+  cycleRepeatMode: [];
 }>();
 
 const isPlaying = computed(() => props.snapshot.status === "playing");
 const currentItem = computed(() => props.snapshot.currentItem);
+const isFavorite = computed(() =>
+  currentItem.value
+    ? props.favoriteTrackIds.includes(currentItem.value.id)
+    : false,
+);
+const repeatMode = computed(() => props.snapshot.repeatMode ?? "off");
+const repeatLabel = computed(() =>
+  repeatMode.value === "one"
+    ? "Disable repeat"
+    : repeatMode.value === "all"
+      ? "Enable repeat one"
+      : "Enable repeat all",
+);
+const repeatIcon = computed(() =>
+  repeatMode.value === "one"
+    ? Repeat1
+    : repeatMode.value === "all"
+      ? Repeat2
+      : Repeat,
+);
 const compactProgressMs = computed(() => {
   const durationMs = currentItem.value?.durationMs ?? 0;
   return Math.min(Math.max(props.snapshot.positionMs, 0), durationMs);
@@ -80,7 +109,7 @@ function emitSeek(values: number[]): void {
           :disabled="!currentItem || isUpdating"
           @select="currentItem && emit('toggleFavorite', currentItem.id)"
         >
-          Add to Favorites
+          {{ isFavorite ? "Remove from Favorites" : "Add to Favorites" }}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -120,12 +149,17 @@ function emitSeek(values: number[]): void {
             <Button
               class="text-[oklch(0.94_0.012_270/0.74)] hover:bg-[oklch(0.94_0.012_270/0.1)] hover:text-(--text)"
               aria-label="Favorite track"
+              :aria-pressed="isFavorite"
+              :title="isFavorite ? 'Remove from Favorites' : 'Add to Favorites'"
               size="icon-sm"
               variant="ghost"
               :disabled="!currentItem || isUpdating"
               @click="currentItem && emit('toggleFavorite', currentItem.id)"
             >
-              <Heart aria-hidden="true" />
+              <Heart
+                :fill="isFavorite ? 'currentColor' : 'none'"
+                aria-hidden="true"
+              />
             </Button>
           </div>
         </div>
@@ -147,9 +181,14 @@ function emitSeek(values: number[]): void {
         >
           <Button
             class="text-[oklch(0.94_0.012_270/0.76)] hover:bg-[oklch(0.94_0.012_270/0.1)] hover:text-(--text)"
-            aria-label="Shuffle"
+            :aria-label="
+              snapshot.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'
+            "
+            :aria-pressed="snapshot.shuffleEnabled ?? false"
+            :disabled="isUpdating || isStarting"
             size="icon-sm"
             variant="ghost"
+            @click="emit('toggleShuffle')"
           >
             <Shuffle aria-hidden="true" />
           </Button>
@@ -158,19 +197,36 @@ function emitSeek(values: number[]): void {
             aria-label="Previous track"
             size="icon-sm"
             variant="ghost"
-            :disabled="isUpdating"
+            :disabled="isUpdating || isStarting || !currentItem"
             @click="emit('previous')"
           >
             <SkipBack aria-hidden="true" />
           </Button>
           <Button
-            :aria-label="isPlaying ? 'Pause' : 'Play'"
+            :aria-label="
+              isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'
+            "
+            :aria-busy="isStarting ? 'true' : undefined"
             class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
             size="icon"
-            :disabled="isUpdating"
+            :disabled="
+              isUpdating ||
+              isStarting ||
+              (!currentItem && snapshot.queue.length === 0)
+            "
             @click="emit('toggle')"
           >
-            <Pause v-if="isPlaying" aria-hidden="true" fill="currentColor" />
+            <LoaderCircle
+              v-if="isStarting"
+              class="animate-spin"
+              data-playback-starting
+              aria-hidden="true"
+            />
+            <Pause
+              v-else-if="isPlaying"
+              aria-hidden="true"
+              fill="currentColor"
+            />
             <Play v-else aria-hidden="true" fill="currentColor" />
           </Button>
           <Button
@@ -178,18 +234,22 @@ function emitSeek(values: number[]): void {
             aria-label="Next track"
             size="icon-sm"
             variant="ghost"
-            :disabled="isUpdating"
+            :disabled="isUpdating || isStarting || !currentItem"
             @click="emit('next')"
           >
             <SkipForward aria-hidden="true" />
           </Button>
           <Button
             class="text-[oklch(0.94_0.012_270/0.76)] hover:bg-[oklch(0.94_0.012_270/0.1)] hover:text-(--text)"
-            aria-label="Repeat"
+            :aria-label="repeatLabel"
+            :aria-pressed="repeatMode !== 'off'"
+            :data-repeat-mode="repeatMode"
+            :disabled="isUpdating || isStarting"
             size="icon-sm"
             variant="ghost"
+            @click="emit('cycleRepeatMode')"
           >
-            <Repeat2 aria-hidden="true" />
+            <component :is="repeatIcon" aria-hidden="true" />
           </Button>
         </nav>
 
@@ -204,7 +264,7 @@ function emitSeek(values: number[]): void {
             :max="currentItem?.durationMs ?? 0"
             :step="1000"
             :model-value="[snapshot.positionMs]"
-            :disabled="isUpdating || !currentItem"
+            :disabled="isUpdating || isStarting || !currentItem"
             @value-commit="emitSeek"
           />
           <span class="text-right">{{
@@ -250,6 +310,8 @@ function emitSeek(values: number[]): void {
 }
 
 .artwork-controls {
+  --text: oklch(0.98 0.005 270);
+  --accent-ink: oklch(0.12 0.015 270);
   text-shadow: 0 1px 12px oklch(0.05 0.02 260 / 0.45);
 }
 

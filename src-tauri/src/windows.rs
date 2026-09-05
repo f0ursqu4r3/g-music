@@ -28,14 +28,27 @@ struct WindowSpec {
     hidden_title: bool,
 }
 
+impl WindowSpec {
+    fn minimum_size(&self) -> (f64, f64) {
+        match self.kind {
+            WindowSurface::Library => (780.0, 480.0),
+            WindowSurface::Artwork => (320.0, 320.0),
+            WindowSurface::Queue => (400.0, 360.0),
+            WindowSurface::Mini => (480.0, 144.0),
+            WindowSurface::Settings => (520.0, 360.0),
+            WindowSurface::Import => (520.0, 360.0),
+        }
+    }
+}
+
 const SURFACES: &[WindowSpec] = &[
     WindowSpec {
         kind: WindowSurface::Library,
         label: "main",
         title: "G Music",
         route: "",
-        width: 1040.0,
-        height: 660.0,
+        width: 1180.0,
+        height: 640.0,
         decorations: true,
         transparent: true,
         resizable: true,
@@ -268,7 +281,7 @@ fn show_surface<R: Runtime>(app: &AppHandle<R>, surface: WindowSurface) -> tauri
     )
     .title(spec.title)
     .inner_size(spec.width, spec.height)
-    .min_inner_size(spec.width.min(520.0), spec.height.min(360.0))
+    .min_inner_size(spec.minimum_size().0, spec.minimum_size().1)
     .decorations(spec.decorations)
     .transparent(spec.transparent)
     .resizable(spec.resizable);
@@ -340,6 +353,25 @@ fn is_youtube_auth_navigation(url: &url::Url) -> bool {
 mod tests {
     use super::{MENU_TITLES, WindowSurface, all_surfaces, is_youtube_auth_navigation};
     use url::Url;
+
+    #[test]
+    fn startup_and_recreated_library_share_geometry() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let library = all_surfaces()
+            .iter()
+            .find(|spec| spec.kind == WindowSurface::Library)
+            .unwrap();
+        assert_eq!(
+            library.width,
+            config["app"]["windows"][0]["width"].as_f64().unwrap()
+        );
+        assert_eq!(
+            library.height,
+            config["app"]["windows"][0]["height"].as_f64().unwrap()
+        );
+        assert_eq!(library.minimum_size(), (780.0, 480.0));
+    }
 
     #[test]
     fn native_menu_uses_standard_macos_sections() {

@@ -26,10 +26,12 @@ pub enum YouTubeAuthError {
     #[error("finish signing in to YouTube before using this session")]
     NotSignedIn,
 
-    #[error("could not access the YouTube login session: {0}")]
+    #[error("Could not access the YouTube login session. Open the login window and retry.")]
     Webview(String),
 
-    #[error("could not store the YouTube login session: {0}")]
+    #[error(
+        "Could not store the YouTube login session. Check folder access and available storage."
+    )]
     Storage(String),
 }
 
@@ -126,12 +128,26 @@ fn write_session_file(path: &Path, cookies: &[SessionCookie]) -> Result<(), YouT
         fs::create_dir_all(parent).map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
     }
 
+    let temporary = path.with_extension(format!(
+        "tmp-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    struct TemporaryFile(PathBuf);
+    impl Drop for TemporaryFile {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+    let _cleanup = TemporaryFile(temporary.clone());
     let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .write(true)
         .mode(0o600)
-        .open(path)
+        .open(&temporary)
         .map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
     file.set_permissions(fs::Permissions::from_mode(0o600))
         .map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
@@ -142,8 +158,14 @@ fn write_session_file(path: &Path, cookies: &[SessionCookie]) -> Result<(), YouT
         writeln!(file, "{}", format_netscape_cookie(cookie))
             .map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
     }
-    file.flush()
+    file.sync_all()
         .map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
+    fs::rename(&temporary, path).map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
+    if let Some(parent) = path.parent() {
+        fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| YouTubeAuthError::Storage(error.to_string()))?;
+    }
     tracing::debug!(cookies = cookies.len(), "YouTube session file written");
     Ok(())
 }
@@ -195,6 +217,20 @@ mod tests {
             name: name.into(),
             value: value.into(),
         }
+    }
+
+    #[test]
+    fn session_write_replaces_symlink_without_overwriting_its_target() {
+        let dir = std::env::temp_dir().join(format!("gmusic-auth-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("target");
+        let session = dir.join("session");
+        std::fs::write(&target, "untouched").unwrap();
+        std::os::unix::fs::symlink(&target, &session).unwrap();
+        super::write_session_file(&session, &[cookie("SAPISID", "fixture")]).unwrap();
+        let original = std::fs::read_to_string(&target).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(original, "untouched");
     }
 
     #[test]

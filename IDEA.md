@@ -1,79 +1,67 @@
-# YouTube Music Player Idea
+# YouTube audio player direction
 
-## Status
+## Product
 
-Initial implementation is underway. `AGENTS.md` defines the repository rules
-and implementation constraints.
+G Music is a local-first, keyboard-friendly desktop YouTube audio player. The
+initial supported platform is macOS. It uses a dense Library for organization
+and separate Mini, Queue, Artwork, Import, and Settings windows for focused
+tasks.
 
-## One-line concept
+The original single-window MVP has been superseded. This document describes the
+current product boundary. The
+[hardening plan](docs/plans/professional-player-hardening.md) and
+[release guide](docs/release-readiness.md) define the completion work and
+verification gates.
 
-A small, keyboard-first desktop music player with a focused now-playing surface,
-fast queue control, and native desktop behavior without a bundled browser
-runtime.
+## Architecture
 
-## Product direction
+The Vue UI calls typed Tauri commands. Rust owns the library, playback queue,
+background imports, and transport state. SQLite stores library metadata, ordered
+playlists, listening history, and paused restoration state.
 
-Build a thin Tauri shell around a replaceable playback provider:
+The local provider uses yt-dlp for YouTube metadata and mpv for native audio. A
+deterministic fake provider supports domain tests. Imported items enter the
+library without replacing the queue or starting playback. Explicit playback uses
+the selected context. Application restart restores playback paused.
 
-```text
-UI
-  |
-  v
-Typed Tauri commands and events
-  |
-  v
-Application services
-  |
-  v
-PlaybackProvider
-  |---- Official web or embedded player, if permitted
-  |---- Native provider for a permitted audio source
-  |---- Fake provider for development and tests
-```
+Provider metadata and user edits have different ownership. Refreshes must not
+silently overwrite user organization. Local playlists and Favorites are not
+synchronized to a YouTube account.
 
-The current local-only provider uses `yt-dlp` to resolve YouTube track metadata
-and temporary media URLs, then uses headless `mpv` for audio playback. Optional
-session cookies stay local to the application. It does not save media files,
-collect credentials, or bypass DRM.
+## Professional 1.0 requirements
 
-## Current implementation
+- Truthful, authoritative transport controls across all playback windows.
+- Safe metadata edits, playlist order, and durable library operations.
+- Fast library text search and explicit YouTube discovery/import.
+- Observable, cancellable imports and retryable metadata enrichment.
+- Queue inspection, reorder, removal, clearing, and playlist saving.
+- Visible failures, retained editor input, and usable recovery actions.
+- Accessible keyboard interaction and usable minimum-window layouts.
+- Shared themes and consistent controls without a wholesale visual redesign.
+- Native media integration and a tested system-default audio-output policy.
+- Dependency diagnostics, private backups, and privacy-safe support information.
+- Verified release packaging, signing, notarization, and clean-Mac setup.
 
-The app keeps the deterministic fake provider for domain tests. Runtime playback
-accepts YouTube video or playlist URLs, imports title, artist, album, duration,
-video ID, and source URL data, and streams audio through `mpv` over its local
-JSON IPC socket. The imported tracks populate the application queue and library
-views. Imported metadata persists in the application data directory and is
-restored at launch.
+## Distribution and service boundary
 
-## MVP
+Use explicitly installed mpv and yt-dlp for the initial distribution. Do not
+claim bundled sidecars or managed dependency updates. Revisit that policy only
+with an installation, licensing, and update plan.
 
-- One adaptive main window.
-- Now-playing details and play, pause, previous, next, seek, and volume
-  controls.
-- Queue inspection and reorder.
-- Clear loading and error states.
-- Keyboard-first controls.
-- A typed playback-provider boundary with a fake provider for tests.
-
-Do not start with account synchronization, recommendations, lyrics, downloads,
-or multiple windows.
-
-## Open decisions
-
-- Decide whether to bundle playback sidecars or keep Homebrew prerequisites.
-- Decide whether to add a different service with a documented playback API.
-
-Authentication must remain in the provider's official web flow or use an
-approved OAuth flow. The application must not collect or inspect passwords.
+Authentication remains optional. Users sign in through the provider's own web
+flow. Local session export must not expose passwords or cookies to the UI, logs,
+or support reports. Public release requires a separate service-terms and
+account-risk review. Using the official YouTube API does not by itself permit an
+audio-only or background-playback product.
 
 ## Non-goals
 
 - Downloading or exporting audio.
 - Circumventing DRM or service restrictions.
 - Reimplementing the full YouTube Music website.
-- Lyrics scraping.
-- A custom browser engine.
-- Multiple frontend frameworks.
+- Recommendations or account-library synchronization.
+- Lyrics scraping, crossfade, or an equalizer in 1.0.
+- A custom browser engine or multiple frontend frameworks.
 
 ## Sources
 

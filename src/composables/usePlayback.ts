@@ -1,4 +1,10 @@
-import { computed, ref, shallowRef } from "vue";
+import {
+  computed,
+  getCurrentScope,
+  onScopeDispose,
+  ref,
+  shallowRef,
+} from "vue";
 
 import {
   playbackApi,
@@ -11,44 +17,25 @@ import {
   type Playlist,
 } from "@/api";
 
-export type PlaybackClient = Omit<
-  typeof playbackApi,
-  | "inspectLibrary"
-  | "inspectMetadataRefreshes"
-  | "inspectTransport"
-  | "updateTracksMetadata"
-  | "toggleFavorite"
-  | "upsertPlaylist"
-  | "reorderPlaylists"
-  | "deletePlaylist"
-  | "playNext"
-  | "addToQueue"
-  | "removeTracks"
-  | "removeQueueItem"
-  | "toggleShuffle"
-  | "cycleRepeatMode"
-> &
-  Partial<
-    Pick<
-      typeof playbackApi,
-      | "inspectLibrary"
-      | "inspectMetadataRefreshes"
-      | "inspectTransport"
-      | "updateTracksMetadata"
-      | "toggleFavorite"
-      | "upsertPlaylist"
-      | "reorderPlaylists"
-      | "deletePlaylist"
-      | "playNext"
-      | "addToQueue"
-      | "removeTracks"
-      | "removeQueueItem"
-      | "toggleShuffle"
-      | "cycleRepeatMode"
-    >
-  >;
+type RequiredClientMethods =
+  | "inspect"
+  | "play"
+  | "pause"
+  | "previous"
+  | "next"
+  | "seek"
+  | "setVolume"
+  | "moveQueueItem"
+  | "playTrack"
+  | "importYouTubeUrls";
+export type PlaybackClient = Pick<typeof playbackApi, RequiredClientMethods> &
+  Partial<Omit<typeof playbackApi, RequiredClientMethods>>;
 
 function readErrorMessage(error: unknown): string {
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
   if (error instanceof Error) {
     return error.message;
   }
@@ -96,12 +83,47 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   let isUpdatingVolume = false;
   let lastUnmutedVolume = 50;
   let pendingVolume: number | undefined;
+  let alive = true;
+  let generation = 0;
+  let metadataGeneration = 0;
+  let importGeneration = 0;
+  let importInspection = 0;
+  let pendingRefresh = false;
+  let volumeIntent: number | undefined;
+  let retryAction: (() => Promise<unknown>) | undefined;
+  if (getCurrentScope())
+    onScopeDispose(() => {
+      alive = false;
+      generation++;
+    });
+
+  function reportError(error: unknown, retry?: () => Promise<unknown>): void {
+    if (!alive) return;
+    errorMessage.value = readErrorMessage(error);
+    retryAction = retry;
+  }
+
+  async function retry(): Promise<void> {
+    const action = retryAction;
+    errorMessage.value = "";
+    if (action) await action();
+    else await refresh();
+  }
+
+  function finishUpdate(): void {
+    isUpdating.value = false;
+    if (alive && pendingRefresh && !isUpdatingVolume) {
+      pendingRefresh = false;
+      void refresh();
+    }
+  }
   const isImporting = computed(() => {
     const phase = importProgress.value?.phase;
     return phase === "started" || phase === "resolving" || phase === "merging";
   });
 
   function applyTransport(nextTransport: PlaybackTransport): void {
+    if (!alive) return;
     transport.value = {
       currentItem: nextTransport.currentItem,
       positionMs: nextTransport.positionMs,
@@ -112,17 +134,27 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       ...(typeof nextTransport.shuffleEnabled === "boolean"
         ? { shuffleEnabled: nextTransport.shuffleEnabled }
         : {}),
-      volumePercent: nextTransport.volumePercent,
+      volumePercent: isUpdatingVolume
+        ? (volumeIntent ?? nextTransport.volumePercent)
+        : nextTransport.volumePercent,
     };
-    if (nextTransport.volumePercent > 0) {
+    if (!isUpdatingVolume && nextTransport.volumePercent > 0) {
       lastUnmutedVolume = nextTransport.volumePercent;
     }
   }
 
   function applySnapshot(nextSnapshot: PlaybackSnapshot): void {
+    if (!alive) return;
+    generation++;
     playbackOrder.value = nextSnapshot.playbackOrder ?? [];
     queue.value = nextSnapshot.queue;
     applyTransport(nextSnapshot);
+  }
+
+  function applyTransportEvent(nextTransport: PlaybackTransport): void {
+    if (!alive) return;
+    generation++;
+    applyTransport(nextTransport);
   }
 
   function updateVolumeLocally(volumePercent: number): void {
@@ -135,20 +167,24 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   async function execute(
     action: () => Promise<PlaybackSnapshot>,
-  ): Promise<void> {
-    if (isUpdating.value) {
-      return;
+  ): Promise<boolean> {
+    if (!alive || isUpdating.value) {
+      return false;
     }
 
     isUpdating.value = true;
+    const operation = ++generation;
     errorMessage.value = "";
 
     try {
-      applySnapshot(await action());
+      const result = await action();
+      if (alive && operation === generation) applySnapshot(result);
+      return true;
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      reportError(error, () => execute(action));
+      return false;
     } finally {
-      isUpdating.value = false;
+      finishUpdate();
     }
   }
 
@@ -157,7 +193,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     ids: string[],
     action: (id: string) => Promise<PlaybackSnapshot>,
   ): Promise<void> {
-    if (isUpdating.value || ids.length === 0) {
+    if (!alive || isUpdating.value || ids.length === 0) {
       return;
     }
 
@@ -166,12 +202,15 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
     try {
       for (const id of ids) {
-        applySnapshot(await action(id));
+        if (!alive) break;
+        const operation = ++generation;
+        const result = await action(id);
+        if (alive && operation === generation) applySnapshot(result);
       }
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      reportError(error);
     } finally {
-      isUpdating.value = false;
+      finishUpdate();
     }
   }
 
@@ -184,74 +223,105 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
     isStarting.value = true;
     try {
-      await execute(action);
+      if (!(await execute(action)) && alive)
+        retryAction = () => startPlayback(action);
     } finally {
       isStarting.value = false;
     }
   }
 
   async function refresh(): Promise<void> {
-    if (isUpdating.value) {
+    if (!alive) return;
+    if (isUpdating.value || isUpdatingVolume) {
+      pendingRefresh = true;
       return;
     }
 
     isUpdating.value = true;
-    errorMessage.value = "";
+    const operation = ++generation;
     try {
       if (client.inspectLibrary) {
         const [nextLibrary, nextSnapshot] = await Promise.all([
           client.inspectLibrary(),
           client.inspect(),
         ]);
-        library.value = nextLibrary;
-        applySnapshot(nextSnapshot);
+        if (alive && !pendingRefresh) library.value = nextLibrary;
+        if (alive && operation === generation) applySnapshot(nextSnapshot);
       } else {
-        applySnapshot(await client.inspect());
+        const result = await client.inspect();
+        if (alive && operation === generation) applySnapshot(result);
       }
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      reportError(error, refresh);
     } finally {
-      isUpdating.value = false;
+      finishUpdate();
     }
     await refreshMetadataRefreshes();
   }
 
+  // App must subscribe before initialization. Any event or local import intent
+  // makes the initial snapshot obsolete, even if it arrived before this read.
+  async function initializeImportProgress(): Promise<void> {
+    if (!alive || !client.inspectImportProgress || importGeneration > 0) return;
+    const operation = ++importInspection;
+    try {
+      const result = await client.inspectImportProgress();
+      if (alive && importGeneration === 0 && operation === importInspection)
+        importProgress.value = result;
+    } catch (error) {
+      if (alive && importGeneration === 0 && operation === importInspection)
+        reportError(error, initializeImportProgress);
+    }
+  }
+
+  async function initialize(): Promise<void> {
+    await Promise.all([refresh(), initializeImportProgress()]);
+  }
+
   async function refreshMetadataRefreshes(): Promise<void> {
-    if (!client.inspectMetadataRefreshes) {
+    if (!alive || !client.inspectMetadataRefreshes) {
       return;
     }
 
+    const operation = ++metadataGeneration;
     try {
-      metadataRefreshes.value = await client.inspectMetadataRefreshes();
+      const result = await client.inspectMetadataRefreshes();
+      if (alive && operation === metadataGeneration)
+        metadataRefreshes.value = result;
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      if (operation === metadataGeneration)
+        reportError(error, refreshMetadataRefreshes);
     }
   }
 
   async function sync(): Promise<void> {
-    if (isSyncing || isUpdating.value || isUpdatingVolume) {
+    if (!alive || isSyncing || isUpdating.value || isUpdatingVolume) {
       return;
     }
 
     isSyncing = true;
+    const operation = generation;
     try {
       if (client.inspectTransport) {
-        transport.value = await client.inspectTransport();
+        const result = await client.inspectTransport();
+        if (alive && operation === generation) applyTransport(result);
       } else {
-        applySnapshot(await client.inspect());
+        const result = await client.inspect();
+        if (alive && operation === generation) applySnapshot(result);
       }
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      if (operation === generation) reportError(error, sync);
     } finally {
       isSyncing = false;
     }
   }
 
   async function importYouTubeUrls(urls: string[]): Promise<void> {
-    if (isImporting.value) {
+    if (!alive || isImporting.value) {
       return;
     }
 
+    importGeneration++;
     errorMessage.value = "";
     importProgress.value = {
       completedSources: 0,
@@ -266,8 +336,9 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     try {
       await client.importYouTubeUrls(urls);
     } catch (error) {
+      if (!alive) return;
       const message = readErrorMessage(error);
-      errorMessage.value = message;
+      reportError(error, () => importYouTubeUrls(urls));
       importProgress.value = {
         completedSources: importProgress.value?.completedSources ?? 0,
         importedTracks: importProgress.value?.importedTracks ?? 0,
@@ -281,16 +352,26 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   function updateImportProgress(progress: ImportProgress): void {
+    if (!alive) return;
+    importGeneration++;
+    if (importProgress.value && progress.runId < importProgress.value.runId)
+      return;
     importProgress.value = progress;
     if (progress.phase === "failed") {
-      errorMessage.value = progress.message;
+      reportError({ message: progress.message });
     }
-    if (progress.phase === "merging" || progress.phase === "completed") {
+    if (
+      progress.phase === "merging" ||
+      progress.phase === "completed" ||
+      progress.phase === "cancelled"
+    ) {
       void refresh();
     }
   }
 
   function updateMetadataRefreshes(progress: MetadataRefreshSnapshot): void {
+    if (!alive) return;
+    metadataGeneration++;
     metadataRefreshes.value = progress;
     if (progress.jobs.some((job) => job.state === "completed")) {
       void refresh();
@@ -303,6 +384,10 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       return;
     }
 
+    await startPlayback(client.play);
+  }
+
+  async function retryPlayback(): Promise<void> {
     await startPlayback(client.play);
   }
 
@@ -344,22 +429,32 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await executeBatch(ids, (singleId) => client.addToQueue!(singleId));
   }
 
-  async function updateTracksMetadata(
-    updates: TrackMetadataUpdate[],
+  async function mutateLibrary(
+    action: () => Promise<LibrarySnapshot>,
   ): Promise<void> {
-    if (isUpdating.value || !client.updateTracksMetadata) {
-      return;
-    }
-
+    if (!alive) return;
+    if (isUpdating.value)
+      throw new Error("Another update is in progress. Try again.");
     isUpdating.value = true;
     errorMessage.value = "";
     try {
-      library.value = await client.updateTracksMetadata(updates);
+      const result = await action();
+      if (alive) library.value = result;
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      reportError(error);
+      throw new Error(readErrorMessage(error));
     } finally {
-      isUpdating.value = false;
+      finishUpdate();
     }
+  }
+
+  async function updateTracksMetadata(
+    updates: TrackMetadataUpdate[],
+  ): Promise<void> {
+    if (!client.updateTracksMetadata)
+      throw new Error("Metadata editing is unavailable.");
+    if (updates.length)
+      await mutateLibrary(() => client.updateTracksMetadata!(updates));
   }
 
   async function seek(positionMs: number): Promise<void> {
@@ -367,92 +462,100 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   async function toggleFavorite(id: string | string[]): Promise<void> {
-    if (isUpdating.value || !client.toggleFavorite) {
-      return;
-    }
-
+    if (!client.toggleFavorite) return;
     const ids = Array.isArray(id) ? [...new Set(id)] : [id];
-    if (ids.length === 0) return;
-
-    isUpdating.value = true;
-    errorMessage.value = "";
+    if (!ids.length) return;
     try {
-      for (const singleId of ids) {
-        library.value = await client.toggleFavorite(singleId);
-      }
-    } catch (error) {
-      errorMessage.value = readErrorMessage(error);
-    } finally {
-      isUpdating.value = false;
+      await mutateLibrary(async () => {
+        let result!: LibrarySnapshot;
+        for (const singleId of ids) {
+          if (!alive) break;
+          result = await client.toggleFavorite!(singleId);
+          if (alive) library.value = result;
+        }
+        return result;
+      });
+    } catch {
+      /* The error is visible. A partial toggle batch cannot safely be retried. */
     }
   }
 
   async function upsertPlaylist(playlist: Playlist): Promise<void> {
-    if (isUpdating.value || !client.upsertPlaylist) {
-      return;
-    }
-
-    isUpdating.value = true;
-    errorMessage.value = "";
-    try {
-      library.value = await client.upsertPlaylist(playlist);
-    } catch (error) {
-      errorMessage.value = readErrorMessage(error);
-    } finally {
-      isUpdating.value = false;
-    }
+    if (!client.upsertPlaylist)
+      throw new Error("Playlist editing is unavailable.");
+    await mutateLibrary(() => client.upsertPlaylist!(playlist));
   }
 
   async function reorderPlaylists(playlistIds: string[]): Promise<void> {
-    if (isUpdating.value || !client.reorderPlaylists) {
-      return;
-    }
-
-    isUpdating.value = true;
-    errorMessage.value = "";
+    if (!client.reorderPlaylists) return;
     try {
-      library.value = await client.reorderPlaylists(playlistIds);
-    } catch (error) {
-      errorMessage.value = readErrorMessage(error);
-    } finally {
-      isUpdating.value = false;
+      await mutateLibrary(() => client.reorderPlaylists!(playlistIds));
+    } catch {
+      /* Visible error. */
     }
   }
 
   async function deletePlaylist(id: string): Promise<void> {
-    if (isUpdating.value || !client.deletePlaylist) {
-      return;
-    }
-
-    isUpdating.value = true;
-    errorMessage.value = "";
-    try {
-      library.value = await client.deletePlaylist(id);
-    } catch (error) {
-      errorMessage.value = readErrorMessage(error);
-    } finally {
-      isUpdating.value = false;
-    }
+    if (!client.deletePlaylist)
+      throw new Error("Playlist editing is unavailable.");
+    await mutateLibrary(() => client.deletePlaylist!(id));
   }
 
   async function removeTracks(ids: string[]): Promise<void> {
-    if (isUpdating.value || !client.removeTracks) {
-      return;
-    }
-
-    isUpdating.value = true;
-    errorMessage.value = "";
+    if (!client.removeTracks) return;
     try {
-      library.value = await client.removeTracks(ids);
+      await mutateLibrary(() => client.removeTracks!(ids));
+    } catch {
+      /* Visible error. */
+    }
+  }
+
+  async function resetTrackMetadata(ids: string[]): Promise<void> {
+    if (!client.resetTrackMetadata)
+      throw new Error("Metadata reset is unavailable.");
+    await mutateLibrary(() => client.resetTrackMetadata!(ids));
+  }
+
+  async function clearQueue(): Promise<void> {
+    if (!client.clearQueue) throw new Error("Queue clearing is unavailable.");
+    if (!(await execute(client.clearQueue)))
+      throw new Error(
+        errorMessage.value || "Another update is in progress. Try again.",
+      );
+  }
+
+  const isCancelling = ref(false);
+  async function cancelYouTubeImport(runId: number): Promise<void> {
+    if (!alive || !client.cancelYouTubeImport || isCancelling.value) return;
+    isCancelling.value = true;
+    try {
+      await client.cancelYouTubeImport(runId);
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      reportError(error, () => cancelYouTubeImport(runId));
     } finally {
-      isUpdating.value = false;
+      isCancelling.value = false;
+    }
+  }
+
+  const isRetryingMetadata = ref(false);
+  async function retryMetadataRefreshes(): Promise<void> {
+    if (!alive || !client.retryMetadataRefreshes || isRetryingMetadata.value)
+      return;
+    isRetryingMetadata.value = true;
+    const operation = ++metadataGeneration;
+    try {
+      const result = await client.retryMetadataRefreshes();
+      if (alive && operation === metadataGeneration)
+        metadataRefreshes.value = result;
+    } catch (error) {
+      reportError(error, retryMetadataRefreshes);
+    } finally {
+      isRetryingMetadata.value = false;
     }
   }
 
   async function setVolume(volumePercent: number): Promise<void> {
-    if (isUpdating.value && !isUpdatingVolume) {
+    if (!alive || (isUpdating.value && !isUpdatingVolume)) {
       return;
     }
 
@@ -461,6 +564,8 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
       lastUnmutedVolume = nextVolume;
     }
     pendingVolume = nextVolume;
+    volumeIntent = nextVolume;
+    generation++;
     updateVolumeLocally(nextVolume);
 
     if (isUpdatingVolume) {
@@ -470,15 +575,22 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     isUpdatingVolume = true;
     errorMessage.value = "";
     try {
-      while (pendingVolume !== undefined) {
+      while (alive && pendingVolume !== undefined) {
         const volume = pendingVolume;
         pendingVolume = undefined;
         await client.setVolume(volume);
       }
     } catch (error) {
-      errorMessage.value = readErrorMessage(error);
+      const failedVolume = volumeIntent ?? nextVolume;
+      pendingVolume = undefined;
+      reportError(error, () => setVolume(failedVolume));
     } finally {
       isUpdatingVolume = false;
+      volumeIntent = undefined;
+      if (pendingRefresh && !isUpdating.value) {
+        pendingRefresh = false;
+        void refresh();
+      }
     }
   }
 
@@ -504,8 +616,17 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   }
 
   return {
+    initialize,
     addToQueue,
+    cancelYouTubeImport,
+    clearQueue,
+    resetTrackMetadata,
+    retryMetadataRefreshes,
+    isRetryingMetadata,
+    isCancelling,
     applySnapshot,
+    applyTransportEvent,
+    retryPlayback,
     cycleRepeatMode,
     deletePlaylist,
     errorMessage,
@@ -522,6 +643,8 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     playTrack,
     previous,
     refresh,
+    reportError,
+    retry,
     refreshMetadataRefreshes,
     reorderPlaylists,
     removeQueueItem,

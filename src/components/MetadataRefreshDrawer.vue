@@ -2,18 +2,22 @@
 import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-vue-next";
 
 import type { MetadataRefreshSnapshot } from "@/api";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Props {
   refreshes: MetadataRefreshSnapshot;
+  isRetrying?: boolean;
+  errorMessage?: string;
 }
 
 defineProps<Props>();
+const emit = defineEmits<{ retry: [] }>();
 
 function stateLabel(state: string): string {
   const labels: Record<string, string> = {
     completed: "Refreshed",
-    failed: "Retry on restart",
+    failed: "Failed",
     queued: "Queued",
     refreshing: "Refreshing",
   };
@@ -31,6 +35,23 @@ function stateLabel(state: string): string {
       <p class="text-sm font-semibold">Metadata refresh</p>
       <p class="mt-0.5 text-xs text-(--muted-text)">
         {{ refreshes.completedTracks }} of {{ refreshes.totalTracks }} refreshed
+      </p>
+      <Button
+        v-if="refreshes.jobs.some((job) => job.state === 'failed')"
+        type="button"
+        variant="outline"
+        aria-label="Retry failed metadata"
+        class="mt-3"
+        :disabled="isRetrying"
+        @click="emit('retry')"
+        >{{ isRetrying ? "Retrying…" : "Retry failed metadata" }}</Button
+      >
+      <p
+        v-if="errorMessage"
+        role="alert"
+        class="window-alert-danger mt-2 break-words p-2 text-xs"
+      >
+        {{ errorMessage }}
       </p>
     </header>
 

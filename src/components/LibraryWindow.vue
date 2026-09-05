@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 
 import type {
+  ImportProgress,
   MediaItem,
   MetadataRefreshSnapshot,
   PlaybackSnapshot,
@@ -22,6 +23,7 @@ import LibrarySidebar from "./library/LibrarySidebar.vue";
 import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
 import LibraryTrackList from "./library/LibraryTrackList.vue";
 import PlaylistEditor from "./library/PlaylistEditor.vue";
+import LibraryDialog from "./library/LibraryDialog.vue";
 import { buildLibraryArtists, groupItems } from "./library/collections";
 import type {
   AlbumGroup,
@@ -55,6 +57,14 @@ interface Props {
   isUpdating: boolean;
   errorMessage?: string;
   metadataRefreshes?: MetadataRefreshSnapshot;
+  isRetryingMetadata?: boolean;
+  importProgress?: ImportProgress | null;
+  isImporting?: boolean;
+  isCancelling?: boolean;
+  saveMetadata?: (updates: TrackMetadataUpdate[]) => Promise<unknown>;
+  savePlaylist?: (playlist: Playlist) => Promise<unknown>;
+  deletePlaylistAction?: (id: string) => Promise<unknown>;
+  resetMetadata?: (ids: string[]) => Promise<unknown>;
 }
 
 const props = defineProps<Props>();
@@ -78,6 +88,8 @@ const emit = defineEmits<{
   reorderPlaylists: [playlistIds: string[]];
   deletePlaylist: [id: string];
   updateTracksMetadata: [updates: TrackMetadataUpdate[]];
+  retryMetadataRefreshes: [];
+  cancelImport: [runId: number];
 }>();
 
 const activeCollection = ref<LibraryCollection>("tracks");
@@ -119,6 +131,68 @@ const trackSelectionAnchorId = ref<string | null>(
 let trackDragImage: HTMLElement | null = null;
 const sortBy = ref<LibrarySortOption>("title-asc");
 const trackFilter = ref<TrackFilter | null>(null);
+const searchQuery = ref("");
+const searchOpen = ref(false);
+const searchInput = ref<HTMLInputElement | null>(null);
+const libraryElement = ref<HTMLElement | null>(null);
+
+async function toggleSearch(): Promise<void> {
+  searchOpen.value = !searchOpen.value;
+  if (!searchOpen.value) searchQuery.value = "";
+  await nextTick();
+  if (searchOpen.value) {
+    searchInput.value?.focus();
+  } else {
+    libraryElement.value
+      ?.querySelector<HTMLButtonElement>("[data-library-search-toggle]")
+      ?.focus();
+  }
+}
+
+function handleSearchKey(event: KeyboardEvent): void {
+  if (
+    event.defaultPrevented ||
+    event.repeat ||
+    event.isComposing ||
+    metadataEditorTarget.value ||
+    playlistEditorTarget.value ||
+    trackRemovalTarget.value.length ||
+    libraryOptionsOpen.value
+  )
+    return;
+  const target = event.target;
+  if (target instanceof HTMLElement) {
+    if (target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]'))
+      return;
+    if (
+      target !== searchInput.value &&
+      target.closest(
+        'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+      )
+    )
+      return;
+  }
+  const toggle =
+    (event.metaKey || event.ctrlKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    event.key.toLowerCase() === "f";
+  const close =
+    searchOpen.value &&
+    event.key === "Escape" &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey;
+  if (!toggle && !close) return;
+  event.preventDefault();
+  void toggleSearch();
+}
+
+onMounted(() => window.addEventListener("keydown", handleSearchKey));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleSearchKey));
+const creationError = ref("");
+const creatingPlaylist = ref(false);
 
 const isPlaying = computed(() => playback.value.status === "playing");
 const currentItem = computed(() => playback.value.currentItem);
@@ -126,6 +200,36 @@ const playingItemId = computed(() =>
   isPlaying.value ? currentItem.value?.id : undefined,
 );
 const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? []);
+const searchIndex = computed(
+  () =>
+    new Map(
+      allTracks.value.map((track) => [
+        track.id,
+        [
+          track.title,
+          track.artist,
+          track.album,
+          track.label,
+          ...(track.genres ?? []),
+        ]
+          .filter(Boolean)
+          .join("\n")
+          .toLocaleLowerCase(),
+      ]),
+    ),
+);
+const searchTerms = computed(() =>
+  searchQuery.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean),
+);
+const searchedTracks = computed(() =>
+  searchTerms.value.length
+    ? playlistTracks.value.filter((track) =>
+        searchTerms.value.every((term) =>
+          searchIndex.value.get(track.id)?.includes(term),
+        ),
+      )
+    : playlistTracks.value,
+);
 const playlists = computed(() => props.playlists ?? []);
 const activePlaylist = computed(
   () =>
@@ -161,7 +265,7 @@ const selectedTrack = computed(() => {
 });
 const libraryTracks = computed(() => {
   const filteredTracks = trackFilter.value
-    ? playlistTracks.value.filter((track) => {
+    ? searchedTracks.value.filter((track) => {
         if (trackFilter.value?.type === "artist") {
           return track.artist === trackFilter.value.value;
         }
@@ -171,7 +275,7 @@ const libraryTracks = computed(() => {
           trackFilter.value?.value
         );
       })
-    : playlistTracks.value;
+    : searchedTracks.value;
 
   return sortCollection(filteredTracks, sortBy.value, "track");
 });
@@ -181,7 +285,7 @@ const selectedTracks = computed(() =>
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
   const albums = new Map<string, LibraryAlbum>();
 
-  for (const track of allTracks.value) {
+  for (const track of searchedTracks.value) {
     const title = track.album?.trim();
     if (!title) {
       continue;
@@ -205,7 +309,7 @@ const libraryAlbums = computed<LibraryAlbum[]>(() => {
 });
 const libraryArtists = computed<LibraryArtist[]>(() => {
   return sortCollection(
-    buildLibraryArtists(allTracks.value),
+    buildLibraryArtists(searchedTracks.value),
     sortBy.value,
     "artist",
   );
@@ -440,15 +544,25 @@ function beginPlaylistCreation(): void {
   isCreatingPlaylist.value = true;
 }
 
-function createPlaylist(name: string): void {
+async function createPlaylist(name: string): Promise<void> {
+  if (creatingPlaylist.value) return;
   const playlist: Playlist = {
     id: `playlist-${crypto.randomUUID()}`,
     name,
     trackIds: [],
   };
-  activePlaylistId.value = playlist.id;
-  isCreatingPlaylist.value = false;
-  emit("upsertPlaylist", playlist);
+  creatingPlaylist.value = true;
+  creationError.value = "";
+  try {
+    if (props.savePlaylist) await props.savePlaylist(playlist);
+    else emit("upsertPlaylist", playlist);
+    activePlaylistId.value = playlist.id;
+    isCreatingPlaylist.value = false;
+  } catch (cause) {
+    creationError.value = `Could not create playlist. ${cause instanceof Error ? cause.message : String(cause)} Try Save again.`;
+  } finally {
+    creatingPlaylist.value = false;
+  }
 }
 
 function cancelPlaylistCreation(): void {
@@ -627,7 +741,11 @@ function playTracks(tracks: MediaItem[]): void {
   }
   emit(
     "playTrack",
-    tracks.map((item) => item.id),
+    (activeCollection.value === "tracks" &&
+    (searchTerms.value.length || activePlaylist.value || trackFilter.value)
+      ? libraryTracks.value
+      : tracks
+    ).map((item) => item.id),
     track.id,
   );
 }
@@ -664,7 +782,7 @@ function toggleFavorites(ids: string[]): void {
 
 function playAlbum(album: LibraryAlbum): void {
   playTracks(
-    allTracks.value.filter(
+    searchedTracks.value.filter(
       (track) =>
         track.artist === album.artist && track.album?.trim() === album.title,
     ),
@@ -672,7 +790,9 @@ function playAlbum(album: LibraryAlbum): void {
 }
 
 function playArtist(artist: LibraryArtist): void {
-  playTracks(allTracks.value.filter((track) => track.artist === artist.name));
+  playTracks(
+    searchedTracks.value.filter((track) => track.artist === artist.name),
+  );
 }
 
 function playPlaylist(playlist: Playlist): void {
@@ -698,10 +818,15 @@ function selectArtist(artist: LibraryArtist): void {
 }
 
 function openTrackMetadataEditor(track: MediaItem): void {
+  const tracks = selectedTracks.value.some(
+    (selected) => selected.id === track.id,
+  )
+    ? selectedTracks.value
+    : [track];
   metadataEditorTarget.value = {
     kind: "track",
-    name: track.title,
-    tracks: [track],
+    name: tracks.length > 1 ? `${tracks.length} selected tracks` : track.title,
+    tracks,
   };
 }
 
@@ -795,8 +920,8 @@ function setGridItemSize(size: number): void {
   gridItemSize.value = size;
 }
 
-function toggleOptions(): void {
-  libraryOptionsOpen.value = !libraryOptionsOpen.value;
+function toggleOptions(open: boolean): void {
+  libraryOptionsOpen.value = open;
 }
 
 function toggleMetadataRefresh(): void {
@@ -812,6 +937,7 @@ onBeforeUnmount(finishTrackDrag);
 
 <template>
   <main
+    ref="libraryElement"
     class="library-window window-shell window-surface grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
     :class="
       detailsSidebarOpen
@@ -831,7 +957,8 @@ onBeforeUnmount(finishTrackDrag);
       :active-collection="activeCollection"
       :active-playlist-id="activePlaylistId"
       :is-creating-playlist="isCreatingPlaylist"
-      :is-updating="props.isUpdating"
+      :is-updating="props.isUpdating || creatingPlaylist"
+      :creation-error="creationError"
       :playlists="playlists"
       :sidebar-width="sidebarWidth"
       @cancel-playlist-creation="cancelPlaylistCreation"
@@ -849,34 +976,116 @@ onBeforeUnmount(finishTrackDrag);
     />
 
     <section
-      class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[88px_minmax(0,1fr)] border-l border-(--line) max-[760px]:col-start-1"
+      class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 border-l border-(--line) max-[760px]:col-start-1"
+      :class="
+        searchOpen
+          ? 'grid-rows-[auto_auto_minmax(0,1fr)]'
+          : 'grid-rows-[auto_minmax(0,1fr)]'
+      "
     >
-      <LibraryHeader
-        :collection-title="collectionTitle"
-        :collection-summary="collectionSummary"
-        :playlist-name="activePlaylist?.name"
-        :can-play-playlist="playlistTracks.length > 0"
-        :is-updating="props.isUpdating"
-        :display-mode="displayMode"
-        :error-message="errorMessage"
-        :grid-item-size="gridItemSize"
-        :group-by="groupBy"
-        :has-active-metadata-refresh="hasActiveMetadataRefresh"
-        :library-options-open="libraryOptionsOpen"
-        :metadata-refresh-drawer-open="metadataRefreshDrawerOpen"
-        :metadata-refresh-remaining="metadataRefreshRemaining"
-        :sort-by="sortBy"
-        @set-display-mode="setDisplayMode"
-        @set-grid-item-size="setGridItemSize"
-        @set-group="setGroup"
-        @set-sort="setSort"
-        @toggle-metadata-refresh="toggleMetadataRefresh"
-        @toggle-options="toggleOptions"
-        @play-playlist="playActivePlaylist"
-      />
+      <div class="min-w-0">
+        <LibraryHeader
+          :collection-title="collectionTitle"
+          :collection-summary="collectionSummary"
+          :playlist-name="activePlaylist?.name"
+          :can-play-playlist="libraryTracks.length > 0"
+          :is-updating="props.isUpdating"
+          :display-mode="displayMode"
+          :error-message="errorMessage"
+          :grid-item-size="gridItemSize"
+          :group-by="groupBy"
+          :has-active-metadata-refresh="hasActiveMetadataRefresh"
+          :library-options-open="libraryOptionsOpen"
+          :metadata-refresh-drawer-open="metadataRefreshDrawerOpen"
+          :metadata-refresh-remaining="metadataRefreshRemaining"
+          :sort-by="sortBy"
+          :search-open="searchOpen"
+          @toggle-search="toggleSearch"
+          @set-display-mode="setDisplayMode"
+          @set-grid-item-size="setGridItemSize"
+          @set-group="setGroup"
+          @set-sort="setSort"
+          @toggle-metadata-refresh="toggleMetadataRefresh"
+          @toggle-options="toggleOptions"
+          @play-playlist="playActivePlaylist"
+        />
+        <section
+          v-if="isImporting && importProgress"
+          aria-label="Import progress"
+          class="flex min-w-0 flex-wrap items-center gap-3 border-b border-(--line) px-4 py-2 text-sm text-(--text)"
+        >
+          <p role="status" class="min-w-0 flex-1 break-words">
+            {{ importProgress.message }}
+            <span class="text-(--muted-text)">
+              {{ importProgress.completedSources }} /
+              {{ importProgress.totalSources }} sources,
+              {{ importProgress.importedTracks }} track(s) found
+            </span>
+          </p>
+          <button
+            type="button"
+            aria-label="Cancel import"
+            class="shrink-0 rounded-md border border-(--line-strong) px-3 py-1 disabled:opacity-50"
+            :disabled="isCancelling"
+            @click="emit('cancelImport', importProgress.runId)"
+          >
+            {{ isCancelling ? "Cancelling…" : "Cancel import" }}
+          </button>
+        </section>
+      </div>
+
+      <div
+        v-if="searchOpen"
+        id="library-search"
+        role="search"
+        aria-label="Library search"
+        class="flex min-w-0 items-center gap-2 border-b border-(--line) px-4 py-2"
+      >
+        <input
+          ref="searchInput"
+          v-model="searchQuery"
+          aria-label="Search library"
+          type="search"
+          placeholder="Search title, artist, album, label, or genre"
+          class="min-w-0 flex-1 rounded-md border border-(--line-strong) bg-transparent px-2 py-1 text-sm text-(--text) focus:ring-2 focus:ring-(--focus-ring)"
+        />
+        <span
+          v-if="searchQuery.trim()"
+          data-search-count
+          class="shrink-0 text-xs text-(--muted-text)"
+          >{{
+            activeCollection === "tracks"
+              ? libraryTracks.length
+              : searchedTracks.length
+          }}
+          matches</span
+        >
+        <button
+          v-if="searchQuery"
+          aria-label="Clear library search"
+          type="button"
+          class="text-xs text-(--muted-text)"
+          @click="searchQuery = ''"
+        >
+          Clear
+        </button>
+      </div>
+
+      <div
+        v-if="
+          searchQuery.trim() &&
+          !(activeCollection === 'tracks'
+            ? libraryTracks.length
+            : searchedTracks.length)
+        "
+        data-search-empty
+        class="p-6 text-sm text-(--muted-text)"
+      >
+        No matches. Change the search or clear it to show this collection.
+      </div>
 
       <LibraryTrackList
-        v-if="activeCollection === 'tracks' && displayMode === 'list'"
+        v-else-if="activeCollection === 'tracks' && displayMode === 'list'"
         :playing-item-id="playingItemId"
         :selected-track-ids="[...selectedTrackIds]"
         :sort-by="sortBy"
@@ -972,6 +1181,11 @@ onBeforeUnmount(finishTrackDrag);
     />
 
     <LibraryPlaybackFooter
+      :favorite-track-ids="
+        playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
+        []
+      "
+      @toggle-favorite="toggleFavorites([$event])"
       :current-item="currentItem"
       :is-playing="isPlaying"
       :is-starting="isStarting ?? false"
@@ -990,17 +1204,18 @@ onBeforeUnmount(finishTrackDrag);
     />
 
     <MetadataRefreshDrawer
-      v-if="
-        metadataRefreshDrawerOpen &&
-        hasActiveMetadataRefresh &&
-        metadataRefreshes
-      "
+      v-if="metadataRefreshDrawerOpen && metadataRefreshes"
       :refreshes="metadataRefreshes"
+      :is-retrying="isRetryingMetadata"
+      @retry="emit('retryMetadataRefreshes')"
     />
 
     <LibraryMetadataEditor
       v-if="metadataEditorTarget"
       :target="metadataEditorTarget"
+      :save-action="props.saveMetadata"
+      :reset-action="props.resetMetadata"
+      @saved="metadataEditorTarget = null"
       @cancel="metadataEditorTarget = null"
       @save="saveMetadata"
     />
@@ -1008,29 +1223,26 @@ onBeforeUnmount(finishTrackDrag);
       v-if="playlistEditorTarget"
       :playlist="playlistEditorTarget"
       :tracks="allTracks"
+      :save-action="props.savePlaylist"
+      :delete-action="props.deletePlaylistAction"
+      @saved="playlistEditorTarget = null"
       @cancel="playlistEditorTarget = null"
       @delete="deletePlaylist"
       @save="savePlaylist"
     />
-    <section
+    <LibraryDialog
       v-if="trackRemovalTarget.length"
-      aria-labelledby="track-removal-title"
-      aria-modal="true"
-      class="absolute inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm"
-      role="dialog"
-      @click.self="trackRemovalTarget = []"
-      @keydown.esc="trackRemovalTarget = []"
+      title="Remove from library?"
+      @close="trackRemovalTarget = []"
     >
-      <div
-        class="w-full max-w-100 rounded-2xl border border-(--line-strong) bg-[oklch(0.11_0.014_260/0.98)] p-6 shadow-2xl"
-      >
+      <div class="w-full min-w-0">
         <h2
           id="track-removal-title"
           class="text-lg font-semibold text-(--text)"
         >
           Remove from library?
         </h2>
-        <p class="mt-2 text-sm text-(--muted-text)">
+        <p class="mt-2 break-words text-sm text-(--muted-text)">
           <template v-if="trackRemovalTarget.length === 1">
             Remove {{ trackRemovalTarget[0]?.title }} from your library and
             every playlist?
@@ -1058,7 +1270,7 @@ onBeforeUnmount(finishTrackDrag);
           </button>
         </div>
       </div>
-    </section>
+    </LibraryDialog>
   </main>
 </template>
 

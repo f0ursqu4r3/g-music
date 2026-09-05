@@ -1,5 +1,7 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { DOMWrapper, enableAutoUnmount, mount } from "@vue/test-utils";
+const body = () => new DOMWrapper(document.body);
+import { afterEach, describe, expect, it, vi } from "vitest";
+enableAutoUnmount(afterEach);
 
 import type { MediaItem, PlaybackSnapshot, PlaybackTransport } from "@/api";
 import { Slider } from "@/components/ui/slider";
@@ -75,6 +77,7 @@ function createPlainTextTrackDataTransfer(
 describe("LibraryWindow", () => {
   it("renders from stable library tracks and separate transport state", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, tracks: importedTracks, transport },
     });
 
@@ -86,6 +89,7 @@ describe("LibraryWindow", () => {
 
   it("shows playback command errors in the library window", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         errorMessage: "the audio player failed",
         isUpdating: false,
@@ -100,6 +104,7 @@ describe("LibraryWindow", () => {
 
   it("keeps tracks, albums, and artists in the library window", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -126,6 +131,7 @@ describe("LibraryWindow", () => {
 
   it("keeps the selected collection when switching between list and grid", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -147,6 +153,7 @@ describe("LibraryWindow", () => {
 
   it("sorts tracks in both list and grid views", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -171,6 +178,7 @@ describe("LibraryWindow", () => {
       { ...importedTracks[0], id: "another", title: "Another" },
     ];
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: {
@@ -229,6 +237,7 @@ describe("LibraryWindow", () => {
       title: `Track ${index.toString().padStart(3, "0")}`,
     }));
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, currentItem: tracks[0], queue: tracks },
@@ -258,6 +267,7 @@ describe("LibraryWindow", () => {
 
   it("sorts tracks from table column headers", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -282,6 +292,7 @@ describe("LibraryWindow", () => {
 
   it("sorts album and artist tables from every data column header", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -331,6 +342,7 @@ describe("LibraryWindow", () => {
       },
     ];
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: {
@@ -374,6 +386,7 @@ describe("LibraryWindow", () => {
 
   it("groups grid items without changing the list view", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -389,6 +402,7 @@ describe("LibraryWindow", () => {
 
   it("filters tracks after double-clicking an album or artist", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -411,6 +425,7 @@ describe("LibraryWindow", () => {
 
   it("shows metadata for the selected track, album, or artist", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -428,6 +443,7 @@ describe("LibraryWindow", () => {
 
   it("edits the selected track metadata in a modal", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -435,29 +451,21 @@ describe("LibraryWindow", () => {
     await wrapper
       .get('[aria-label="Edit track YouTube Developers Live"]')
       .trigger("click");
-    expect(wrapper.get('[role="dialog"]').text()).toContain("Edit Track");
-    expect(wrapper.get('[role="dialog"]').classes()).toContain("bg-black/60");
-    expect(wrapper.get('[role="dialog"] form').classes()).toContain(
-      "bg-[oklch(0.11_0.014_260/0.98)]",
-    );
+    expect(body().get('[role="dialog"]').text()).toContain("Edit Track");
+    expect(body().get('[role="dialog"]').attributes("data-state")).toBe("open");
+    expect(body().get('[role="dialog"]').attributes("aria-modal")).toBe("true");
 
-    await wrapper
+    await body()
       .get('[data-metadata-field="title"]')
       .setValue("Renamed session");
-    await wrapper.get('[role="dialog"] form').trigger("submit");
+    await body().get('[role="dialog"] form').trigger("submit");
 
     expect(wrapper.emitted("updateTracksMetadata")).toEqual([
       [
         [
           {
             id: "M7lc1UVf-VE",
-            metadata: {
-              album: "API Sessions",
-              artist: "Google for Developers",
-              genres: [],
-              label: null,
-              title: "Renamed session",
-            },
+            metadata: { title: "Renamed session" },
           },
         ],
       ],
@@ -475,6 +483,7 @@ describe("LibraryWindow", () => {
       },
     ];
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: {
@@ -488,33 +497,19 @@ describe("LibraryWindow", () => {
     await wrapper.get('[data-collection="albums"]').trigger("click");
     await wrapper.get(".album-tile").trigger("click");
     await wrapper.get('[aria-label="Edit album Shared"]').trigger("click");
-    await wrapper
-      .get('[data-metadata-field="album"]')
-      .setValue("Renamed album");
-    await wrapper.get('[role="dialog"] form').trigger("submit");
+    await body().get('[data-metadata-field="album"]').setValue("Renamed album");
+    await body().get('[role="dialog"] form').trigger("submit");
 
     expect(wrapper.emitted("updateTracksMetadata")).toEqual([
       [
         [
           {
             id: "shared-1",
-            metadata: {
-              album: "Renamed album",
-              artist: "Google for Developers",
-              genres: [],
-              label: null,
-              title: "First",
-            },
+            metadata: { album: "Renamed album" },
           },
           {
             id: "shared-2",
-            metadata: {
-              album: "Renamed album",
-              artist: "Google for Developers",
-              genres: [],
-              label: null,
-              title: "Second",
-            },
+            metadata: { album: "Renamed album" },
           },
         ],
       ],
@@ -527,6 +522,7 @@ describe("LibraryWindow", () => {
       { ...importedTracks[0], id: "artist-2", title: "Second" },
     ];
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: {
@@ -542,33 +538,21 @@ describe("LibraryWindow", () => {
     await wrapper
       .get('[aria-label="Edit artist Google for Developers"]')
       .trigger("click");
-    await wrapper
+    await body()
       .get('[data-metadata-field="artist"]')
       .setValue("Renamed artist");
-    await wrapper.get('[role="dialog"] form').trigger("submit");
+    await body().get('[role="dialog"] form').trigger("submit");
 
     expect(wrapper.emitted("updateTracksMetadata")).toEqual([
       [
         [
           {
             id: "artist-1",
-            metadata: {
-              album: "API Sessions",
-              artist: "Renamed artist",
-              genres: [],
-              label: null,
-              title: "First",
-            },
+            metadata: { artist: "Renamed artist" },
           },
           {
             id: "artist-2",
-            metadata: {
-              album: "API Sessions",
-              artist: "Renamed artist",
-              genres: [],
-              label: null,
-              title: "Second",
-            },
+            metadata: { artist: "Renamed artist" },
           },
         ],
       ],
@@ -610,6 +594,7 @@ describe("LibraryWindow", () => {
       queue: [detailedTrack, importedTracks[1]],
     };
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot: detailedSnapshot },
     });
 
@@ -657,6 +642,7 @@ describe("LibraryWindow", () => {
       queue: [detailedTrack, importedTracks[1]],
     };
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot: detailedSnapshot },
     });
 
@@ -680,6 +666,7 @@ describe("LibraryWindow", () => {
 
   it("exposes a grid item size slider in grid view", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -690,6 +677,7 @@ describe("LibraryWindow", () => {
 
   it("provides a native drag strip without a visible application header", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -701,6 +689,7 @@ describe("LibraryWindow", () => {
 
   it("uses one continuous glass surface for the library shell", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -717,6 +706,7 @@ describe("LibraryWindow", () => {
 
   it("applies sidebar resize updates to the library grid", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -733,6 +723,7 @@ describe("LibraryWindow", () => {
 
   it("uses shared scroll areas for library content surfaces", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -763,6 +754,7 @@ describe("LibraryWindow", () => {
 
   it("keeps playback footer controls within the smallest library window", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const footer = wrapper.get("[data-library-playback-footer]");
@@ -775,6 +767,7 @@ describe("LibraryWindow", () => {
 
   it("uses the compact reference-style library header and track table", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, status: "playing" },
@@ -787,8 +780,15 @@ describe("LibraryWindow", () => {
     );
     expect(wrapper.get('[aria-label="Library view options"]')).toBeDefined();
     expect(
-      wrapper.findAll('[aria-label="Library view options"] button'),
-    ).toHaveLength(3);
+      wrapper
+        .findAll('[aria-label="Library view options"] button')
+        .map((button) => button.attributes("aria-label")),
+    ).toEqual([
+      "Open library search",
+      "List view",
+      "Grid view",
+      "More library options",
+    ]);
     expect(wrapper.findAll("thead th")).toHaveLength(6);
     expect(
       wrapper.findAll('[data-library-track-virtualizer] [role="row"]'),
@@ -821,6 +821,7 @@ describe("LibraryWindow", () => {
       totalTracks: 9,
     };
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         metadataRefreshes: activeRefreshes,
@@ -829,12 +830,13 @@ describe("LibraryWindow", () => {
     });
 
     const summary = wrapper.get("[data-library-summary]");
-    const remaining = wrapper.get("[data-metadata-refresh-remaining]");
+    const remaining = body().get("[data-metadata-refresh-remaining]");
     expect(summary.text()).toContain("2 songs");
     expect(remaining.text()).toBe("5");
     expect(summary.element.nextElementSibling).toBe(remaining.element);
 
     const completedWrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         metadataRefreshes: {
@@ -852,6 +854,7 @@ describe("LibraryWindow", () => {
 
   it("truncates track metadata within a fixed-layout table", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -871,6 +874,7 @@ describe("LibraryWindow", () => {
       title: `Track ${index}`,
     }));
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, queue: tracks },
@@ -907,6 +911,7 @@ describe("LibraryWindow", () => {
 
   it("positions virtualized track rows outside a table body", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const virtualizer = wrapper.get("[data-library-track-virtualizer]");
@@ -922,6 +927,7 @@ describe("LibraryWindow", () => {
       title: `Track ${index}`,
     }));
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, queue: tracks },
@@ -956,6 +962,7 @@ describe("LibraryWindow", () => {
 
     try {
       const wrapper = mount(LibraryWindow, {
+        attachTo: document.body,
         props: {
           isUpdating: false,
           snapshot: { ...snapshot, queue: tracks },
@@ -985,6 +992,7 @@ describe("LibraryWindow", () => {
 
   it("provides keyboard-resizable track columns", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const titleColumn = wrapper.get('col[data-column="title"]');
@@ -1003,6 +1011,7 @@ describe("LibraryWindow", () => {
 
   it("resizes track columns by dragging a header boundary", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const table = wrapper.get("table");
@@ -1024,6 +1033,7 @@ describe("LibraryWindow", () => {
 
   it("selects a track for metadata without starting playback", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1076,16 +1086,16 @@ describe("LibraryWindow", () => {
     expect(menu?.textContent).toContain("Add 2 tracks to queue");
     expect(menu?.textContent).toContain("Remove 2 tracks from library…");
     expect(menu?.textContent).not.toContain("Go to album");
-    expect(menu?.textContent).not.toContain("Edit metadata");
+    expect(menu?.textContent).toContain("Edit metadata");
 
     await document
       .querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')
       ?.click();
-    expect(wrapper.get('[role="dialog"]').text()).toContain(
+    expect(body().get('[role="dialog"]').text()).toContain(
       "Remove 2 tracks from your library",
     );
 
-    await wrapper.get("[data-confirm-track-removal]").trigger("click");
+    await body().get("[data-confirm-track-removal]").trigger("click");
     expect(wrapper.emitted("removeTracks")).toEqual([
       [["BaW_jenozKc", "M7lc1UVf-VE"]],
     ]);
@@ -1094,6 +1104,7 @@ describe("LibraryWindow", () => {
 
   it("adds selected tracks to a user playlist when dropped in the sidebar", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [{ id: "focus", name: "Focus", trackIds: ["M7lc1UVf-VE"] }],
@@ -1168,6 +1179,7 @@ describe("LibraryWindow", () => {
 
   it("adds selected tracks when WebKit exposes only text/plain drag data", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
@@ -1199,6 +1211,7 @@ describe("LibraryWindow", () => {
 
   it("adds selected tracks when WebKit withholds drag type metadata", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
@@ -1237,6 +1250,7 @@ describe("LibraryWindow", () => {
 
   it("adds selected grid tracks to a user playlist when dropped in the sidebar", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
@@ -1272,6 +1286,7 @@ describe("LibraryWindow", () => {
 
   it("routes shuffle and repeat mode controls through the library command boundary", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1286,6 +1301,7 @@ describe("LibraryWindow", () => {
 
   it("shows the active shuffle and repeat modes with distinct icons", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, repeatMode: "all", shuffleEnabled: true },
@@ -1312,6 +1328,7 @@ describe("LibraryWindow", () => {
 
   it("highlights the selected track separately from the playing track", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1359,6 +1376,7 @@ describe("LibraryWindow", () => {
 
   it("creates a one-item queue when playing from the unfiltered Tracks list", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1385,6 +1403,7 @@ describe("LibraryWindow", () => {
 
   it("adds the selected track to the front or end of the play queue", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1450,12 +1469,12 @@ describe("LibraryWindow", () => {
       .querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')
       ?.click();
 
-    expect(wrapper.get('[role="dialog"]').text()).toContain(
+    expect(body().get('[role="dialog"]').text()).toContain(
       "Remove from library?",
     );
     expect(wrapper.emitted("removeTracks")).toBeUndefined();
 
-    await wrapper.get("[data-confirm-track-removal]").trigger("click");
+    await body().get("[data-confirm-track-removal]").trigger("click");
     expect(wrapper.emitted("removeTracks")).toEqual([[["BaW_jenozKc"]]]);
     wrapper.unmount();
   });
@@ -1494,6 +1513,7 @@ describe("LibraryWindow", () => {
 
   it("uses dense square-corner track rows", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const row = wrapper.get('[data-track-id="BaW_jenozKc"]');
@@ -1510,6 +1530,7 @@ describe("LibraryWindow", () => {
 
   it("shows a spinning metadata refresh icon for tracks with incomplete metadata", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: {
@@ -1535,6 +1556,7 @@ describe("LibraryWindow", () => {
 
   it("provides the complete reference-style playback strip", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1562,6 +1584,7 @@ describe("LibraryWindow", () => {
 
   it("shows a loading spinner in the main play button while playback starts", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isStarting: true, isUpdating: true, snapshot },
     });
 
@@ -1574,6 +1597,7 @@ describe("LibraryWindow", () => {
 
   it("mutes and restores the prior library volume from its icon", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1588,6 +1612,7 @@ describe("LibraryWindow", () => {
 
   it("commits pointer drags from the progress and volume scrubbers", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const volume = wrapper.get('[data-slot="slider"][aria-label="Volume"]');
@@ -1604,6 +1629,7 @@ describe("LibraryWindow", () => {
 
   it("keeps selected-item details in an animated right sidebar", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
     const footer = wrapper.get("[data-library-playback-footer]");
@@ -1648,6 +1674,7 @@ describe("LibraryWindow", () => {
 
   it("delegates track favorite changes from the table", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1663,6 +1690,7 @@ describe("LibraryWindow", () => {
 
   it("keeps the left sidebar navigation controls", () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 
@@ -1672,6 +1700,7 @@ describe("LibraryWindow", () => {
 
   it("shows default playlists and filters tracks by their stable IDs", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
@@ -1704,6 +1733,7 @@ describe("LibraryWindow", () => {
 
   it("plays a selected playlist in its visible sorted order", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
@@ -1735,6 +1765,7 @@ describe("LibraryWindow", () => {
 
   it("delegates a reordered user playlist list", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
@@ -1758,6 +1789,7 @@ describe("LibraryWindow", () => {
 
   it("shows the inline new-playlist editor after existing playlists", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
@@ -1783,7 +1815,7 @@ describe("LibraryWindow", () => {
       .setValue("Road Trip");
     await editor.trigger("submit");
 
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(body().find('[role="dialog"]').exists()).toBe(false);
     expect(wrapper.emitted("upsertPlaylist")).toEqual([
       [
         expect.objectContaining({
@@ -1801,11 +1833,12 @@ describe("LibraryWindow", () => {
       trackIds: ["M7lc1UVf-VE"],
     };
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, playlists: [playlist], snapshot },
     });
 
     await wrapper.get('button[aria-label="Edit Focus"]').trigger("click");
-    const dialog = wrapper.get('[role="dialog"]');
+    const dialog = body().get('[role="dialog"]');
     await dialog.get('[data-playlist-field="name"]').setValue("Deep Focus");
     await dialog
       .get('[data-playlist-track="BaW_jenozKc"] input')
@@ -1823,14 +1856,15 @@ describe("LibraryWindow", () => {
     ]);
 
     await wrapper.get('button[aria-label="Edit Focus"]').trigger("click");
-    await wrapper.get("[data-playlist-editor-delete]").trigger("click");
-    await wrapper.get("[data-playlist-editor-delete]").trigger("click");
+    await body().get("[data-playlist-editor-delete]").trigger("click");
+    await body().get("[data-playlist-editor-delete]").trigger("click");
 
     expect(wrapper.emitted("deletePlaylist")).toEqual([["focus"]]);
   });
 
   it("opens Import Music from the plus button beside Library", async () => {
     const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
       props: { isUpdating: false, snapshot },
     });
 

@@ -32,6 +32,10 @@
   --card: var(--surface);
   --card-foreground: var(--text);
   --popover: var(--surface-raised);
+  --dialog-surface: var(--surface-raised);
+  --menu-surface: var(--surface-raised);
+  --error-text: color-mix(in oklch, var(--danger), var(--text) 38%);
+  --error-surface: var(--danger-soft);
   --popover-foreground: var(--text);
   --primary: var(--accent);
   --primary-foreground: var(--accent-ink);

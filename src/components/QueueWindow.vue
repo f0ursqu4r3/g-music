@@ -17,9 +17,18 @@ import {
   type Virtualizer,
 } from "@tanstack/vue-virtual";
 import { ReorderGroup, ReorderItem } from "motion-v";
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+  DialogTrigger,
+} from "reka-ui";
 import { type ComponentPublicInstance, computed, ref, watch } from "vue";
 
-import type { MediaItem, PlaybackStatus } from "@/api";
+import type { MediaItem, PlaybackStatus, Playlist } from "@/api";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -41,6 +50,8 @@ interface Props {
   positionMs: number;
   isStarting: boolean;
   isUpdating: boolean;
+  clearQueue?: () => Promise<unknown>;
+  savePlaylist?: (playlist: Playlist) => Promise<unknown>;
 }
 
 const props = defineProps<Props>();
@@ -81,6 +92,76 @@ const currentItem = computed(
     displayQueue.value.find((item) => item.id === props.currentItemId) ?? null,
 );
 const isPlaying = computed(() => props.status === "playing");
+const clearOpen = ref(false);
+const saveOpen = ref(false);
+const actionPending = ref(false);
+const actionError = ref("");
+const playlistName = ref("");
+const playlistId = ref("");
+const playlistTrackIds = ref<string[]>([]);
+const actionDisabled = computed(
+  () =>
+    props.queue.length === 0 ||
+    props.isUpdating ||
+    props.isStarting ||
+    actionPending.value,
+);
+
+function errorMessage(error: unknown): string {
+  if (error && typeof error === "object" && "message" in error)
+    return String(error.message);
+  return String(error);
+}
+
+function openSave(open: boolean): void {
+  if (actionPending.value) return;
+  if (open) {
+    actionError.value = "";
+    playlistId.value = `playlist-${crypto.randomUUID()}`;
+    playlistTrackIds.value = displayQueue.value.map((item) => item.id);
+  }
+  saveOpen.value = open;
+}
+
+function openClear(open: boolean): void {
+  if (actionPending.value) return;
+  actionError.value = "";
+  clearOpen.value = open;
+}
+
+async function clear(): Promise<void> {
+  if (!props.clearQueue || actionPending.value) return;
+  actionPending.value = true;
+  actionError.value = "";
+  try {
+    await props.clearQueue();
+    clearOpen.value = false;
+  } catch (error) {
+    actionError.value = `${errorMessage(error)}. Try clearing the queue again.`;
+  } finally {
+    actionPending.value = false;
+  }
+}
+
+async function save(): Promise<void> {
+  const name = playlistName.value.trim();
+  if (!name || !props.savePlaylist || actionPending.value) return;
+  actionPending.value = true;
+  actionError.value = "";
+  try {
+    await props.savePlaylist({
+      id: playlistId.value,
+      name,
+      trackIds: [...playlistTrackIds.value],
+    });
+    saveOpen.value = false;
+    playlistName.value = "";
+  } catch (error) {
+    actionError.value = `${errorMessage(error)}. Your playlist draft is kept. Try Save playlist again.`;
+  } finally {
+    actionPending.value = false;
+  }
+}
 const queueStartIndex = computed(() => {
   const index = displayQueue.value.findIndex(
     (item) => item.id === props.currentItemId,
@@ -234,6 +315,127 @@ watch(
         {{ queueSummary }}
       </p>
     </header>
+
+    <div
+      class="flex shrink-0 items-center gap-2 border-b border-(--line) px-4 py-2"
+      aria-label="Queue actions"
+    >
+      <DialogRoot :open="saveOpen" @update:open="openSave">
+        <DialogTrigger as-child>
+          <Button
+            aria-label="Save queue as playlist"
+            size="sm"
+            variant="outline"
+            :disabled="actionDisabled || !savePlaylist"
+            >Save as playlist</Button
+          >
+        </DialogTrigger>
+        <DialogPortal>
+          <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
+          <DialogContent
+            class="queue-action-dialog fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-(--line-strong) bg-(--surface) p-5 text-(--text) shadow-xl"
+            @escape-key-down="actionPending && $event.preventDefault()"
+            @interact-outside.prevent
+          >
+            <DialogTitle class="text-lg font-semibold"
+              >Save queue as playlist</DialogTitle
+            >
+            <DialogDescription class="mt-1 text-sm text-(--muted-text)"
+              >Save all {{ playlistTrackIds.length }} queue tracks in their
+              current playback order.</DialogDescription
+            >
+            <form
+              class="mt-4 flex min-h-0 flex-col gap-4"
+              @submit.prevent="save"
+            >
+              <div class="min-h-0 overflow-y-auto">
+                <label
+                  for="queue-playlist-name"
+                  class="block text-sm font-medium"
+                  >Playlist name</label
+                >
+                <input
+                  id="queue-playlist-name"
+                  v-model="playlistName"
+                  :disabled="actionPending"
+                  required
+                  maxlength="200"
+                  class="mt-1 w-full rounded-md border border-(--line-strong) bg-(--glass-control) px-3 py-2 outline-offset-2"
+                />
+                <p
+                  v-if="actionError"
+                  role="alert"
+                  class="window-alert-danger mt-3 rounded-md p-3 text-sm break-words"
+                >
+                  {{ actionError }}
+                </p>
+              </div>
+              <div class="flex shrink-0 justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  :disabled="actionPending"
+                  @click="openSave(false)"
+                  >Cancel</Button
+                >
+                <Button
+                  type="submit"
+                  :disabled="!playlistName.trim() || actionPending"
+                  >{{ actionPending ? "Saving…" : "Save playlist" }}</Button
+                >
+              </div>
+            </form>
+          </DialogContent>
+        </DialogPortal>
+      </DialogRoot>
+      <DialogRoot :open="clearOpen" @update:open="openClear">
+        <DialogTrigger as-child>
+          <Button
+            aria-label="Clear queue"
+            size="sm"
+            variant="ghost"
+            :disabled="actionDisabled || !clearQueue"
+            >Clear queue</Button
+          >
+        </DialogTrigger>
+        <DialogPortal>
+          <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
+          <DialogContent
+            class="queue-action-dialog fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-(--line-strong) bg-(--surface) p-5 text-(--text) shadow-xl"
+            @escape-key-down="actionPending && $event.preventDefault()"
+            @interact-outside.prevent
+          >
+            <DialogTitle class="text-lg font-semibold"
+              >Clear queue?</DialogTitle
+            >
+            <div class="min-h-0 overflow-y-auto">
+              <DialogDescription class="mt-2 text-sm text-(--muted-text)"
+                >This will stop playback and remove all tracks from the queue.
+                Your library and playlists are kept.</DialogDescription
+              >
+              <p
+                v-if="actionError"
+                role="alert"
+                class="window-alert-danger mt-3 rounded-md p-3 text-sm break-words"
+              >
+                {{ actionError }}
+              </p>
+            </div>
+            <div class="mt-4 flex shrink-0 flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                :disabled="actionPending"
+                @click="openClear(false)"
+                >Cancel</Button
+              >
+              <Button :disabled="actionPending" @click="clear">{{
+                actionPending ? "Clearing…" : "Stop and clear queue"
+              }}</Button>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </DialogRoot>
+    </div>
 
     <section
       class="flex min-h-0 flex-1 flex-col"
@@ -456,7 +658,7 @@ watch(
           aria-label="Previous track"
           size="icon-sm"
           variant="ghost"
-          :disabled="isUpdating"
+          :disabled="isUpdating || isStarting"
           @click="emit('previous')"
         >
           <SkipBack aria-hidden="true" />
@@ -472,7 +674,7 @@ watch(
           "
           class="rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
           size="icon-sm"
-          :disabled="isUpdating"
+          :disabled="isUpdating || isStarting"
           @click="emit('toggle')"
         >
           <LoaderCircle
@@ -487,7 +689,7 @@ watch(
           aria-label="Next track"
           size="icon-sm"
           variant="ghost"
-          :disabled="isUpdating"
+          :disabled="isUpdating || isStarting"
           @click="emit('next')"
         >
           <SkipForward aria-hidden="true" />

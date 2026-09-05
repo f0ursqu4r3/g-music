@@ -1,12 +1,16 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { flushPromises, mount } from "@vue/test-utils";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
+import { Storage } from "happy-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
+import { flushApp as flushPromises } from "./flushApp";
 
 import App from "../App.vue";
 import LibraryWindow from "../components/LibraryWindow.vue";
 import MiniWindow from "../components/MiniWindow.vue";
 import QueueWindow from "../components/QueueWindow.vue";
+
+enableAutoUnmount(afterEach);
 
 const playbackMocks = vi.hoisted(() => ({
   applySnapshot: vi.fn(),
@@ -114,6 +118,7 @@ vi.mock("@/composables/usePlayback", () => ({
     },
     errorMessage: { value: "" },
     refresh: playbackMocks.refresh,
+    initialize: playbackMocks.refresh,
     sync: playbackMocks.sync,
     toggle: playbackMocks.toggle,
     toggleFavorite: playbackMocks.toggleFavorite,
@@ -137,6 +142,8 @@ vi.mock("@/composables/usePlayback", () => ({
 
 describe("application landmarks", () => {
   beforeEach(() => {
+    // Node 26 exposes a native storage getter. Use the browser test environment.
+    vi.stubGlobal("localStorage", new Storage());
     playbackMocks.applySnapshot.mockReset();
     playbackMocks.cycleRepeatMode.mockReset();
     playbackMocks.importYouTubeUrls.mockReset();
@@ -166,7 +173,7 @@ describe("application landmarks", () => {
   });
 
   it("renders exactly one main landmark for the active native window", async () => {
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     expect(wrapper.findAll("main")).toHaveLength(1);
@@ -174,7 +181,7 @@ describe("application landmarks", () => {
   });
 
   it("passes library and transport state separately to the library window", async () => {
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     const libraryWindow = wrapper.getComponent(LibraryWindow);
 
@@ -186,7 +193,7 @@ describe("application landmarks", () => {
   });
 
   it("routes reordered playlist titles to the playback composable", async () => {
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     wrapper
@@ -200,7 +207,7 @@ describe("application landmarks", () => {
   });
 
   it("opens Import Music from the Library plus button", async () => {
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     await wrapper.get('button[aria-label="Import music"]').trigger("click");
@@ -210,7 +217,7 @@ describe("application landmarks", () => {
 
   it("routes a multi-source Import window submission to playback", async () => {
     window.history.replaceState({}, "", "/?view=import");
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     const form = wrapper.get('form[aria-label="Import music from YouTube"]');
 
@@ -228,7 +235,7 @@ describe("application landmarks", () => {
   });
 
   it("routes a double-clicked Library track to the playback composable", async () => {
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     await wrapper.get('[data-track-id="night-drive"]').trigger("dblclick");
@@ -240,7 +247,7 @@ describe("application landmarks", () => {
 
   it("routes queue playback and reorder actions to the playback composable", async () => {
     window.history.replaceState({}, "", "/?view=queue");
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     await wrapper.get('button[aria-label="Play Night Drive"]').trigger("click");
@@ -255,7 +262,7 @@ describe("application landmarks", () => {
 
   it("routes complete mini-player playback controls to the composable", async () => {
     window.history.replaceState({}, "", "/?view=mini");
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     const miniWindow = wrapper.getComponent(MiniWindow);
 
@@ -271,7 +278,7 @@ describe("application landmarks", () => {
   });
 
   it("routes library and queue removal actions to their separate playback commands", async () => {
-    const libraryWrapper = mount(App);
+    const libraryWrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     libraryWrapper
@@ -281,7 +288,7 @@ describe("application landmarks", () => {
     libraryWrapper.unmount();
 
     window.history.replaceState({}, "", "/?view=queue");
-    const queueWrapper = mount(App);
+    const queueWrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     queueWrapper.getComponent(QueueWindow).vm.$emit("remove", 0);
@@ -291,7 +298,7 @@ describe("application landmarks", () => {
 
   it("synchronizes live playback while the window is mounted", async () => {
     vi.useFakeTimers();
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     await vi.advanceTimersByTimeAsync(500);
@@ -301,7 +308,7 @@ describe("application landmarks", () => {
   });
 
   it("routes keyboard playback controls outside editable fields", async () => {
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
@@ -318,17 +325,20 @@ describe("application landmarks", () => {
 
   it("applies native menu playback updates and opens keyboard shortcuts", async () => {
     let playbackUpdated: ((event: { payload: unknown }) => void) | undefined;
-    let showKeyboardShortcuts: (() => void) | undefined;
+    let showKeyboardShortcuts:
+      ((event: { payload: unknown }) => void) | undefined;
     eventMocks.listen.mockImplementation(async (event, handler) => {
       if (event === "playback-updated") {
         playbackUpdated = handler as (event: { payload: unknown }) => void;
       }
       if (event === "show-keyboard-shortcuts") {
-        showKeyboardShortcuts = handler as () => void;
+        showKeyboardShortcuts = handler as (event: {
+          payload: unknown;
+        }) => void;
       }
       return vi.fn();
     });
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     playbackUpdated?.({
@@ -340,38 +350,35 @@ describe("application landmarks", () => {
         volumePercent: 50,
       },
     });
-    showKeyboardShortcuts?.();
+    showKeyboardShortcuts?.({ payload: null });
     await nextTick();
 
     expect(playbackMocks.applySnapshot).toHaveBeenCalled();
     expect(wrapper.get('[role="dialog"]').text()).toContain(
       "Keyboard Shortcuts",
     );
-    expect(wrapper.get('[role="dialog"]').classes()).toContain("bg-black/60");
-    expect(wrapper.get('[role="dialog"] > div').classes()).toContain(
-      "bg-[oklch(0.11_0.014_260/0.98)]",
-    );
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await wrapper
+      .get('button[aria-label="Close keyboard shortcuts"]')
+      .trigger("click");
     await nextTick();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
   it("refreshes the library after a native metadata update", async () => {
-    let libraryUpdated: (() => void) | undefined;
+    let libraryUpdated: ((event: { payload: unknown }) => void) | undefined;
     eventMocks.listen.mockImplementation(async (event, handler) => {
       if (event === "library-updated") {
-        libraryUpdated = handler as () => void;
+        libraryUpdated = handler as (event: { payload: unknown }) => void;
       }
       return vi.fn();
     });
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     playbackMocks.refresh.mockClear();
 
     expect(libraryUpdated).toBeDefined();
-    libraryUpdated?.();
+    libraryUpdated?.({ payload: null });
     await flushPromises();
 
     expect(playbackMocks.refresh).toHaveBeenCalledOnce();
@@ -381,7 +388,7 @@ describe("application landmarks", () => {
   it("renders the settings window as one named main landmark", async () => {
     window.history.replaceState({}, "", "/?view=settings");
 
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     expect(wrapper.findAll("main")).toHaveLength(1);
@@ -402,7 +409,7 @@ describe("application landmarks", () => {
     } as never);
     window.history.replaceState({}, "", "/?view=artwork");
 
-    const wrapper = mount(App);
+    const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     const controls = wrapper.get(".artwork-playback-controls");
     expect(controls.attributes("data-window-focused")).toBe("true");

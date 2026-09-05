@@ -174,7 +174,7 @@ fn parse_request(line: &str) -> Result<AgentRequest, CommandError> {
 fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandError> {
     let state = app.state::<AppState>();
     let method = request.method.as_str();
-    let result = match method {
+    let result = (|| match method {
         "library.inspect" => serialize(state.library_snapshot()?),
         "track.update" => {
             let request: TrackUpdateRequest = decode_params(&request.params)?;
@@ -209,8 +209,16 @@ fn dispatch(app: &AppHandle, request: &AgentRequest) -> Result<Value, CommandErr
             let request: QueueMoveRequest = decode_params(&request.params)?;
             serialize(state.move_queue_item(request.from, request.to)?)
         }
+        "library.move" => {
+            let request: QueueMoveRequest = decode_params(&request.params)?;
+            serialize(state.move_library_item(request.from, request.to)?)
+        }
         _ => Err(protocol_error(format!("unknown method {}", request.method))),
-    }?;
+    })();
+    if library_mutation_method(method) {
+        state.emit_cached_playback(app);
+    }
+    let result = result?;
     if library_mutation_method(method)
         && let Err(error) = app.emit("library-updated", ())
     {
@@ -229,6 +237,7 @@ fn library_mutation_method(method: &str) -> bool {
             | "playlist.reorder"
             | "playlist.delete"
             | "queue.move"
+            | "library.move"
     )
 }
 
@@ -270,6 +279,7 @@ mod tests {
             "playlist.reorder",
             "playlist.delete",
             "queue.move",
+            "library.move",
         ] {
             assert!(
                 library_mutation_method(method),

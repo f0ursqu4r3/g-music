@@ -1,7 +1,9 @@
 # G Music
 
-G Music is a focused desktop music-player shell built with Tauri 2, Rust, Vue
-3, Vite, Tailwind CSS v4, shadcn-vue, and Lucide icons.
+G Music is a desktop YouTube audio player built with Tauri 2, Rust, Vue 3, Vite,
+Tailwind CSS v4, Reka UI, and Lucide icons. The current distribution target is
+macOS. See [release readiness](docs/release-readiness.md) for the verification
+and distribution requirements.
 
 ## Current mode
 
@@ -16,8 +18,8 @@ not save media files or collect Google credentials.
   controls.
 - Expandable queue with deterministic navigation and reorder controls.
 - Midnight, Plum, and Ember themes, saved in the local WebView store.
-- Keyboard controls: Space toggles play, J selects the previous track, K
-  selects the next track, and Q toggles the queue.
+- Keyboard controls: Space toggles play, J selects the previous track, K selects
+  the next track, and Q toggles the queue.
 - Typed Tauri IPC client and serializable Rust payloads.
 - Durable editable track metadata: title, artist, album, label, and genres.
 - Durable playlists that preserve ordered stable track IDs.
@@ -29,10 +31,11 @@ not save media files or collect Google credentials.
 Install the local playback tools:
 
 ```sh
-brew install mpv
+brew install mpv yt-dlp
 ```
 
-The Homebrew `mpv` formula installs `yt-dlp` as a dependency. Then run the app:
+Install both tools explicitly. They are local prerequisites, not bundled
+sidecars. Then run the app:
 
 ```sh
 bun install
@@ -60,14 +63,18 @@ When G Music starts, it opens a local Unix socket at:
 ```
 
 The socket has owner-only permissions. It keeps all writes inside G Music so the
-live library, playback state, and durable `library.json` stay consistent. Do not
-edit `library.json` directly.
+live library, playback state, and durable SQLite store stay consistent. The
+active store is `library.sqlite3`. The app migrates a legacy `library.json` to
+SQLite once and retains `library.json.migrated` as a backup. Do not edit the
+active database or migration backup while the app is running.
 
 The MCP bridge is `scripts/gmusic-mcp.ts`. It exposes these tools after Hermes
 starts it:
 
 - `inspect_library`
 - `update_track_metadata`
+- `update_library_track_metadata_batch`
+- `remove_library_tracks`
 - `upsert_playlist`
 - `delete_playlist`
 - `move_library_track`
@@ -98,6 +105,10 @@ bun run mcp
 
 ## Library controls
 
+Library search starts collapsed. Click the search icon or press Command-F on
+macOS (Control-F on other platforms) to open or close it. Opening search focuses
+the input. Escape closes search and clears its filter, as does the search icon.
+
 Click a track to select it. Command-click or Control-click toggles individual
 tracks. Shift-click selects a range. The context menu applies playback, queue,
 Favorites, and removal actions to the selected tracks.
@@ -108,36 +119,60 @@ in the library, other playlists, and the play queue. **Remove from library** is
 a separate action that requires confirmation.
 
 Drag selected tracks from the list or grid onto a custom playlist to add them.
-Favorites and Most Played are not drop targets. Drag the sidebar's right edge
-to resize it. When the resize control has keyboard focus, use the arrow keys,
-Home, or End to change its width.
+Favorites and Most Played are not drop targets. Drag the sidebar's right edge to
+resize it. When the resize control has keyboard focus, use the arrow keys, Home,
+or End to change its width.
 
 The Library window uses HTML drag and drop. Keep Tauri's native file-drop
 handler disabled: `dragDropEnabled: false` in the startup window configuration
-and `disable_drag_drop_handler()` when Rust recreates the Library window.
-The native handler intercepts DOM drag events on macOS. Restart the native app
-after changing this setting; frontend hot reload does not recreate its WebView.
+and `disable_drag_drop_handler()` when Rust recreates the Library window. The
+native handler intercepts DOM drag events on macOS. Restart the native app after
+changing this setting; frontend hot reload does not recreate its WebView.
 
 ## Verification
 
 ```sh
 bun run test
+bun run lint
 bun run build
+bun run format
+bun audit
 
 cd src-tauri
 cargo fmt --all -- --check
-cargo check --all-targets
+cargo check --all-targets --future-incompat-report
+cargo rustc --locked -p block -- -D warnings
+cargo test --locked --manifest-path vendor/block/Cargo.toml
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+## Build safeguards
+
+Window components load on demand. The test suite builds the production bundle
+and checks that each window has a dynamic entry and every JavaScript chunk stays
+within the 500 kB budget. Do not raise the warning limit to bypass this check.
+
+Souvlaki requires the legacy `block` crate on macOS. A local compatibility patch
+fixes its foreign-static declaration without changing the public API. See
+[`GMUSIC-PATCH.md`](src-tauri/vendor/block/GMUSIC-PATCH.md) for provenance,
+verification, and the condition for removing the patch.
+
 ## Product boundary
+
+Windows read the latest import progress on startup and receive shared progress
+events while the app runs. This progress stays in memory, including the last
+completed, failed, or cancelled result. A fresh app launch starts with no import
+progress. App-level command errors use the shadcn-vue Sonner component, with
+Retry and dismissal controls. Repeated errors update one toast. Startup errors
+stay visible until recovery; inline form errors remain beside their fields.
 
 The YouTube provider is a local-only experiment. It uses `yt-dlp` to resolve
 track metadata and temporary media URLs, then uses `mpv` for audio playback.
-Imported videos and playlist entries populate the library and queue. Track
-metadata persists in the application data directory between launches.
-It does not download or keep media files, collect credentials, or bypass DRM.
-Optional session cookies stay in the application data directory. This
-integration depends on YouTube's current site behavior and can break without
-notice.
+Imports add videos and playlist entries to the durable library. Imports do not
+start playback or replace the listening queue. An explicit Play action sets the
+playback context. The app restores saved playback state as paused; it never
+starts audio automatically after launch. It does not download or keep media
+files, collect credentials, or bypass DRM. Optional session cookies stay in the
+application data directory. This integration depends on YouTube's current site
+behavior and can break without notice.

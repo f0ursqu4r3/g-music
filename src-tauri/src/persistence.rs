@@ -1,9 +1,18 @@
-use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+use std::{
+    collections::HashSet,
+    fs,
+    fs::OpenOptions,
+    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::playback::{MediaItem, Playlist, QueueEntry, RepeatMode};
+use crate::playback::{EditableTrackMetadata, MediaItem, Playlist, QueueEntry, RepeatMode};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +37,67 @@ fn default_volume_percent() -> u8 {
     72
 }
 
+static BACKUP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn export_library_backup(database_path: &Path) -> Result<PathBuf, String> {
+    if !database_path.is_file() {
+        return Err(format!(
+            "the library database does not exist: {}",
+            database_path.display()
+        ));
+    }
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| "the library database has no parent directory".to_string())?;
+    let backup_directory = parent.join("backups");
+    fs::create_dir_all(&backup_directory).map_err(error)?;
+    fs::set_permissions(&backup_directory, fs::Permissions::from_mode(0o700)).map_err(error)?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(error)?
+        .as_millis();
+    let sequence = BACKUP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let backup_path = backup_directory.join(format!(
+        "library-backup-{timestamp}-{}-{sequence}.sqlite3",
+        std::process::id()
+    ));
+
+    let result = (|| {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&backup_path)
+            .map_err(error)?;
+        let source = Connection::open(database_path).map_err(error)?;
+        source
+            .execute("VACUUM INTO ?1", [backup_path.to_string_lossy().as_ref()])
+            .map_err(error)?;
+
+        fs::set_permissions(&backup_path, fs::Permissions::from_mode(0o600)).map_err(error)?;
+        let mut backup = Connection::open(&backup_path).map_err(error)?;
+        backup
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(error)?;
+        let transaction = backup.transaction().map_err(error)?;
+        transaction
+            .execute("DELETE FROM artwork_cache", [])
+            .map_err(error)?;
+        transaction
+            .execute("DELETE FROM playback_state", [])
+            .map_err(error)?;
+        transaction.commit().map_err(error)?;
+        backup.execute_batch("VACUUM;").map_err(error)?;
+        Ok(())
+    })();
+    if let Err(export_error) = result {
+        let _ = fs::remove_file(&backup_path);
+        return Err(export_error);
+    }
+    Ok(backup_path)
+}
+
 pub(crate) fn load_library(path: &Path) -> Result<(Vec<QueueEntry>, Vec<Playlist>), String> {
     let connection = open(path)?;
     let mut statement = connection
@@ -36,8 +106,11 @@ pub(crate) fn load_library(path: &Path) -> Result<(Vec<QueueEntry>, Vec<Playlist
                     disc_number, release_date, upload_date, description, channel, channel_id,
                     uploader, uploader_id, thumbnail_url, label, genres_json, categories_json,
                     tags_json, language, availability, is_live, view_count, like_count, duration_ms,
-                    metadata_dirty, play_count, last_played_at_ms
-             FROM tracks ORDER BY library_position",
+                    metadata_dirty, play_count, last_played_at_ms,
+                    track_metadata.provider_json, track_metadata.overrides_json
+             FROM tracks
+             LEFT JOIN track_metadata ON track_metadata.track_id = tracks.id
+             ORDER BY library_position",
         )
         .map_err(error)?;
     let mut entries = statement
@@ -45,8 +118,33 @@ pub(crate) fn load_library(path: &Path) -> Result<(Vec<QueueEntry>, Vec<Playlist
             let id: String = row.get(0)?;
             let history =
                 read_history(&connection, &id).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            let provider_json: Option<String> = row.get(30)?;
+            let provider_metadata = provider_json
+                .map(|value| serde_json::from_str::<EditableTrackMetadata>(&value))
+                .transpose()
+                .map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        30,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?;
+            let overrides_json: Option<String> = row.get(31)?;
+            let metadata_overrides = overrides_json
+                .map(|value| serde_json::from_str::<HashSet<String>>(&value))
+                .transpose()
+                .map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        31,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?
+                .unwrap_or_default();
             Ok(QueueEntry {
                 source_url: row.get(2)?,
+                provider_metadata,
+                metadata_overrides,
                 item: MediaItem {
                     id,
                     provider: row.get(1)?,
@@ -122,23 +220,75 @@ pub(crate) fn save_library(
 ) -> Result<(), String> {
     let mut connection = open(path)?;
     let transaction = connection.transaction().map_err(error)?;
+    save_library_rows(&transaction, entries, playlists)?;
+    transaction.commit().map_err(error)
+}
+
+pub(crate) fn save_library_and_playback(
+    path: &Path,
+    entries: &[QueueEntry],
+    playlists: &[Playlist],
+    state: &SavedPlaybackState,
+) -> Result<(), String> {
+    let state_json = serde_json::to_string(state).map_err(error)?;
+    let mut connection = open(path)?;
+    let transaction = connection.transaction().map_err(error)?;
+    save_library_rows(&transaction, entries, playlists)?;
+    write_playback_state(&transaction, &state_json)?;
+    transaction.commit().map_err(error)
+}
+
+fn save_library_rows(
+    transaction: &rusqlite::Transaction<'_>,
+    entries: &[QueueEntry],
+    playlists: &[Playlist],
+) -> Result<(), String> {
     transaction
-        .execute("DELETE FROM playlist_tracks", [])
-        .map_err(error)?;
-    transaction
-        .execute("DELETE FROM playlists", [])
-        .map_err(error)?;
-    transaction
-        .execute("DELETE FROM play_history", [])
-        .map_err(error)?;
-    transaction
-        .execute("DELETE FROM tracks", [])
+        .execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS desired_track_ids (id TEXT PRIMARY KEY);
+             CREATE TEMP TABLE IF NOT EXISTS desired_playlist_ids (id TEXT PRIMARY KEY);
+             DELETE FROM desired_track_ids;
+             DELETE FROM desired_playlist_ids;",
+        )
         .map_err(error)?;
 
-    for (position, entry) in entries.iter().enumerate() {
-        let item = &entry.item;
-        transaction
-            .execute(
+    {
+        let mut insert_desired = transaction
+            .prepare("INSERT INTO desired_track_ids (id) VALUES (?1)")
+            .map_err(error)?;
+        for entry in entries {
+            insert_desired.execute([&entry.item.id]).map_err(error)?;
+        }
+    }
+    transaction
+        .execute(
+            "DELETE FROM tracks
+             WHERE NOT EXISTS (SELECT 1 FROM desired_track_ids WHERE id = tracks.id)",
+            [],
+        )
+        .map_err(error)?;
+
+    {
+        let mut read_position = transaction
+            .prepare("SELECT library_position FROM tracks WHERE id = ?1")
+            .map_err(error)?;
+        let mut stage_position = transaction
+            .prepare("UPDATE tracks SET library_position = -library_position - 1 WHERE id = ?1")
+            .map_err(error)?;
+        for (position, entry) in entries.iter().enumerate() {
+            let stored_position = read_position
+                .query_row([&entry.item.id], |row| row.get::<_, i64>(0))
+                .optional()
+                .map_err(error)?;
+            if stored_position.is_some_and(|stored| stored != position as i64) {
+                stage_position.execute([&entry.item.id]).map_err(error)?;
+            }
+        }
+    }
+
+    {
+        let mut upsert_track = transaction
+            .prepare(
                 "INSERT INTO tracks (
                     id, provider, source_url, title, artist, album, album_artist, track_number,
                     disc_number, release_date, upload_date, description, channel, channel_id,
@@ -148,8 +298,74 @@ pub(crate) fn save_library(
                  ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                     ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31
-                 )",
-                params![
+                 )
+                 ON CONFLICT(id) DO UPDATE SET
+                    provider = excluded.provider,
+                    source_url = excluded.source_url,
+                    title = excluded.title,
+                    artist = excluded.artist,
+                    album = excluded.album,
+                    album_artist = excluded.album_artist,
+                    track_number = excluded.track_number,
+                    disc_number = excluded.disc_number,
+                    release_date = excluded.release_date,
+                    upload_date = excluded.upload_date,
+                    description = excluded.description,
+                    channel = excluded.channel,
+                    channel_id = excluded.channel_id,
+                    uploader = excluded.uploader,
+                    uploader_id = excluded.uploader_id,
+                    thumbnail_url = excluded.thumbnail_url,
+                    label = excluded.label,
+                    genres_json = excluded.genres_json,
+                    categories_json = excluded.categories_json,
+                    tags_json = excluded.tags_json,
+                    language = excluded.language,
+                    availability = excluded.availability,
+                    is_live = excluded.is_live,
+                    view_count = excluded.view_count,
+                    like_count = excluded.like_count,
+                    duration_ms = excluded.duration_ms,
+                    metadata_dirty = excluded.metadata_dirty,
+                    play_count = excluded.play_count,
+                    last_played_at_ms = excluded.last_played_at_ms,
+                    library_position = excluded.library_position
+                 WHERE tracks.provider IS NOT excluded.provider
+                    OR tracks.source_url IS NOT excluded.source_url
+                    OR tracks.title IS NOT excluded.title
+                    OR tracks.artist IS NOT excluded.artist
+                    OR tracks.album IS NOT excluded.album
+                    OR tracks.album_artist IS NOT excluded.album_artist
+                    OR tracks.track_number IS NOT excluded.track_number
+                    OR tracks.disc_number IS NOT excluded.disc_number
+                    OR tracks.release_date IS NOT excluded.release_date
+                    OR tracks.upload_date IS NOT excluded.upload_date
+                    OR tracks.description IS NOT excluded.description
+                    OR tracks.channel IS NOT excluded.channel
+                    OR tracks.channel_id IS NOT excluded.channel_id
+                    OR tracks.uploader IS NOT excluded.uploader
+                    OR tracks.uploader_id IS NOT excluded.uploader_id
+                    OR tracks.thumbnail_url IS NOT excluded.thumbnail_url
+                    OR tracks.label IS NOT excluded.label
+                    OR tracks.genres_json IS NOT excluded.genres_json
+                    OR tracks.categories_json IS NOT excluded.categories_json
+                    OR tracks.tags_json IS NOT excluded.tags_json
+                    OR tracks.language IS NOT excluded.language
+                    OR tracks.availability IS NOT excluded.availability
+                    OR tracks.is_live IS NOT excluded.is_live
+                    OR tracks.view_count IS NOT excluded.view_count
+                    OR tracks.like_count IS NOT excluded.like_count
+                    OR tracks.duration_ms IS NOT excluded.duration_ms
+                    OR tracks.metadata_dirty IS NOT excluded.metadata_dirty
+                    OR tracks.play_count IS NOT excluded.play_count
+                    OR tracks.last_played_at_ms IS NOT excluded.last_played_at_ms
+                    OR tracks.library_position IS NOT excluded.library_position",
+            )
+            .map_err(error)?;
+        for (position, entry) in entries.iter().enumerate() {
+            let item = &entry.item;
+            upsert_track
+                .execute(params![
                     item.id,
                     item.provider,
                     entry.source_url,
@@ -181,37 +397,141 @@ pub(crate) fn save_library(
                     item.play_count,
                     item.last_played_at_ms,
                     position as i64,
-                ],
-            )
-            .map_err(error)?;
-        for (history_position, played_at_ms) in item.play_history_ms.iter().enumerate() {
-            transaction
-                .execute(
-                    "INSERT INTO play_history (track_id, position, played_at_ms) VALUES (?1, ?2, ?3)",
-                    params![item.id, history_position as i64, played_at_ms],
-                )
+                ])
                 .map_err(error)?;
         }
     }
 
-    for (position, playlist) in playlists.iter().enumerate() {
-        transaction
-            .execute(
-                "INSERT INTO playlists (id, name, library_position) VALUES (?1, ?2, ?3)",
-                params![playlist.id, playlist.name, position as i64],
+    {
+        let mut upsert_history = transaction
+            .prepare(
+                "INSERT INTO play_history (track_id, position, played_at_ms) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(track_id, position) DO UPDATE SET played_at_ms = excluded.played_at_ms
+                 WHERE play_history.played_at_ms IS NOT excluded.played_at_ms",
             )
             .map_err(error)?;
-        for (track_position, track_id) in playlist.track_ids.iter().enumerate() {
-            transaction
-                .execute(
-                    "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, ?3)",
-                    params![playlist.id, track_id, track_position as i64],
-                )
+        let mut delete_stale_history = transaction
+            .prepare("DELETE FROM play_history WHERE track_id = ?1 AND position >= ?2")
+            .map_err(error)?;
+        for entry in entries {
+            for (position, played_at_ms) in entry.item.play_history_ms.iter().enumerate() {
+                upsert_history
+                    .execute(params![entry.item.id, position as i64, played_at_ms])
+                    .map_err(error)?;
+            }
+            delete_stale_history
+                .execute(params![
+                    entry.item.id,
+                    entry.item.play_history_ms.len() as i64
+                ])
                 .map_err(error)?;
         }
     }
 
-    transaction.commit().map_err(error)
+    {
+        let mut upsert_metadata = transaction
+            .prepare(
+                "INSERT INTO track_metadata (track_id, provider_json, overrides_json)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(track_id) DO UPDATE SET
+                    provider_json = excluded.provider_json,
+                    overrides_json = excluded.overrides_json
+                 WHERE track_metadata.provider_json IS NOT excluded.provider_json
+                    OR track_metadata.overrides_json IS NOT excluded.overrides_json",
+            )
+            .map_err(error)?;
+        let mut delete_metadata = transaction
+            .prepare("DELETE FROM track_metadata WHERE track_id = ?1")
+            .map_err(error)?;
+        for entry in entries {
+            if entry.provider_metadata.is_none() && entry.metadata_overrides.is_empty() {
+                delete_metadata.execute([&entry.item.id]).map_err(error)?;
+                continue;
+            }
+            let provider_json = entry
+                .provider_metadata
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(error)?;
+            let overrides_json = encode_overrides(&entry.metadata_overrides).map_err(error)?;
+            upsert_metadata
+                .execute(params![entry.item.id, provider_json, overrides_json])
+                .map_err(error)?;
+        }
+    }
+
+    {
+        let mut insert_desired = transaction
+            .prepare("INSERT INTO desired_playlist_ids (id) VALUES (?1)")
+            .map_err(error)?;
+        for playlist in playlists {
+            insert_desired.execute([&playlist.id]).map_err(error)?;
+        }
+    }
+    transaction
+        .execute(
+            "DELETE FROM playlists
+             WHERE NOT EXISTS (SELECT 1 FROM desired_playlist_ids WHERE id = playlists.id)",
+            [],
+        )
+        .map_err(error)?;
+
+    {
+        let mut read_position = transaction
+            .prepare("SELECT library_position FROM playlists WHERE id = ?1")
+            .map_err(error)?;
+        let mut stage_position = transaction
+            .prepare("UPDATE playlists SET library_position = -library_position - 1 WHERE id = ?1")
+            .map_err(error)?;
+        for (position, playlist) in playlists.iter().enumerate() {
+            let stored_position = read_position
+                .query_row([&playlist.id], |row| row.get::<_, i64>(0))
+                .optional()
+                .map_err(error)?;
+            if stored_position.is_some_and(|stored| stored != position as i64) {
+                stage_position.execute([&playlist.id]).map_err(error)?;
+            }
+        }
+    }
+
+    {
+        let mut upsert_playlist = transaction
+            .prepare(
+                "INSERT INTO playlists (id, name, library_position) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    library_position = excluded.library_position
+                 WHERE playlists.name IS NOT excluded.name
+                    OR playlists.library_position IS NOT excluded.library_position",
+            )
+            .map_err(error)?;
+        let mut upsert_member = transaction
+            .prepare(
+                "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(playlist_id, position) DO UPDATE SET track_id = excluded.track_id
+                 WHERE playlist_tracks.track_id IS NOT excluded.track_id",
+            )
+            .map_err(error)?;
+        let mut delete_stale_members = transaction
+            .prepare("DELETE FROM playlist_tracks WHERE playlist_id = ?1 AND position >= ?2")
+            .map_err(error)?;
+        for (position, playlist) in playlists.iter().enumerate() {
+            upsert_playlist
+                .execute(params![playlist.id, playlist.name, position as i64])
+                .map_err(error)?;
+            for (track_position, track_id) in playlist.track_ids.iter().enumerate() {
+                upsert_member
+                    .execute(params![playlist.id, track_id, track_position as i64])
+                    .map_err(error)?;
+            }
+            delete_stale_members
+                .execute(params![playlist.id, playlist.track_ids.len() as i64])
+                .map_err(error)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn load_playback_state(path: &Path) -> Result<Option<SavedPlaybackState>, String> {
@@ -232,6 +552,10 @@ pub(crate) fn load_playback_state(path: &Path) -> Result<Option<SavedPlaybackSta
 pub(crate) fn save_playback_state(path: &Path, state: &SavedPlaybackState) -> Result<(), String> {
     let connection = open(path)?;
     let state_json = serde_json::to_string(state).map_err(error)?;
+    write_playback_state(&connection, &state_json)
+}
+
+fn write_playback_state(connection: &Connection, state_json: &str) -> Result<(), String> {
     connection
         .execute(
             "INSERT INTO playback_state (id, state_json) VALUES (1, ?1)
@@ -308,6 +632,11 @@ fn open(path: &Path) -> Result<Connection, String> {
                 played_at_ms INTEGER NOT NULL,
                 PRIMARY KEY (track_id, position)
             );
+            CREATE TABLE IF NOT EXISTS track_metadata (
+                track_id TEXT PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+                provider_json TEXT,
+                overrides_json TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS artwork_cache (
                 cache_key TEXT PRIMARY KEY,
                 relative_path TEXT NOT NULL,
@@ -341,6 +670,12 @@ fn encode_values(values: &[String]) -> String {
 
 fn decode_values(value: String) -> Vec<String> {
     serde_json::from_str(&value).unwrap_or_default()
+}
+
+fn encode_overrides(overrides: &HashSet<String>) -> Result<String, serde_json::Error> {
+    let mut values = overrides.iter().collect::<Vec<_>>();
+    values.sort_unstable();
+    serde_json::to_string(&values)
 }
 
 fn error(error: impl std::fmt::Display) -> String {
@@ -443,4 +778,476 @@ pub(crate) fn remove_artwork_cache(database_path: &Path, cache_key: &str) -> Res
         )
         .map_err(error)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::HashSet,
+        fs,
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    use rusqlite::Connection;
+
+    use super::{
+        SavedPlaybackState, export_library_backup, load_library, load_playback_state, save_library,
+        save_library_and_playback, save_playback_state, write_artwork_cache,
+    };
+    use crate::playback::{EditableTrackMetadata, MediaItem, Playlist, QueueEntry, RepeatMode};
+
+    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+    struct DatabaseFixture {
+        directory: PathBuf,
+        path: PathBuf,
+    }
+
+    impl DatabaseFixture {
+        fn new(name: &str) -> Self {
+            let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+            let directory = std::env::temp_dir().join(format!(
+                "gmusic-persistence-{name}-{}-{sequence}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&directory).expect("the temporary fixture directory is created");
+            let path = directory.join("library.sqlite3");
+            Self { directory, path }
+        }
+    }
+
+    impl Drop for DatabaseFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    fn entry(index: usize) -> QueueEntry {
+        let id = format!("track-{index:04}");
+        let source_url = format!("https://example.test/{id}");
+        QueueEntry {
+            source_url: source_url.clone(),
+            provider_metadata: None,
+            metadata_overrides: Default::default(),
+            item: MediaItem {
+                id,
+                provider: "test".into(),
+                source_url: Some(source_url),
+                title: format!("Track {index}"),
+                artist: "Artist".into(),
+                album: None,
+                album_artist: None,
+                track_number: None,
+                disc_number: None,
+                release_date: None,
+                upload_date: None,
+                description: None,
+                channel: None,
+                channel_id: None,
+                uploader: None,
+                uploader_id: None,
+                thumbnail_url: None,
+                label: None,
+                genres: Vec::new(),
+                categories: Vec::new(),
+                tags: Vec::new(),
+                language: None,
+                availability: None,
+                is_live: false,
+                view_count: None,
+                like_count: None,
+                duration_ms: 180_000,
+                metadata_dirty: false,
+                play_count: 0,
+                last_played_at_ms: None,
+                play_history_ms: Vec::new(),
+            },
+        }
+    }
+
+    fn install_write_audit(path: &Path) {
+        let connection = Connection::open(path).expect("the fixture database opens");
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE write_audit (table_name TEXT NOT NULL, operation TEXT NOT NULL);
+                CREATE TRIGGER audit_tracks_insert AFTER INSERT ON tracks BEGIN
+                    INSERT INTO write_audit VALUES ('tracks', 'insert');
+                END;
+                CREATE TRIGGER audit_tracks_update AFTER UPDATE ON tracks BEGIN
+                    INSERT INTO write_audit VALUES ('tracks', 'update');
+                END;
+                CREATE TRIGGER audit_tracks_delete AFTER DELETE ON tracks BEGIN
+                    INSERT INTO write_audit VALUES ('tracks', 'delete');
+                END;
+                CREATE TRIGGER audit_history_insert AFTER INSERT ON play_history BEGIN
+                    INSERT INTO write_audit VALUES ('play_history', 'insert');
+                END;
+                CREATE TRIGGER audit_history_delete AFTER DELETE ON play_history BEGIN
+                    INSERT INTO write_audit VALUES ('play_history', 'delete');
+                END;
+                CREATE TRIGGER audit_metadata_insert AFTER INSERT ON track_metadata BEGIN
+                    INSERT INTO write_audit VALUES ('track_metadata', 'insert');
+                END;
+                CREATE TRIGGER audit_metadata_update AFTER UPDATE ON track_metadata BEGIN
+                    INSERT INTO write_audit VALUES ('track_metadata', 'update');
+                END;
+                CREATE TRIGGER audit_metadata_delete AFTER DELETE ON track_metadata BEGIN
+                    INSERT INTO write_audit VALUES ('track_metadata', 'delete');
+                END;
+                CREATE TRIGGER audit_playlists_insert AFTER INSERT ON playlists BEGIN
+                    INSERT INTO write_audit VALUES ('playlists', 'insert');
+                END;
+                CREATE TRIGGER audit_playlists_update AFTER UPDATE ON playlists BEGIN
+                    INSERT INTO write_audit VALUES ('playlists', 'update');
+                END;
+                CREATE TRIGGER audit_playlists_delete AFTER DELETE ON playlists BEGIN
+                    INSERT INTO write_audit VALUES ('playlists', 'delete');
+                END;
+                CREATE TRIGGER audit_members_insert AFTER INSERT ON playlist_tracks BEGIN
+                    INSERT INTO write_audit VALUES ('playlist_tracks', 'insert');
+                END;
+                CREATE TRIGGER audit_members_update AFTER UPDATE ON playlist_tracks BEGIN
+                    INSERT INTO write_audit VALUES ('playlist_tracks', 'update');
+                END;
+                CREATE TRIGGER audit_members_delete AFTER DELETE ON playlist_tracks BEGIN
+                    INSERT INTO write_audit VALUES ('playlist_tracks', 'delete');
+                END;
+                ",
+            )
+            .expect("write-audit triggers are installed");
+    }
+
+    fn audit_count(path: &Path, table_name: &str) -> u64 {
+        let connection = Connection::open(path).expect("the fixture database opens");
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM write_audit WHERE table_name = ?1",
+                [table_name],
+                |row| row.get(0),
+            )
+            .expect("the audit count is readable")
+    }
+
+    fn clear_audit(path: &Path) {
+        Connection::open(path)
+            .expect("the fixture database opens")
+            .execute("DELETE FROM write_audit", [])
+            .expect("the write audit is cleared");
+    }
+
+    #[test]
+    fn saves_only_rows_changed_in_a_large_library() {
+        let fixture = DatabaseFixture::new("changed-rows");
+        let mut entries = (0..2_000).map(entry).collect::<Vec<_>>();
+        let mut playlists = vec![Playlist {
+            id: "favorites".into(),
+            name: "Favorites".into(),
+            track_ids: Vec::new(),
+        }];
+        save_library(&fixture.path, &entries, &playlists).expect("the initial library is saved");
+        install_write_audit(&fixture.path);
+
+        entries[1_127].item.title = "Corrected title".into();
+        entries[1_127].item.metadata_dirty = true;
+        save_library(&fixture.path, &entries, &playlists).expect("metadata is saved");
+        assert_eq!(audit_count(&fixture.path, "tracks"), 1);
+        assert_eq!(audit_count(&fixture.path, "play_history"), 0);
+        assert_eq!(audit_count(&fixture.path, "track_metadata"), 0);
+        assert_eq!(audit_count(&fixture.path, "playlists"), 0);
+        assert_eq!(audit_count(&fixture.path, "playlist_tracks"), 0);
+
+        clear_audit(&fixture.path);
+        entries[1_127].item.play_count = 1;
+        entries[1_127].item.last_played_at_ms = Some(42);
+        entries[1_127].item.play_history_ms.push(42);
+        save_library(&fixture.path, &entries, &playlists).expect("the play is saved");
+        assert_eq!(audit_count(&fixture.path, "tracks"), 1);
+        assert_eq!(audit_count(&fixture.path, "play_history"), 1);
+        assert_eq!(audit_count(&fixture.path, "track_metadata"), 0);
+        assert_eq!(audit_count(&fixture.path, "playlists"), 0);
+        assert_eq!(audit_count(&fixture.path, "playlist_tracks"), 0);
+
+        clear_audit(&fixture.path);
+        playlists[0].track_ids.push(entries[1_127].item.id.clone());
+        save_library(&fixture.path, &entries, &playlists).expect("the favorite is saved");
+        assert_eq!(audit_count(&fixture.path, "tracks"), 0);
+        assert_eq!(audit_count(&fixture.path, "play_history"), 0);
+        assert_eq!(audit_count(&fixture.path, "track_metadata"), 0);
+        assert_eq!(audit_count(&fixture.path, "playlists"), 0);
+        assert_eq!(audit_count(&fixture.path, "playlist_tracks"), 1);
+
+        let (loaded_entries, loaded_playlists) =
+            load_library(&fixture.path).expect("the changed library loads");
+        assert_eq!(loaded_entries[1_127].item.title, "Corrected title");
+        assert_eq!(loaded_entries[1_127].item.play_history_ms, vec![42]);
+        assert_eq!(loaded_playlists, playlists);
+
+        clear_audit(&fixture.path);
+        save_playback_state(
+            &fixture.path,
+            &SavedPlaybackState {
+                current_item_id: Some(entries[1_127].item.id.clone()),
+                position_ms: 84,
+                volume_percent: 72,
+                shuffle_enabled: false,
+                repeat_mode: RepeatMode::Off,
+                queue_ids: vec![entries[1_127].item.id.clone()],
+                shuffle_order: Vec::new(),
+            },
+        )
+        .expect("the playback position is saved");
+        for table_name in [
+            "tracks",
+            "play_history",
+            "track_metadata",
+            "playlists",
+            "playlist_tracks",
+        ] {
+            assert_eq!(audit_count(&fixture.path, table_name), 0);
+        }
+    }
+
+    #[test]
+    fn round_trips_provider_metadata_and_override_ownership() {
+        let fixture = DatabaseFixture::new("metadata-ownership");
+        let mut entries = vec![entry(0)];
+        entries[0].provider_metadata = Some(EditableTrackMetadata {
+            title: "Provider title".into(),
+            artist: "Provider artist".into(),
+            album: Some("Provider album".into()),
+            label: None,
+            genres: vec!["Provider genre".into()],
+        });
+        entries[0].metadata_overrides = HashSet::from(["title".into(), "genres".into()]);
+
+        save_library(&fixture.path, &entries, &[]).expect("the library is saved");
+        let (loaded, _) = load_library(&fixture.path).expect("the library loads");
+
+        assert_eq!(loaded[0].provider_metadata, entries[0].provider_metadata);
+        assert_eq!(loaded[0].metadata_overrides, entries[0].metadata_overrides);
+
+        install_write_audit(&fixture.path);
+        save_library(&fixture.path, &entries, &[]).expect("the unchanged library is saved");
+        assert_eq!(audit_count(&fixture.path, "track_metadata"), 0);
+
+        entries[0].metadata_overrides.insert("artist".into());
+        save_library(&fixture.path, &entries, &[]).expect("the new ownership is saved");
+        assert_eq!(audit_count(&fixture.path, "track_metadata"), 1);
+        assert_eq!(
+            load_library(&fixture.path)
+                .expect("the updated ownership loads")
+                .0[0]
+                .metadata_overrides,
+            entries[0].metadata_overrides
+        );
+    }
+
+    #[test]
+    fn rolls_back_all_changed_rows_when_a_statement_fails() {
+        let fixture = DatabaseFixture::new("rollback");
+        let entries = (0..12).map(entry).collect::<Vec<_>>();
+        let playlists = vec![Playlist {
+            id: "favorites".into(),
+            name: "Favorites".into(),
+            track_ids: vec![entries[0].item.id.clone()],
+        }];
+        save_library(&fixture.path, &entries, &playlists).expect("the initial library is saved");
+        Connection::open(&fixture.path)
+            .expect("the fixture database opens")
+            .execute_batch(
+                "CREATE TRIGGER reject_track_update BEFORE UPDATE OF title ON tracks
+                 WHEN NEW.id = 'track-0007'
+                 BEGIN SELECT RAISE(ABORT, 'injected transaction failure'); END;",
+            )
+            .expect("the failure trigger is installed");
+
+        let mut changed_entries = entries.clone();
+        changed_entries[2].item.title = "This update must roll back".into();
+        changed_entries[7].item.title = "This update must fail".into();
+        let mut changed_playlists = playlists.clone();
+        changed_playlists[0]
+            .track_ids
+            .push(entries[1].item.id.clone());
+        let result = save_library(&fixture.path, &changed_entries, &changed_playlists);
+
+        assert!(
+            result
+                .expect_err("the injected failure rejects the save")
+                .contains("injected transaction failure")
+        );
+        assert_eq!(
+            load_library(&fixture.path).expect("the original library still loads"),
+            (entries, playlists)
+        );
+    }
+
+    #[test]
+    fn exports_consistent_owner_only_library_without_session_or_cache_rows() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = DatabaseFixture::new("backup");
+        let entries = vec![entry(0), entry(1)];
+        let playlists = vec![Playlist {
+            id: "favorites".into(),
+            name: "Favorites".into(),
+            track_ids: vec![entries[1].item.id.clone()],
+        }];
+        save_library(&fixture.path, &entries, &playlists).expect("the library is saved");
+        save_playback_state(
+            &fixture.path,
+            &SavedPlaybackState {
+                current_item_id: Some(entries[1].item.id.clone()),
+                position_ms: 23_000,
+                volume_percent: 60,
+                shuffle_enabled: false,
+                repeat_mode: RepeatMode::Off,
+                queue_ids: vec![entries[1].item.id.clone()],
+                shuffle_order: vec!["SECRET-SESSION-MARKER-39f3e41a".into()],
+            },
+        )
+        .expect("playback state is saved");
+        write_artwork_cache(
+            &fixture.path,
+            "cover",
+            "artwork/SECRET-CACHE-MARKER-39f3e41a.jpg",
+            12,
+            100,
+            1_024,
+        )
+        .expect("artwork cache metadata is saved");
+
+        let backup_path = export_library_backup(&fixture.path).expect("the backup is exported");
+
+        assert_eq!(
+            backup_path.parent(),
+            Some(fixture.directory.join("backups").as_path())
+        );
+        assert_eq!(
+            fs::metadata(&backup_path)
+                .expect("backup metadata is readable")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(backup_path.parent().expect("the backup has a parent"))
+                .expect("backup directory metadata is readable")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            load_library(&backup_path).expect("the backup library loads"),
+            (entries, playlists)
+        );
+        let backup = Connection::open(&backup_path).expect("the backup database opens");
+        assert_eq!(
+            backup
+                .query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0))
+                .expect("the backup integrity is checked"),
+            "ok"
+        );
+        assert_eq!(
+            backup
+                .query_row("SELECT COUNT(*) FROM artwork_cache", [], |row| row
+                    .get::<_, u64>(0))
+                .expect("the backup cache count is read"),
+            0
+        );
+        assert_eq!(
+            backup
+                .query_row("SELECT COUNT(*) FROM playback_state", [], |row| row
+                    .get::<_, u64>(0))
+                .expect("the backup playback-state count is read"),
+            0
+        );
+        let backup_bytes = fs::read(&backup_path).expect("the backup bytes are readable");
+        assert!(
+            !backup_bytes
+                .windows(b"SECRET-CACHE-MARKER-39f3e41a".len())
+                .any(|window| window == b"SECRET-CACHE-MARKER-39f3e41a")
+        );
+        assert!(
+            !backup_bytes
+                .windows(b"SECRET-SESSION-MARKER-39f3e41a".len())
+                .any(|window| window == b"SECRET-SESSION-MARKER-39f3e41a")
+        );
+        let source = Connection::open(&fixture.path).expect("the source database opens");
+        assert_eq!(
+            source
+                .query_row("SELECT COUNT(*) FROM artwork_cache", [], |row| row
+                    .get::<_, u64>(0))
+                .expect("the source cache count is read"),
+            1
+        );
+        assert_eq!(
+            source
+                .query_row("SELECT COUNT(*) FROM playback_state", [], |row| row
+                    .get::<_, u64>(0))
+                .expect("the source playback-state count is read"),
+            1
+        );
+    }
+
+    #[test]
+    fn playback_state_failure_rolls_back_the_track_play_and_history() {
+        let fixture = DatabaseFixture::new("atomic-playback");
+        let entries = vec![entry(0)];
+        let initial_state = SavedPlaybackState {
+            current_item_id: None,
+            position_ms: 0,
+            volume_percent: 72,
+            shuffle_enabled: false,
+            repeat_mode: RepeatMode::Off,
+            queue_ids: vec![entries[0].item.id.clone()],
+            shuffle_order: Vec::new(),
+        };
+        save_library(&fixture.path, &entries, &[]).expect("the initial library is saved");
+        save_playback_state(&fixture.path, &initial_state)
+            .expect("the initial playback state is saved");
+        Connection::open(&fixture.path)
+            .expect("the fixture database opens")
+            .execute_batch(
+                "CREATE TRIGGER reject_playback_state BEFORE UPDATE ON playback_state
+                 BEGIN SELECT RAISE(ABORT, 'injected playback-state failure'); END;",
+            )
+            .expect("the playback-state failure trigger is installed");
+
+        let mut changed_entries = entries.clone();
+        changed_entries[0].item.play_count = 1;
+        changed_entries[0].item.last_played_at_ms = Some(42);
+        changed_entries[0].item.play_history_ms.push(42);
+        let changed_state = SavedPlaybackState {
+            current_item_id: Some(entries[0].item.id.clone()),
+            position_ms: 42,
+            volume_percent: 72,
+            shuffle_enabled: false,
+            repeat_mode: RepeatMode::Off,
+            queue_ids: vec![entries[0].item.id.clone()],
+            shuffle_order: Vec::new(),
+        };
+
+        let result =
+            save_library_and_playback(&fixture.path, &changed_entries, &[], &changed_state);
+
+        assert!(
+            result
+                .expect_err("the injected failure rejects the atomic save")
+                .contains("injected playback-state failure")
+        );
+        assert_eq!(
+            load_library(&fixture.path).expect("the original library still loads"),
+            (entries, Vec::new())
+        );
+        let loaded_state = load_playback_state(&fixture.path)
+            .expect("the original playback state loads")
+            .expect("the original playback state exists");
+        assert_eq!(loaded_state.current_item_id, initial_state.current_item_id);
+        assert_eq!(loaded_state.position_ms, initial_state.position_ms);
+        assert_eq!(loaded_state.queue_ids, initial_state.queue_ids);
+    }
 }

@@ -163,7 +163,7 @@ function emitVolume(values: number[] | undefined): void {
             class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
             size="icon-xs"
             variant="ghost"
-            :disabled="isUpdating"
+            :disabled="isUpdating || isStarting"
             @click="emit('toggleShuffle')"
           >
             <Shuffle aria-hidden="true" />
@@ -173,7 +173,7 @@ function emitVolume(values: number[] | undefined): void {
             class="size-7 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-4"
             size="icon-sm"
             variant="ghost"
-            :disabled="isUpdating"
+            :disabled="isUpdating || isStarting || !currentItem"
             @click="emit('previous')"
           >
             <SkipBack aria-hidden="true" />
@@ -185,7 +185,11 @@ function emitVolume(values: number[] | undefined): void {
             :aria-busy="isStarting ? 'true' : undefined"
             class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) [&_svg]:size-4"
             size="icon"
-            :disabled="isUpdating"
+            :disabled="
+              isUpdating ||
+              isStarting ||
+              (!currentItem && snapshot.queue.length === 0)
+            "
             @click="emit('toggle')"
           >
             <LoaderCircle
@@ -206,7 +210,7 @@ function emitVolume(values: number[] | undefined): void {
             class="size-7 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-4"
             size="icon-sm"
             variant="ghost"
-            :disabled="isUpdating"
+            :disabled="isUpdating || isStarting || !currentItem"
             @click="emit('next')"
           >
             <SkipForward aria-hidden="true" />
@@ -218,13 +222,14 @@ function emitVolume(values: number[] | undefined): void {
             class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
             size="icon-xs"
             variant="ghost"
-            :disabled="isUpdating"
+            :disabled="isUpdating || isStarting"
             @click="emit('cycleRepeatMode')"
           >
             <component :is="repeatIcon" aria-hidden="true" />
           </Button>
           <Button
             aria-label="Favorite track"
+            :title="isFavorite ? 'Remove from Favorites' : 'Add to Favorites'"
             :aria-pressed="isFavorite"
             class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
             size="icon-xs"
@@ -282,7 +287,7 @@ function emitVolume(values: number[] | undefined): void {
           :max="durationMs"
           :step="1000"
           :model-value="[snapshot.positionMs]"
-          :disabled="isUpdating || durationMs === 0"
+          :disabled="isUpdating || isStarting || durationMs === 0"
           @value-commit="emitSeek"
         />
         <span>-{{ formatDuration(remainingMs) }}</span>

@@ -107,7 +107,6 @@ function selectMenuTarget(isOpen: boolean): void {
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
-        v-if="!isMultiple"
         data-track-context-action="edit"
         @select="emit('edit', props.track)"
       >

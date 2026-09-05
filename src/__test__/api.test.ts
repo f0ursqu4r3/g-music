@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   playbackApi,
   type EditableTrackMetadata,
+  type ImportProgress,
   type LibrarySnapshot,
   type PlaybackSnapshot,
   type Playlist,
@@ -24,6 +25,36 @@ const snapshot: PlaybackSnapshot = {
 };
 
 describe("playbackApi", () => {
+  it("inspects the active import with no arguments and a nullable result", async () => {
+    expectTypeOf(playbackApi.inspectImportProgress).returns.toEqualTypeOf<
+      Promise<ImportProgress | null>
+    >();
+    vi.mocked(invoke).mockResolvedValue(null);
+    await expect(playbackApi.inspectImportProgress()).resolves.toBeNull();
+    expect(invoke).toHaveBeenCalledWith("inspect_import_progress");
+  });
+  it("uses the agreed hardening command names and arguments", async () => {
+    await playbackApi.searchYouTube("session");
+    expect(invoke).toHaveBeenLastCalledWith("search_youtube", {
+      query: "session",
+    });
+    await playbackApi.cancelYouTubeImport(7);
+    expect(invoke).toHaveBeenLastCalledWith("cancel_youtube_import", {
+      runId: 7,
+    });
+    await playbackApi.retryMetadataRefreshes();
+    expect(invoke).toHaveBeenLastCalledWith("retry_metadata_refreshes");
+    await playbackApi.clearQueue();
+    expect(invoke).toHaveBeenLastCalledWith("clear_queue");
+    await playbackApi.resetTrackMetadata(["a"]);
+    expect(invoke).toHaveBeenLastCalledWith("reset_track_metadata", {
+      ids: ["a"],
+    });
+    await playbackApi.inspectDiagnostics();
+    expect(invoke).toHaveBeenLastCalledWith("inspect_diagnostics");
+    await playbackApi.exportLibraryBackup();
+    expect(invoke).toHaveBeenLastCalledWith("export_library_backup");
+  });
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
   });

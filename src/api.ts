@@ -78,11 +78,11 @@ export interface EditableTrackMetadata {
 
 export interface TrackMetadataUpdate {
   id: string;
-  metadata: EditableTrackMetadata;
+  metadata: Partial<EditableTrackMetadata>;
 }
 
 export type ImportProgressPhase =
-  "started" | "resolving" | "merging" | "completed" | "failed";
+  "started" | "resolving" | "merging" | "completed" | "failed" | "cancelled";
 
 export interface ImportProgress {
   completedSources: number;
@@ -119,7 +119,32 @@ export interface YouTubeAuthStatus {
   connected: boolean;
 }
 
+export interface DiagnosticsSnapshot {
+  appVersion: string;
+  platform: string;
+  dependencies: {
+    name: string;
+    available: boolean;
+    version: string | null;
+    message: string;
+  }[];
+  audioOutputPolicy: string;
+}
+
 export const playbackApi = {
+  searchYouTube: (query: string): Promise<MediaItem[]> =>
+    invoke("search_youtube", { query }),
+  cancelYouTubeImport: (runId: number): Promise<void> =>
+    invoke("cancel_youtube_import", { runId }),
+  retryMetadataRefreshes: (): Promise<MetadataRefreshSnapshot> =>
+    invoke("retry_metadata_refreshes"),
+  clearQueue: (): Promise<PlaybackSnapshot> => invoke("clear_queue"),
+  resetTrackMetadata: (ids: string[]): Promise<LibrarySnapshot> =>
+    invoke("reset_track_metadata", { ids }),
+  inspectDiagnostics: (): Promise<DiagnosticsSnapshot> =>
+    invoke("inspect_diagnostics"),
+  exportLibraryBackup: (): Promise<{ path: string }> =>
+    invoke("export_library_backup"),
   inspect: (): Promise<PlaybackSnapshot> =>
     invoke<PlaybackSnapshot>("inspect_playback"),
   inspectLibrary: (): Promise<LibrarySnapshot> =>
@@ -128,6 +153,8 @@ export const playbackApi = {
     invoke<PlaybackTransport>("inspect_playback_transport"),
   inspectMetadataRefreshes: (): Promise<MetadataRefreshSnapshot> =>
     invoke<MetadataRefreshSnapshot>("inspect_metadata_refreshes"),
+  inspectImportProgress: (): Promise<ImportProgress | null> =>
+    invoke<ImportProgress | null>("inspect_import_progress"),
   updateTracksMetadata: (
     updates: TrackMetadataUpdate[],
   ): Promise<LibrarySnapshot> =>

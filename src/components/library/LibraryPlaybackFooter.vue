@@ -18,7 +18,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed } from "vue";
 
 import type { MediaItem, PlaybackTransport } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ const props = defineProps<{
   isStarting?: boolean;
   isUpdating: boolean;
   detailsOpen: boolean;
+  favoriteTrackIds?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -45,9 +46,14 @@ const emit = defineEmits<{
   toggleShuffle: [];
   cycleRepeatMode: [];
   toggleDetails: [];
+  toggleFavorite: [id: string];
 }>();
 
-const isFavorite = ref(false);
+const isFavorite = computed(() =>
+  props.currentItem
+    ? (props.favoriteTrackIds ?? []).includes(props.currentItem.id)
+    : false,
+);
 const volumeIcon = computed(() => {
   if (props.playback.volumePercent === 0) {
     return VolumeX;
@@ -139,7 +145,7 @@ function emitSeek(values: number[]): void {
           class="aria-pressed:text-accent"
           size="icon-sm"
           variant="ghost"
-          :disabled="props.isUpdating"
+          :disabled="props.isUpdating || props.isStarting"
           @click="emit('toggleShuffle')"
         >
           <Shuffle aria-hidden="true" />
@@ -148,7 +154,7 @@ function emitSeek(values: number[]): void {
           aria-label="Previous track"
           size="icon-sm"
           variant="ghost"
-          :disabled="props.isUpdating"
+          :disabled="props.isUpdating || props.isStarting || !props.currentItem"
           @click="emit('previous')"
         >
           <SkipBack aria-hidden="true" />
@@ -164,7 +170,7 @@ function emitSeek(values: number[]): void {
           :aria-busy="props.isStarting ? 'true' : undefined"
           class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
           size="icon"
-          :disabled="props.isUpdating"
+          :disabled="props.isUpdating || props.isStarting"
           @click="emit('toggle')"
         >
           <LoaderCircle
@@ -184,7 +190,7 @@ function emitSeek(values: number[]): void {
           aria-label="Next track"
           size="icon-sm"
           variant="ghost"
-          :disabled="props.isUpdating"
+          :disabled="props.isUpdating || props.isStarting || !props.currentItem"
           @click="emit('next')"
         >
           <SkipForward aria-hidden="true" />
@@ -196,7 +202,7 @@ function emitSeek(values: number[]): void {
           :data-repeat-mode="repeatMode"
           size="icon-sm"
           variant="ghost"
-          :disabled="props.isUpdating"
+          :disabled="props.isUpdating || props.isStarting"
           @click="emit('cycleRepeatMode')"
         >
           <component :is="repeatIcon" aria-hidden="true" />
@@ -209,7 +215,11 @@ function emitSeek(values: number[]): void {
         size="icon-sm"
         variant="ghost"
         data-playback-control="favorite"
-        @click="isFavorite = !isFavorite"
+        :title="isFavorite ? 'Remove from Favorites' : 'Add to Favorites'"
+        :disabled="!props.currentItem || props.isUpdating"
+        @click="
+          props.currentItem && emit('toggleFavorite', props.currentItem.id)
+        "
       >
         <Heart
           :fill="isFavorite ? 'currentColor' : 'none'"
@@ -229,7 +239,7 @@ function emitSeek(values: number[]): void {
           :max="props.currentItem?.durationMs ?? 0"
           :step="1000"
           :model-value="[props.playback.positionMs]"
-          :disabled="props.isUpdating || !props.currentItem"
+          :disabled="props.isUpdating || props.isStarting || !props.currentItem"
           @value-commit="emitSeek"
         />
         <span class="text-right">

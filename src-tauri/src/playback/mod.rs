@@ -4,8 +4,9 @@ mod youtube;
 use serde::{Deserialize, Serialize};
 
 pub use fake::{FakePlaybackProvider, PlaybackError};
+pub(crate) use youtube::find_executable as dependency_executable;
 pub(crate) use youtube::{
-    DirtyTrack, QueueEntry, discover_youtube_imports, resolve_youtube_imports,
+    DirtyTrack, QueueEntry, import_cancellable, resolve_youtube_imports, search_youtube,
 };
 pub use youtube::{YouTubePlaybackError, YouTubePlaybackProvider};
 

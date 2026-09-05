@@ -16,6 +16,7 @@ coverage
 gmusic-current-library.json
 src-tauri/gen
 src-tauri/target
+src-tauri/vendor/**/target
 *.local
 .env
 .env.*

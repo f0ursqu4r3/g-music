@@ -1,9 +1,170 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { playbackApi, type MediaItem } from "@/api";
 
 import ImportWindow from "../ImportWindow.vue";
 
+vi.mock("@/api", () => ({ playbackApi: { searchYouTube: vi.fn() } }));
+
+const result: MediaItem = {
+  id: "video",
+  title: "Search title",
+  artist: "Artist",
+  album: "Album",
+  durationMs: 125000,
+  sourceUrl: "https://youtube.com/watch?v=video",
+};
+
 describe("ImportWindow", () => {
+  beforeEach(() => vi.mocked(playbackApi.searchYouTube).mockReset());
+  it("does not clear a failed URL draft when a separate search import completes", async () => {
+    vi.mocked(playbackApi.searchYouTube).mockResolvedValue([result]);
+    const wrapper = mount(ImportWindow, { props: { isImporting: false } });
+    const input = wrapper.get('textarea[aria-label="YouTube URLs"]');
+    await input.setValue("https://youtu.be/keep-draft");
+    await wrapper
+      .get('form[aria-label="Import music from YouTube"]')
+      .trigger("submit");
+    await wrapper.get('input[aria-label="Search YouTube"]').setValue("song");
+    await wrapper.get('form[aria-label="Search YouTube"]').trigger("submit");
+    await flushPromises();
+    await wrapper.get("[data-search-result] button").trigger("click");
+    await wrapper.setProps({
+      progress: {
+        completedSources: 1,
+        importedTracks: 1,
+        message: "Complete",
+        phase: "completed",
+        runId: 9,
+        skippedMemberOnly: 0,
+        totalSources: 1,
+      },
+    });
+    expect((input.element as HTMLTextAreaElement).value).toBe(
+      "https://youtu.be/keep-draft",
+    );
+  });
+  it("keeps failed URL drafts and retries the same import", async () => {
+    const wrapper = mount(ImportWindow, { props: { isImporting: false } });
+    const input = wrapper.get('textarea[aria-label="YouTube URLs"]');
+    await input.setValue("https://youtu.be/failed");
+    await wrapper
+      .get('form[aria-label="Import music from YouTube"]')
+      .trigger("submit");
+    await wrapper.setProps({ errorMessage: "Import failed. Check the URL." });
+    expect((input.element as HTMLTextAreaElement).value).toBe(
+      "https://youtu.be/failed",
+    );
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Retry")!
+      .trigger("click");
+    expect(wrapper.emitted("importYoutubeUrls")).toEqual([
+      [["https://youtu.be/failed"]],
+      [["https://youtu.be/failed"]],
+    ]);
+  });
+
+  it("retries the explicitly selected search import after backend failure", async () => {
+    vi.mocked(playbackApi.searchYouTube).mockResolvedValue([result]);
+    const wrapper = mount(ImportWindow, { props: { isImporting: false } });
+    await wrapper.get('input[aria-label="Search YouTube"]').setValue("song");
+    await wrapper.get('form[aria-label="Search YouTube"]').trigger("submit");
+    await flushPromises();
+    await wrapper.get("[data-search-result] button").trigger("click");
+    await wrapper.setProps({ errorMessage: "Import failed" });
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Retry")!
+      .trigger("click");
+    expect(wrapper.emitted("importYoutubeUrls")).toEqual([
+      [[result.sourceUrl]],
+      [[result.sourceUrl]],
+    ]);
+  });
+  it("searches text and previews bounded results without importing until requested", async () => {
+    vi.mocked(playbackApi.searchYouTube).mockResolvedValue(
+      Array.from({ length: 25 }, (_, i) => ({ ...result, id: `video${i}` })),
+    );
+    const wrapper = mount(ImportWindow, { props: { isImporting: false } });
+    await wrapper
+      .get('input[aria-label="Search YouTube"]')
+      .setValue("  jazz session  ");
+    await wrapper.get('form[aria-label="Search YouTube"]').trigger("submit");
+    await flushPromises();
+    expect(playbackApi.searchYouTube).toHaveBeenCalledWith("jazz session");
+    expect(wrapper.findAll("[data-search-result]")).toHaveLength(20);
+    expect(wrapper.text()).toContain("Artist");
+    expect(wrapper.text()).toContain("Album");
+    expect(wrapper.emitted("importYoutubeUrls")).toBeUndefined();
+    await wrapper.get("[data-search-result] button").trigger("click");
+    expect(wrapper.emitted("importYoutubeUrls")).toEqual([
+      [[result.sourceUrl]],
+    ]);
+  });
+
+  it("discards stale search responses and exposes a retry after errors", async () => {
+    let finish!: (items: MediaItem[]) => void;
+    vi.mocked(playbackApi.searchYouTube)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      )
+      .mockResolvedValueOnce([{ ...result, title: "Latest result" }])
+      .mockRejectedValueOnce({ message: "Search unavailable" })
+      .mockResolvedValueOnce([]);
+    const wrapper = mount(ImportWindow, { props: { isImporting: false } });
+    const input = wrapper.get('input[aria-label="Search YouTube"]');
+    const form = wrapper.get('form[aria-label="Search YouTube"]');
+    await input.setValue("old");
+    await form.trigger("submit");
+    await input.setValue("new");
+    await form.trigger("submit");
+    await flushPromises();
+    finish([result]);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Latest result");
+    expect(wrapper.text()).not.toContain("Search title");
+    await input.setValue("third");
+    await form.trigger("submit");
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      "Search unavailable",
+    );
+    await wrapper.get('button[aria-label="Retry search"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("No results");
+  });
+
+  it("cancels only the active run and keeps committed results visible", async () => {
+    const progress = {
+      completedSources: 1,
+      importedTracks: 3,
+      message: "Importing",
+      phase: "resolving" as const,
+      runId: 7,
+      skippedMemberOnly: 0,
+      totalSources: 2,
+    };
+    const wrapper = mount(ImportWindow, {
+      props: { isImporting: true, progress },
+    });
+    await wrapper.get('button[aria-label="Cancel import"]').trigger("click");
+    expect(wrapper.emitted("cancelImport")).toEqual([[7]]);
+    await wrapper.setProps({
+      isImporting: false,
+      progress: {
+        ...progress,
+        phase: "cancelled",
+        message: "Import cancelled",
+      },
+    });
+    expect(wrapper.text()).toContain("3 track(s) remain in your library");
+    expect(wrapper.find('button[aria-label="Cancel import"]').exists()).toBe(
+      false,
+    );
+  });
   it("owns the Import Music window landmark", () => {
     const wrapper = mount(ImportWindow, {
       props: { isImporting: false },
@@ -41,7 +202,9 @@ describe("ImportWindow", () => {
       ],
     ]);
     expect(input.attributes("placeholder")).toContain("one URL per line");
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input.element as HTMLTextAreaElement).value).toContain(
+      "https://youtu.be/M7lc1UVf-VE",
+    );
   });
 
   it("shows import errors in the Import Music window", () => {
