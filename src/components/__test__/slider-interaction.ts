@@ -1,14 +1,11 @@
 interface SliderWrapper {
-  element: Element;
-  trigger(event: string, options: Record<string, number>): Promise<void>;
+  element: Element
+  trigger(event: string, options: Record<string, number>): Promise<void>
 }
 
-export async function dragSlider(
-  slider: SliderWrapper,
-  clientX: number,
-): Promise<void> {
-  const element = slider.element as HTMLElement;
-  const capturedPointers = new Set<number>();
+export async function dragSlider(slider: SliderWrapper, clientX: number): Promise<void> {
+  const element = slider.element as HTMLElement
+  const capturedPointers = new Set<number>()
 
   Object.defineProperties(element, {
     getBoundingClientRect: {
@@ -38,8 +35,8 @@ export async function dragSlider(
       configurable: true,
       value: (pointerId: number) => capturedPointers.add(pointerId),
     },
-  });
+  })
 
-  await slider.trigger("pointerdown", { clientX, pointerId: 1 });
-  await slider.trigger("pointerup", { clientX, pointerId: 1 });
+  await slider.trigger('pointerdown', { clientX, pointerId: 1 })
+  await slider.trigger('pointerup', { clientX, pointerId: 1 })
 }

@@ -1,18 +1,11 @@
 <script setup lang="ts">
-import {
-  DialogRoot,
-  DialogPortal,
-  DialogOverlay,
-  DialogContent,
-  DialogTitle,
-} from "reka-ui";
-defineProps<{ title: string; busy?: boolean }>();
-const emit = defineEmits<{ close: [] }>();
-const returnFocus = document.activeElement;
+import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle } from 'reka-ui'
+defineProps<{ title: string; busy?: boolean }>()
+const emit = defineEmits<{ close: [] }>()
+const returnFocus = document.activeElement
 function restoreFocus(event: Event): void {
-  event.preventDefault();
-  if (returnFocus instanceof HTMLElement && returnFocus.isConnected)
-    returnFocus.focus();
+  event.preventDefault()
+  if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus()
 }
 </script>
 <template>

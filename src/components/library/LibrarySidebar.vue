@@ -1,278 +1,256 @@
 <script setup lang="ts">
-import {
-  Clock3,
-  Disc3,
-  Heart,
-  ListMusic,
-  Mic2,
-  Pencil,
-  Plus,
-} from "lucide-vue-next";
-import { ReorderGroup, ReorderItem } from "motion-v";
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { Clock3, Disc3, Heart, ListMusic, Mic2, Pencil, Plus } from 'lucide-vue-next'
+import { ReorderGroup, ReorderItem } from 'motion-v'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import type { Playlist } from "@/api";
+} from '@/components/ui/context-menu'
+import type { Playlist } from '@/api'
 import {
   LIBRARY_TRACK_IDS_MIME_TYPE,
   LIBRARY_TRACK_IDS_TEXT_PREFIX,
   type LibraryCollection,
-} from "./types";
+} from './types'
 
 const props = defineProps<{
-  activeCollection: LibraryCollection;
-  activePlaylistId?: string;
-  isCreatingPlaylist?: boolean;
-  isUpdating?: boolean;
-  playlists: Playlist[];
-  sidebarWidth?: number;
-  creationError?: string;
-}>();
+  activeCollection: LibraryCollection
+  activePlaylistId?: string
+  isCreatingPlaylist?: boolean
+  isUpdating?: boolean
+  playlists: Playlist[]
+  sidebarWidth?: number
+  creationError?: string
+}>()
 
 const emit = defineEmits<{
-  selectCollection: [collection: LibraryCollection];
-  selectPlaylist: [id: string];
-  createPlaylist: [name: string];
-  cancelPlaylistCreation: [];
-  newPlaylist: [];
-  deletePlaylist: [playlist: Playlist];
-  editPlaylist: [playlist: Playlist];
-  dropTracks: [playlist: Playlist, trackIds: string[]];
-  openImport: [];
-  playPlaylist: [playlist: Playlist];
-  reorderPlaylists: [playlistIds: string[]];
-  resizeSidebar: [width: number];
-  sidebarResizeStart: [];
-  sidebarResizeEnd: [];
-}>();
+  selectCollection: [collection: LibraryCollection]
+  selectPlaylist: [id: string]
+  createPlaylist: [name: string]
+  cancelPlaylistCreation: []
+  newPlaylist: []
+  deletePlaylist: [playlist: Playlist]
+  editPlaylist: [playlist: Playlist]
+  dropTracks: [playlist: Playlist, trackIds: string[]]
+  openImport: []
+  playPlaylist: [playlist: Playlist]
+  reorderPlaylists: [playlistIds: string[]]
+  resizeSidebar: [width: number]
+  sidebarResizeStart: []
+  sidebarResizeEnd: []
+}>()
 
-const sidebarMinimumWidth = 180;
-const sidebarMaximumWidth = 360;
-const newPlaylistName = ref("");
-const newPlaylistInput = ref<HTMLInputElement>();
-const activeReorderId = ref<string>();
-const isReorderPending = ref(false);
-const playlistDropTargetId = ref<string>();
+const sidebarMinimumWidth = 180
+const sidebarMaximumWidth = 360
+const newPlaylistName = ref('')
+const newPlaylistInput = ref<HTMLInputElement>()
+const activeReorderId = ref<string>()
+const isReorderPending = ref(false)
+const playlistDropTargetId = ref<string>()
 const userPlaylists = computed(() =>
   props.playlists.filter((playlist) => !isDefaultPlaylist(playlist)),
-);
+)
 const defaultPlaylists = computed(() =>
   props.playlists.filter((playlist) => isDefaultPlaylist(playlist)),
-);
-const reorderablePlaylists = ref<Playlist[]>([...userPlaylists.value]);
+)
+const reorderablePlaylists = ref<Playlist[]>([...userPlaylists.value])
 const playlistReorderTransition = {
   damping: 42,
   stiffness: 650,
-  type: "spring" as const,
-};
+  type: 'spring' as const,
+}
 
 function saveNewPlaylist(): void {
-  if (props.isUpdating) return;
-  const name = newPlaylistName.value.trim();
+  if (props.isUpdating) return
+  const name = newPlaylistName.value.trim()
   if (name) {
-    emit("createPlaylist", name);
+    emit('createPlaylist', name)
   }
 }
 
 function cancelNewPlaylist(): void {
-  emit("cancelPlaylistCreation");
+  emit('cancelPlaylistCreation')
 }
 
 function playlistIcon(id: string) {
-  return id === "favorites" ? Heart : id === "most-played" ? Clock3 : ListMusic;
+  return id === 'favorites' ? Heart : id === 'most-played' ? Clock3 : ListMusic
 }
 
 function isDefaultPlaylist(playlist: Playlist): boolean {
-  return playlist.id === "favorites" || playlist.id === "most-played";
+  return playlist.id === 'favorites' || playlist.id === 'most-played'
 }
 
 function readDroppedTrackIds(event: DragEvent): string[] | null {
-  const dataTransfer = event.dataTransfer;
+  const dataTransfer = event.dataTransfer
   if (!dataTransfer) {
-    return null;
+    return null
   }
 
-  const serializedTrackIds = dataTransfer.getData(LIBRARY_TRACK_IDS_MIME_TYPE);
+  const serializedTrackIds = dataTransfer.getData(LIBRARY_TRACK_IDS_MIME_TYPE)
   const trackIds: unknown = serializedTrackIds
     ? JSON.parse(serializedTrackIds)
     : (() => {
-        const [prefix, ...ids] = dataTransfer
-          .getData("text/plain")
-          .split(/\r?\n/);
-        return prefix === LIBRARY_TRACK_IDS_TEXT_PREFIX ? ids : null;
-      })();
+        const [prefix, ...ids] = dataTransfer.getData('text/plain').split(/\r?\n/)
+        return prefix === LIBRARY_TRACK_IDS_TEXT_PREFIX ? ids : null
+      })()
   if (
     !Array.isArray(trackIds) ||
     trackIds.length === 0 ||
-    !trackIds.every(
-      (id): id is string => typeof id === "string" && id.length > 0,
-    )
+    !trackIds.every((id): id is string => typeof id === 'string' && id.length > 0)
   ) {
-    return null;
+    return null
   }
 
-  return [...new Set(trackIds)];
+  return [...new Set(trackIds)]
 }
 
 function previewTrackDrop(playlist: Playlist, event: DragEvent): void {
   if (props.isUpdating) {
-    return;
+    return
   }
 
   // WKWebView can withhold dataTransfer.types until drop. The payload parser
   // below still accepts only this application's serialized track IDs.
-  event.preventDefault();
+  event.preventDefault()
   if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "copy";
+    event.dataTransfer.dropEffect = 'copy'
   }
-  playlistDropTargetId.value = playlist.id;
+  playlistDropTargetId.value = playlist.id
 }
 
 function clearTrackDrop(playlist: Playlist): void {
   if (playlistDropTargetId.value === playlist.id) {
-    playlistDropTargetId.value = undefined;
+    playlistDropTargetId.value = undefined
   }
 }
 
 function dropTracks(playlist: Playlist, event: DragEvent): void {
   if (props.isUpdating) {
-    return;
+    return
   }
 
-  event.preventDefault();
-  playlistDropTargetId.value = undefined;
+  event.preventDefault()
+  playlistDropTargetId.value = undefined
   try {
-    const trackIds = readDroppedTrackIds(event);
+    const trackIds = readDroppedTrackIds(event)
     if (!trackIds) {
-      return;
+      return
     }
 
-    emit("dropTracks", playlist, trackIds);
+    emit('dropTracks', playlist, trackIds)
   } catch {
     // Ignore malformed external drag payloads.
   }
 }
 
 function startPlaylistReorder(id: string): void {
-  activeReorderId.value = id;
+  activeReorderId.value = id
 }
 
 function previewPlaylistReorder(playlists: Playlist[]): void {
-  reorderablePlaylists.value = playlists;
+  reorderablePlaylists.value = playlists
 }
 
 function finishPlaylistReorder(): void {
-  const id = activeReorderId.value;
-  activeReorderId.value = undefined;
+  const id = activeReorderId.value
+  activeReorderId.value = undefined
   if (!id || props.isUpdating) {
-    reorderablePlaylists.value = [...userPlaylists.value];
-    return;
+    reorderablePlaylists.value = [...userPlaylists.value]
+    return
   }
 
-  const playlistIds = reorderablePlaylists.value.map((playlist) => playlist.id);
-  if (
-    playlistIds.every(
-      (playlistId, index) => playlistId === userPlaylists.value[index]?.id,
-    )
-  ) {
-    reorderablePlaylists.value = [...userPlaylists.value];
-    return;
+  const playlistIds = reorderablePlaylists.value.map((playlist) => playlist.id)
+  if (playlistIds.every((playlistId, index) => playlistId === userPlaylists.value[index]?.id)) {
+    reorderablePlaylists.value = [...userPlaylists.value]
+    return
   }
 
-  isReorderPending.value = true;
-  emit("reorderPlaylists", playlistIds);
+  isReorderPending.value = true
+  emit('reorderPlaylists', playlistIds)
 }
 
 function clampSidebarWidth(width: number): number {
-  return Math.min(
-    sidebarMaximumWidth,
-    Math.max(sidebarMinimumWidth, Math.round(width)),
-  );
+  return Math.min(sidebarMaximumWidth, Math.max(sidebarMinimumWidth, Math.round(width)))
 }
 
 function resizeSidebarWithKeyboard(event: KeyboardEvent): void {
-  const currentWidth = props.sidebarWidth ?? 244;
+  const currentWidth = props.sidebarWidth ?? 244
   const width =
-    event.key === "ArrowLeft"
+    event.key === 'ArrowLeft'
       ? currentWidth - 16
-      : event.key === "ArrowRight"
+      : event.key === 'ArrowRight'
         ? currentWidth + 16
-        : event.key === "Home"
+        : event.key === 'Home'
           ? sidebarMinimumWidth
-          : event.key === "End"
+          : event.key === 'End'
             ? sidebarMaximumWidth
-            : undefined;
-  if (width === undefined) return;
+            : undefined
+  if (width === undefined) return
 
-  event.preventDefault();
-  emit("resizeSidebar", clampSidebarWidth(width));
+  event.preventDefault()
+  emit('resizeSidebar', clampSidebarWidth(width))
 }
 
-let stopSidebarResize: (() => void) | undefined;
+let stopSidebarResize: (() => void) | undefined
 
 function startSidebarResize(event: MouseEvent): void {
-  if (event.button !== 0) return;
+  if (event.button !== 0) return
 
-  event.preventDefault();
-  stopSidebarResize?.();
-  emit("sidebarResizeStart");
-  const startX = event.clientX;
-  const startWidth = props.sidebarWidth ?? 244;
+  event.preventDefault()
+  stopSidebarResize?.()
+  emit('sidebarResizeStart')
+  const startX = event.clientX
+  const startWidth = props.sidebarWidth ?? 244
   const handleMouseMove = (moveEvent: MouseEvent): void => {
-    emit(
-      "resizeSidebar",
-      clampSidebarWidth(startWidth + moveEvent.clientX - startX),
-    );
-  };
+    emit('resizeSidebar', clampSidebarWidth(startWidth + moveEvent.clientX - startX))
+  }
   const handleMouseUp = (): void => {
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
-    stopSidebarResize = undefined;
-    emit("sidebarResizeEnd");
-  };
+    window.removeEventListener('mousemove', handleMouseMove)
+    window.removeEventListener('mouseup', handleMouseUp)
+    stopSidebarResize = undefined
+    emit('sidebarResizeEnd')
+  }
 
-  stopSidebarResize = handleMouseUp;
-  window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mouseup", handleMouseUp);
+  stopSidebarResize = handleMouseUp
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
 }
 
 watch(
   () => props.isCreatingPlaylist,
   async (isCreating) => {
-    newPlaylistName.value = "";
+    newPlaylistName.value = ''
     if (isCreating) {
-      await nextTick();
-      newPlaylistInput.value?.focus();
+      await nextTick()
+      newPlaylistInput.value?.focus()
     }
   },
-);
+)
 
 watch(userPlaylists, (playlists) => {
-  reorderablePlaylists.value = [...playlists];
-  activeReorderId.value = undefined;
-  isReorderPending.value = false;
-});
+  reorderablePlaylists.value = [...playlists]
+  activeReorderId.value = undefined
+  isReorderPending.value = false
+})
 
 watch(
   () => props.isUpdating,
   (isUpdating) => {
     if (!isUpdating && isReorderPending.value) {
-      reorderablePlaylists.value = [...userPlaylists.value];
-      isReorderPending.value = false;
+      reorderablePlaylists.value = [...userPlaylists.value]
+      isReorderPending.value = false
     }
   },
-);
+)
 
 onBeforeUnmount(() => {
-  stopSidebarResize?.();
-});
+  stopSidebarResize?.()
+})
 </script>
 
 <template>
@@ -283,13 +261,8 @@ onBeforeUnmount(() => {
     <ScrollArea class="size-full">
       <div class="min-w-0 p-4">
         <nav class="grid min-w-0 gap-0.5" aria-label="Library navigation">
-          <div
-            class="mb-1 flex items-center justify-between px-2.5"
-            data-library-heading="library"
-          >
-            <p
-              class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)"
-            >
+          <div class="mb-1 flex items-center justify-between px-2.5" data-library-heading="library">
+            <p class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)">
               Library
             </p>
             <button
@@ -309,8 +282,7 @@ onBeforeUnmount(() => {
             ] as const"
             :key="collection[0]"
             :aria-current="
-              props.activePlaylistId === undefined &&
-              props.activeCollection === collection[0]
+              props.activePlaylistId === undefined && props.activeCollection === collection[0]
                 ? 'page'
                 : undefined
             "
@@ -324,15 +296,9 @@ onBeforeUnmount(() => {
           </button>
         </nav>
 
-        <nav
-          class="mt-5 grid min-w-0 gap-0.5"
-          aria-label="Playlists"
-          data-library-playlists
-        >
+        <nav class="mt-5 grid min-w-0 gap-0.5" aria-label="Playlists" data-library-playlists>
           <div class="mb-1 flex items-center justify-between px-2.5">
-            <p
-              class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)"
-            >
+            <p class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)">
               Playlists
             </p>
             <button
@@ -349,9 +315,7 @@ onBeforeUnmount(() => {
           <ContextMenu
             v-for="playlist in defaultPlaylists"
             :key="playlist.id"
-            @update:open="
-              (isOpen) => isOpen && emit('selectPlaylist', playlist.id)
-            "
+            @update:open="(isOpen) => isOpen && emit('selectPlaylist', playlist.id)"
           >
             <ContextMenuTrigger as-child>
               <div
@@ -360,21 +324,14 @@ onBeforeUnmount(() => {
                 class="group -mx-4 flex min-h-8 min-w-0 w-[calc(100%+2rem)] items-center gap-1 overflow-hidden rounded-none text-[0.79rem] text-(--muted-text) transition-colors hover:bg-[oklch(0.72_0.025_258/0.1)] hover:text-(--text) data-[current=true]:bg-[oklch(0.7_0.03_262/0.15)] data-[current=true]:text-(--text)"
               >
                 <button
-                  :aria-current="
-                    props.activePlaylistId === playlist.id ? 'page' : undefined
-                  "
+                  :aria-current="props.activePlaylistId === playlist.id ? 'page' : undefined"
                   class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-none border-0 bg-transparent px-6.5 text-left aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
                   :data-playlist-id="playlist.id"
                   type="button"
                   @click="emit('selectPlaylist', playlist.id)"
                 >
-                  <component
-                    :is="playlistIcon(playlist.id)"
-                    aria-hidden="true"
-                  />
-                  <span class="min-w-0 flex-1 truncate">{{
-                    playlist.name
-                  }}</span>
+                  <component :is="playlistIcon(playlist.id)" aria-hidden="true" />
+                  <span class="min-w-0 flex-1 truncate">{{ playlist.name }}</span>
                 </button>
               </div>
             </ContextMenuTrigger>
@@ -395,9 +352,7 @@ onBeforeUnmount(() => {
             <ContextMenu
               v-for="playlist in reorderablePlaylists"
               :key="playlist.id"
-              @update:open="
-                (isOpen) => isOpen && emit('selectPlaylist', playlist.id)
-              "
+              @update:open="(isOpen) => isOpen && emit('selectPlaylist', playlist.id)"
             >
               <ContextMenuTrigger as-child>
                 <ReorderItem
@@ -419,23 +374,14 @@ onBeforeUnmount(() => {
                   @drop="dropTracks(playlist, $event)"
                 >
                   <button
-                    :aria-current="
-                      props.activePlaylistId === playlist.id
-                        ? 'page'
-                        : undefined
-                    "
+                    :aria-current="props.activePlaylistId === playlist.id ? 'page' : undefined"
                     class="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-none border-0 bg-transparent px-6.5 text-left aria-[current=page]:[&>svg]:text-accent [&>svg]:size-4"
                     :data-playlist-id="playlist.id"
                     type="button"
                     @click="emit('selectPlaylist', playlist.id)"
                   >
-                    <component
-                      :is="playlistIcon(playlist.id)"
-                      aria-hidden="true"
-                    />
-                    <span class="min-w-0 flex-1 truncate">{{
-                      playlist.name
-                    }}</span>
+                    <component :is="playlistIcon(playlist.id)" aria-hidden="true" />
+                    <span class="min-w-0 flex-1 truncate">{{ playlist.name }}</span>
                   </button>
                   <button
                     :aria-label="`Edit ${playlist.name}`"

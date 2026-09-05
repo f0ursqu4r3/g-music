@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import type {
   ImportProgress,
@@ -9,22 +9,20 @@ import type {
   PlaybackTransport,
   Playlist,
   TrackMetadataUpdate,
-} from "@/api";
-import MetadataRefreshDrawer from "./MetadataRefreshDrawer.vue";
-import LibraryAlbumGrid from "./library/LibraryAlbumGrid.vue";
-import LibraryArtistGrid from "./library/LibraryArtistGrid.vue";
-import LibraryHeader from "./library/LibraryHeader.vue";
-import LibraryInfoPanel from "./library/LibraryInfoPanel.vue";
-import LibraryMetadataEditor, {
-  type MetadataEditTarget,
-} from "./library/LibraryMetadataEditor.vue";
-import LibraryPlaybackFooter from "./library/LibraryPlaybackFooter.vue";
-import LibrarySidebar from "./library/LibrarySidebar.vue";
-import LibraryTrackGrid from "./library/LibraryTrackGrid.vue";
-import LibraryTrackList from "./library/LibraryTrackList.vue";
-import PlaylistEditor from "./library/PlaylistEditor.vue";
-import LibraryDialog from "./library/LibraryDialog.vue";
-import { buildLibraryArtists, groupItems } from "./library/collections";
+} from '@/api'
+import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue'
+import LibraryAlbumGrid from './library/LibraryAlbumGrid.vue'
+import LibraryArtistGrid from './library/LibraryArtistGrid.vue'
+import LibraryHeader from './library/LibraryHeader.vue'
+import LibraryInfoPanel from './library/LibraryInfoPanel.vue'
+import LibraryMetadataEditor, { type MetadataEditTarget } from './library/LibraryMetadataEditor.vue'
+import LibraryPlaybackFooter from './library/LibraryPlaybackFooter.vue'
+import LibrarySidebar from './library/LibrarySidebar.vue'
+import LibraryTrackGrid from './library/LibraryTrackGrid.vue'
+import LibraryTrackList from './library/LibraryTrackList.vue'
+import PlaylistEditor from './library/PlaylistEditor.vue'
+import LibraryDialog from './library/LibraryDialog.vue'
+import { buildLibraryArtists, groupItems } from './library/collections'
 import type {
   AlbumGroup,
   ArtistGroup,
@@ -37,116 +35,103 @@ import type {
   TrackFilter,
   TrackGroup,
   TrackSelectionModifiers,
-} from "./library/types";
-import {
-  LIBRARY_TRACK_IDS_MIME_TYPE,
-  LIBRARY_TRACK_IDS_TEXT_PREFIX,
-} from "./library/types";
+} from './library/types'
+import { LIBRARY_TRACK_IDS_MIME_TYPE, LIBRARY_TRACK_IDS_TEXT_PREFIX } from './library/types'
 
 type SelectedLibraryItem =
-  | { id: string; kind: "track" }
-  | { key: string; kind: "album" }
-  | { kind: "artist"; name: string };
+  { id: string; kind: 'track' } | { key: string; kind: 'album' } | { kind: 'artist'; name: string }
 
 interface Props {
-  snapshot?: PlaybackSnapshot;
-  playlists?: Playlist[];
-  tracks?: MediaItem[];
-  transport?: PlaybackTransport;
-  isStarting?: boolean;
-  isUpdating: boolean;
-  errorMessage?: string;
-  metadataRefreshes?: MetadataRefreshSnapshot;
-  isRetryingMetadata?: boolean;
-  importProgress?: ImportProgress | null;
-  isImporting?: boolean;
-  isCancelling?: boolean;
-  saveMetadata?: (updates: TrackMetadataUpdate[]) => Promise<unknown>;
-  savePlaylist?: (playlist: Playlist) => Promise<unknown>;
-  deletePlaylistAction?: (id: string) => Promise<unknown>;
-  resetMetadata?: (ids: string[]) => Promise<unknown>;
+  snapshot?: PlaybackSnapshot
+  playlists?: Playlist[]
+  tracks?: MediaItem[]
+  transport?: PlaybackTransport
+  isStarting?: boolean
+  isUpdating: boolean
+  errorMessage?: string
+  metadataRefreshes?: MetadataRefreshSnapshot
+  isRetryingMetadata?: boolean
+  importProgress?: ImportProgress | null
+  isImporting?: boolean
+  isCancelling?: boolean
+  saveMetadata?: (updates: TrackMetadataUpdate[]) => Promise<unknown>
+  savePlaylist?: (playlist: Playlist) => Promise<unknown>
+  deletePlaylistAction?: (id: string) => Promise<unknown>
+  resetMetadata?: (ids: string[]) => Promise<unknown>
 }
 
-const props = defineProps<Props>();
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  removeTracks: [ids: string[]];
-  toggle: [];
-  previous: [];
-  next: [];
-  seek: [positionMs: number];
-  setVolume: [percent: number];
-  toggleMute: [];
-  toggleShuffle: [];
-  cycleRepeatMode: [];
-  openImport: [];
-  playTrack: [queueIds: string[], id: string];
-  playNext: [ids: string[]];
-  addToQueue: [ids: string[]];
-  toggleFavorite: [ids: string[]];
-  upsertPlaylist: [playlist: Playlist];
-  reorderPlaylists: [playlistIds: string[]];
-  deletePlaylist: [id: string];
-  updateTracksMetadata: [updates: TrackMetadataUpdate[]];
-  retryMetadataRefreshes: [];
-  cancelImport: [runId: number];
-}>();
+  removeTracks: [ids: string[]]
+  toggle: []
+  previous: []
+  next: []
+  seek: [positionMs: number]
+  setVolume: [percent: number]
+  toggleMute: []
+  toggleShuffle: []
+  cycleRepeatMode: []
+  openImport: []
+  playTrack: [queueIds: string[], id: string]
+  playNext: [ids: string[]]
+  addToQueue: [ids: string[]]
+  toggleFavorite: [ids: string[]]
+  upsertPlaylist: [playlist: Playlist]
+  reorderPlaylists: [playlistIds: string[]]
+  deletePlaylist: [id: string]
+  updateTracksMetadata: [updates: TrackMetadataUpdate[]]
+  retryMetadataRefreshes: []
+  cancelImport: [runId: number]
+}>()
 
-const activeCollection = ref<LibraryCollection>("tracks");
-const displayMode = ref<LibraryDisplayMode>("list");
-const groupBy = ref<LibraryGroupOption>("none");
-const gridItemSize = ref(176);
-const libraryOptionsOpen = ref(false);
-const metadataRefreshDrawerOpen = ref(false);
-const metadataEditorTarget = ref<MetadataEditTarget | null>(null);
-const playlistEditorTarget = ref<Playlist | null>(null);
-const trackRemovalTarget = ref<MediaItem[]>([]);
-const isCreatingPlaylist = ref(false);
-const detailsSidebarOpen = ref(false);
-const activePlaylistId = ref<string>();
-const sidebarWidth = ref(244);
-const isSidebarResizing = ref(false);
+const activeCollection = ref<LibraryCollection>('tracks')
+const displayMode = ref<LibraryDisplayMode>('list')
+const groupBy = ref<LibraryGroupOption>('none')
+const gridItemSize = ref(176)
+const libraryOptionsOpen = ref(false)
+const metadataRefreshDrawerOpen = ref(false)
+const metadataEditorTarget = ref<MetadataEditTarget | null>(null)
+const playlistEditorTarget = ref<Playlist | null>(null)
+const trackRemovalTarget = ref<MediaItem[]>([])
+const isCreatingPlaylist = ref(false)
+const detailsSidebarOpen = ref(false)
+const activePlaylistId = ref<string>()
+const sidebarWidth = ref(244)
+const isSidebarResizing = ref(false)
 const playback = computed<PlaybackTransport>(
   () =>
     props.transport ??
     props.snapshot ?? {
       currentItem: null,
       positionMs: 0,
-      status: "paused",
+      status: 'paused',
       volumePercent: 0,
     },
-);
+)
 const selectedLibraryItem = ref<SelectedLibraryItem | null>(
-  playback.value.currentItem
-    ? { id: playback.value.currentItem.id, kind: "track" }
-    : null,
-);
+  playback.value.currentItem ? { id: playback.value.currentItem.id, kind: 'track' } : null,
+)
 const selectedTrackIds = ref<Set<string>>(
-  playback.value.currentItem
-    ? new Set([playback.value.currentItem.id])
-    : new Set(),
-);
-const trackSelectionAnchorId = ref<string | null>(
-  playback.value.currentItem?.id ?? null,
-);
-let trackDragImage: HTMLElement | null = null;
-const sortBy = ref<LibrarySortOption>("title-asc");
-const trackFilter = ref<TrackFilter | null>(null);
-const searchQuery = ref("");
-const searchOpen = ref(false);
-const searchInput = ref<HTMLInputElement | null>(null);
-const libraryElement = ref<HTMLElement | null>(null);
+  playback.value.currentItem ? new Set([playback.value.currentItem.id]) : new Set(),
+)
+const trackSelectionAnchorId = ref<string | null>(playback.value.currentItem?.id ?? null)
+let trackDragImage: HTMLElement | null = null
+const sortBy = ref<LibrarySortOption>('title-asc')
+const trackFilter = ref<TrackFilter | null>(null)
+const searchQuery = ref('')
+const searchOpen = ref(false)
+const searchInput = ref<HTMLInputElement | null>(null)
+const libraryElement = ref<HTMLElement | null>(null)
 
 async function toggleSearch(): Promise<void> {
-  searchOpen.value = !searchOpen.value;
-  if (!searchOpen.value) searchQuery.value = "";
-  await nextTick();
+  searchOpen.value = !searchOpen.value
+  if (!searchOpen.value) searchQuery.value = ''
+  await nextTick()
   if (searchOpen.value) {
-    searchInput.value?.focus();
+    searchInput.value?.focus()
   } else {
-    libraryElement.value
-      ?.querySelector<HTMLButtonElement>("[data-library-search-toggle]")
-      ?.focus();
+    libraryElement.value?.querySelector<HTMLButtonElement>('[data-library-search-toggle]')?.focus()
   }
 }
 
@@ -160,139 +145,120 @@ function handleSearchKey(event: KeyboardEvent): void {
     trackRemovalTarget.value.length ||
     libraryOptionsOpen.value
   )
-    return;
-  const target = event.target;
+    return
+  const target = event.target
   if (target instanceof HTMLElement) {
-    if (target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]'))
-      return;
+    if (target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]')) return
     if (
       target !== searchInput.value &&
-      target.closest(
-        'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
-      )
+      target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
     )
-      return;
+      return
   }
   const toggle =
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
     !event.shiftKey &&
-    event.key.toLowerCase() === "f";
+    event.key.toLowerCase() === 'f'
   const close =
     searchOpen.value &&
-    event.key === "Escape" &&
+    event.key === 'Escape' &&
     !event.metaKey &&
     !event.ctrlKey &&
     !event.altKey &&
-    !event.shiftKey;
-  if (!toggle && !close) return;
-  event.preventDefault();
-  void toggleSearch();
+    !event.shiftKey
+  if (!toggle && !close) return
+  event.preventDefault()
+  void toggleSearch()
 }
 
-onMounted(() => window.addEventListener("keydown", handleSearchKey));
-onBeforeUnmount(() => window.removeEventListener("keydown", handleSearchKey));
-const creationError = ref("");
-const creatingPlaylist = ref(false);
+onMounted(() => window.addEventListener('keydown', handleSearchKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', handleSearchKey))
+const creationError = ref('')
+const creatingPlaylist = ref(false)
 
-const isPlaying = computed(() => playback.value.status === "playing");
-const currentItem = computed(() => playback.value.currentItem);
-const playingItemId = computed(() =>
-  isPlaying.value ? currentItem.value?.id : undefined,
-);
-const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? []);
+const isPlaying = computed(() => playback.value.status === 'playing')
+const currentItem = computed(() => playback.value.currentItem)
+const playingItemId = computed(() => (isPlaying.value ? currentItem.value?.id : undefined))
+const allTracks = computed(() => props.tracks ?? props.snapshot?.queue ?? [])
 const searchIndex = computed(
   () =>
     new Map(
       allTracks.value.map((track) => [
         track.id,
-        [
-          track.title,
-          track.artist,
-          track.album,
-          track.label,
-          ...(track.genres ?? []),
-        ]
+        [track.title, track.artist, track.album, track.label, ...(track.genres ?? [])]
           .filter(Boolean)
-          .join("\n")
+          .join('\n')
           .toLocaleLowerCase(),
       ]),
     ),
-);
+)
 const searchTerms = computed(() =>
   searchQuery.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean),
-);
+)
 const searchedTracks = computed(() =>
   searchTerms.value.length
     ? playlistTracks.value.filter((track) =>
-        searchTerms.value.every((term) =>
-          searchIndex.value.get(track.id)?.includes(term),
-        ),
+        searchTerms.value.every((term) => searchIndex.value.get(track.id)?.includes(term)),
       )
     : playlistTracks.value,
-);
-const playlists = computed(() => props.playlists ?? []);
+)
+const playlists = computed(() => props.playlists ?? [])
 const activePlaylist = computed(
-  () =>
-    playlists.value.find(
-      (playlist) => playlist.id === activePlaylistId.value,
-    ) ?? null,
-);
+  () => playlists.value.find((playlist) => playlist.id === activePlaylistId.value) ?? null,
+)
 const canRemoveFromPlaylist = computed(
   () =>
     activePlaylist.value !== null &&
-    activePlaylist.value.id !== "favorites" &&
-    activePlaylist.value.id !== "most-played",
-);
+    activePlaylist.value.id !== 'favorites' &&
+    activePlaylist.value.id !== 'most-played',
+)
 const playlistTracks = computed(() => {
-  const playlist = activePlaylist.value;
+  const playlist = activePlaylist.value
   if (!playlist) {
-    return allTracks.value;
+    return allTracks.value
   }
 
-  const tracksById = new Map(allTracks.value.map((track) => [track.id, track]));
+  const tracksById = new Map(allTracks.value.map((track) => [track.id, track]))
   return playlist.trackIds.flatMap((id) => {
-    const track = tracksById.get(id);
-    return track ? [track] : [];
-  });
-});
+    const track = tracksById.get(id)
+    return track ? [track] : []
+  })
+})
 const selectedTrack = computed(() => {
   if (selectedTrackIds.value.size !== 1) {
-    return null;
+    return null
   }
 
-  const [id] = selectedTrackIds.value;
-  return allTracks.value.find((track) => track.id === id) ?? null;
-});
+  const [id] = selectedTrackIds.value
+  return allTracks.value.find((track) => track.id === id) ?? null
+})
 const libraryTracks = computed(() => {
   const filteredTracks = trackFilter.value
     ? searchedTracks.value.filter((track) => {
-        if (trackFilter.value?.type === "artist") {
-          return track.artist === trackFilter.value.value;
+        if (trackFilter.value?.type === 'artist') {
+          return track.artist === trackFilter.value.value
         }
 
-        return (
-          `${track.artist}\u0000${track.album ?? ""}` ===
-          trackFilter.value?.value
-        );
+        return `${track.artist}\u0000${track.album ?? ''}` === trackFilter.value?.value
       })
-    : searchedTracks.value;
+    : searchedTracks.value
 
-  return sortCollection(filteredTracks, sortBy.value, "track");
-});
+  return sortCollection(filteredTracks, sortBy.value, 'track')
+})
 const selectedTracks = computed(() =>
   libraryTracks.value.filter((track) => selectedTrackIds.value.has(track.id)),
-);
+)
 const libraryAlbums = computed<LibraryAlbum[]>(() => {
-  const albums = new Map<string, LibraryAlbum>();
+  const albums = new Map<string, LibraryAlbum>()
 
   for (const track of searchedTracks.value) {
-    const title = track.album?.trim();
+    const title = track.album?.trim()
     if (!title) {
-      continue;
+      continue
     }
 
-    const key = `${track.artist}\u0000${title}`;
+    const key = `${track.artist}\u0000${title}`
     const album = albums.get(key) ?? {
       artist: track.artist,
       durationMs: 0,
@@ -300,576 +266,530 @@ const libraryAlbums = computed<LibraryAlbum[]>(() => {
       title,
       trackCount: 0,
       videoId: track.id,
-    };
-    album.durationMs += track.durationMs;
-    album.trackCount += 1;
-    albums.set(key, album);
+    }
+    album.durationMs += track.durationMs
+    album.trackCount += 1
+    albums.set(key, album)
   }
 
-  return sortCollection(albums.values(), sortBy.value, "album");
-});
+  return sortCollection(albums.values(), sortBy.value, 'album')
+})
 const libraryArtists = computed<LibraryArtist[]>(() => {
-  return sortCollection(
-    buildLibraryArtists(searchedTracks.value),
-    sortBy.value,
-    "artist",
-  );
-});
+  return sortCollection(buildLibraryArtists(searchedTracks.value), sortBy.value, 'artist')
+})
 const selectedAlbum = computed(() => {
-  const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== "album") {
-    return null;
+  const selection = selectedLibraryItem.value
+  if (!selection || selection.kind !== 'album') {
+    return null
   }
 
-  return (
-    libraryAlbums.value.find((album) => album.key === selection.key) ?? null
-  );
-});
+  return libraryAlbums.value.find((album) => album.key === selection.key) ?? null
+})
 const selectedArtist = computed(() => {
-  const selection = selectedLibraryItem.value;
-  if (!selection || selection.kind !== "artist") {
-    return null;
+  const selection = selectedLibraryItem.value
+  if (!selection || selection.kind !== 'artist') {
+    return null
   }
 
-  return (
-    libraryArtists.value.find((artist) => artist.name === selection.name) ??
-    null
-  );
-});
+  return libraryArtists.value.find((artist) => artist.name === selection.name) ?? null
+})
 const groupedTracks = computed<TrackGroup[]>(() => {
-  if (groupBy.value === "none") {
-    return groupSortSections(libraryTracks.value, sortBy.value, "track");
+  if (groupBy.value === 'none') {
+    return groupSortSections(libraryTracks.value, sortBy.value, 'track')
   }
 
   return groupItems(libraryTracks.value, (track) =>
-    groupBy.value === "artist"
-      ? track.artist
-      : track.album?.trim() || "Unknown album",
-  );
-});
+    groupBy.value === 'artist' ? track.artist : track.album?.trim() || 'Unknown album',
+  )
+})
 const groupedAlbums = computed<AlbumGroup[]>(() =>
-  groupGridCollection(libraryAlbums.value, "album", (album) =>
-    groupBy.value === "artist" ? album.artist : album.title,
+  groupGridCollection(libraryAlbums.value, 'album', (album) =>
+    groupBy.value === 'artist' ? album.artist : album.title,
   ),
-);
+)
 const groupedArtists = computed<ArtistGroup[]>(() =>
-  groupGridCollection(libraryArtists.value, "artist", (artist) =>
-    groupBy.value === "album" ? "Artists" : artist.name,
+  groupGridCollection(libraryArtists.value, 'artist', (artist) =>
+    groupBy.value === 'album' ? 'Artists' : artist.name,
   ),
-);
+)
 const collectionTitle = computed(() => {
   if (activePlaylist.value) {
-    return activePlaylist.value.name;
+    return activePlaylist.value.name
   }
   const titles: Record<LibraryCollection, string> = {
-    albums: "Albums",
-    artists: "Artists",
-    tracks: "Tracks",
-  };
+    albums: 'Albums',
+    artists: 'Artists',
+    tracks: 'Tracks',
+  }
 
-  return titles[activeCollection.value];
-});
+  return titles[activeCollection.value]
+})
 const collectionSummary = computed(() => {
   const summaries: Record<LibraryCollection, string> = {
-    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? "album" : "albums"}`,
-    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? "artist" : "artists"}`,
+    albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? 'album' : 'albums'}`,
+    artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? 'artist' : 'artists'}`,
     tracks: trackCollectionSummary(libraryTracks.value),
-  };
+  }
 
-  return summaries[activeCollection.value];
-});
+  return summaries[activeCollection.value]
+})
 const metadataRefreshRemaining = computed(() =>
   Math.max(
-    (props.metadataRefreshes?.totalTracks ?? 0) -
-      (props.metadataRefreshes?.completedTracks ?? 0),
+    (props.metadataRefreshes?.totalTracks ?? 0) - (props.metadataRefreshes?.completedTracks ?? 0),
     0,
   ),
-);
+)
 const metadataRefreshFailed = computed(
-  () =>
-    props.metadataRefreshes?.jobs.filter((job) => job.state === "failed")
-      .length ?? 0,
-);
+  () => props.metadataRefreshes?.jobs.filter((job) => job.state === 'failed').length ?? 0,
+)
 const metadataRefreshSkipped = computed(
-  () =>
-    props.metadataRefreshes?.jobs.filter((job) => job.state === "skipped")
-      .length ?? 0,
-);
+  () => props.metadataRefreshes?.jobs.filter((job) => job.state === 'skipped').length ?? 0,
+)
 const hasActiveMetadataRefresh = computed(
   () =>
     metadataRefreshRemaining.value > 0 &&
     (props.metadataRefreshes?.jobs.some(
-      (job) => job.state === "queued" || job.state === "refreshing",
+      (job) => job.state === 'queued' || job.state === 'refreshing',
     ) ??
       false),
-);
+)
 
 function trackCollectionSummary(tracks: MediaItem[]): string {
-  const count = tracks.length;
+  const count = tracks.length
   const totalMinutes = Math.round(
     tracks.reduce((total, track) => total + track.durationMs, 0) / 60_000,
-  );
+  )
 
-  return `${count} ${count === 1 ? "song" : "songs"} · ${totalMinutes} min`;
+  return `${count} ${count === 1 ? 'song' : 'songs'} · ${totalMinutes} min`
 }
 
 function sortCollection<T extends MediaItem | LibraryAlbum | LibraryArtist>(
   items: Iterable<T>,
   option: LibrarySortOption,
-  kind: "album" | "artist" | "track",
+  kind: 'album' | 'artist' | 'track',
 ): T[] {
-  const sorted = [...items];
+  const sorted = [...items]
   const collator = new Intl.Collator(undefined, {
     numeric: true,
-    sensitivity: "base",
-  });
-  const direction = option.endsWith("desc") ? -1 : 1;
+    sensitivity: 'base',
+  })
+  const direction = option.endsWith('desc') ? -1 : 1
 
   sorted.sort((left, right) => {
-    const leftValue = sortValue(left, option, kind);
-    const rightValue = sortValue(right, option, kind);
-    if (typeof leftValue === "number" && typeof rightValue === "number") {
-      return (leftValue - rightValue) * direction;
+    const leftValue = sortValue(left, option, kind)
+    const rightValue = sortValue(right, option, kind)
+    if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+      return (leftValue - rightValue) * direction
     }
 
-    return collator.compare(String(leftValue), String(rightValue)) * direction;
-  });
+    return collator.compare(String(leftValue), String(rightValue)) * direction
+  })
 
-  return sorted;
+  return sorted
 }
 
 function sortValue(
   item: MediaItem | LibraryAlbum | LibraryArtist,
   option: LibrarySortOption,
-  kind: "album" | "artist" | "track",
+  kind: 'album' | 'artist' | 'track',
 ): number | string {
-  if (kind === "artist") {
-    const artist = item as LibraryArtist;
-    if (option.startsWith("album-count")) return artist.albumCount;
-    if (option.startsWith("track-count")) return artist.trackCount;
-    if (option.startsWith("duration")) return artist.durationMs;
-    return artist.name;
+  if (kind === 'artist') {
+    const artist = item as LibraryArtist
+    if (option.startsWith('album-count')) return artist.albumCount
+    if (option.startsWith('track-count')) return artist.trackCount
+    if (option.startsWith('duration')) return artist.durationMs
+    return artist.name
   }
-  if (kind === "album") {
-    const album = item as LibraryAlbum;
-    return option.startsWith("artist")
+  if (kind === 'album') {
+    const album = item as LibraryAlbum
+    return option.startsWith('artist')
       ? album.artist
-      : option.startsWith("track-count")
+      : option.startsWith('track-count')
         ? album.trackCount
-        : option.startsWith("duration")
+        : option.startsWith('duration')
           ? album.durationMs
-          : album.title;
+          : album.title
   }
 
-  const track = item as MediaItem;
-  if (option.startsWith("artist")) return track.artist;
-  if (option.startsWith("album")) return track.album ?? "";
-  if (option.startsWith("duration")) return track.durationMs;
-  return track.title;
+  const track = item as MediaItem
+  if (option.startsWith('artist')) return track.artist
+  if (option.startsWith('album')) return track.album ?? ''
+  if (option.startsWith('duration')) return track.durationMs
+  return track.title
 }
 
 function alphabeticalSection(value: string): string {
   const firstCharacter = Array.from(
     value
       .trim()
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, ""),
-  )[0]?.toLocaleUpperCase();
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, ''),
+  )[0]?.toLocaleUpperCase()
 
-  return firstCharacter && /[A-Z]/.test(firstCharacter) ? firstCharacter : "#";
+  return firstCharacter && /[A-Z]/.test(firstCharacter) ? firstCharacter : '#'
 }
 
 function durationSection(durationMs: number): string {
-  if (durationMs < 60_000) return "Under 1 min";
-  if (durationMs < 300_000) return "1–4 min";
-  if (durationMs < 600_000) return "5–9 min";
-  if (durationMs < 1_800_000) return "10–29 min";
-  if (durationMs < 3_600_000) return "30–59 min";
-  return "1 hr or more";
+  if (durationMs < 60_000) return 'Under 1 min'
+  if (durationMs < 300_000) return '1–4 min'
+  if (durationMs < 600_000) return '5–9 min'
+  if (durationMs < 1_800_000) return '10–29 min'
+  if (durationMs < 3_600_000) return '30–59 min'
+  return '1 hr or more'
 }
 
 function sortSectionLabel(
   item: MediaItem | LibraryAlbum | LibraryArtist,
   option: LibrarySortOption,
-  kind: "album" | "artist" | "track",
+  kind: 'album' | 'artist' | 'track',
 ): string {
-  const value = sortValue(item, option, kind);
+  const value = sortValue(item, option, kind)
 
-  if (option.startsWith("duration")) {
-    return durationSection(Number(value));
+  if (option.startsWith('duration')) {
+    return durationSection(Number(value))
   }
-  if (kind === "album" && option.startsWith("track-count")) {
-    return `${value} ${value === 1 ? "track" : "tracks"}`;
+  if (kind === 'album' && option.startsWith('track-count')) {
+    return `${value} ${value === 1 ? 'track' : 'tracks'}`
   }
-  if (kind === "artist" && option.startsWith("album-count")) {
-    return `${value} ${value === 1 ? "album" : "albums"}`;
+  if (kind === 'artist' && option.startsWith('album-count')) {
+    return `${value} ${value === 1 ? 'album' : 'albums'}`
   }
-  if (kind === "artist" && option.startsWith("track-count")) {
-    return `${value} ${value === 1 ? "track" : "tracks"}`;
+  if (kind === 'artist' && option.startsWith('track-count')) {
+    return `${value} ${value === 1 ? 'track' : 'tracks'}`
   }
 
-  return alphabeticalSection(String(value));
+  return alphabeticalSection(String(value))
 }
 
 function groupSortSections<T extends MediaItem | LibraryAlbum | LibraryArtist>(
   items: T[],
   option: LibrarySortOption,
-  kind: "album" | "artist" | "track",
+  kind: 'album' | 'artist' | 'track',
 ): Array<{ items: T[]; label: string }> {
-  return groupItems(items, (item) => sortSectionLabel(item, option, kind));
+  return groupItems(items, (item) => sortSectionLabel(item, option, kind))
 }
 
 function groupGridCollection<T extends LibraryAlbum | LibraryArtist>(
   items: T[],
-  kind: "album" | "artist",
+  kind: 'album' | 'artist',
   getLabel: (item: T) => string,
 ): Array<{ items: T[]; label: string }> {
-  if (groupBy.value === "none") {
-    return groupSortSections(items, sortBy.value, kind);
+  if (groupBy.value === 'none') {
+    return groupSortSections(items, sortBy.value, kind)
   }
 
-  return groupItems(items, getLabel);
+  return groupItems(items, getLabel)
 }
 
 function selectCollection(collection: LibraryCollection): void {
-  activePlaylistId.value = undefined;
-  activeCollection.value = collection;
-  if (collection !== "tracks") {
-    clearTrackSelection();
+  activePlaylistId.value = undefined
+  activeCollection.value = collection
+  if (collection !== 'tracks') {
+    clearTrackSelection()
   }
 }
 
 function selectPlaylist(id: string): void {
-  activePlaylistId.value = id;
-  activeCollection.value = "tracks";
-  displayMode.value = "list";
-  trackFilter.value = null;
-  clearTrackSelection();
+  activePlaylistId.value = id
+  activeCollection.value = 'tracks'
+  displayMode.value = 'list'
+  trackFilter.value = null
+  clearTrackSelection()
 }
 
 function openPlaylistEditor(playlist: Playlist): void {
-  playlistEditorTarget.value = playlist;
+  playlistEditorTarget.value = playlist
 }
 
 function beginPlaylistCreation(): void {
-  isCreatingPlaylist.value = true;
+  isCreatingPlaylist.value = true
 }
 
 async function createPlaylist(name: string): Promise<void> {
-  if (creatingPlaylist.value) return;
+  if (creatingPlaylist.value) return
   const playlist: Playlist = {
     id: `playlist-${crypto.randomUUID()}`,
     name,
     trackIds: [],
-  };
-  creatingPlaylist.value = true;
-  creationError.value = "";
+  }
+  creatingPlaylist.value = true
+  creationError.value = ''
   try {
-    if (props.savePlaylist) await props.savePlaylist(playlist);
-    else emit("upsertPlaylist", playlist);
-    activePlaylistId.value = playlist.id;
-    isCreatingPlaylist.value = false;
+    if (props.savePlaylist) await props.savePlaylist(playlist)
+    else emit('upsertPlaylist', playlist)
+    activePlaylistId.value = playlist.id
+    isCreatingPlaylist.value = false
   } catch (cause) {
-    creationError.value = `Could not create playlist. ${cause instanceof Error ? cause.message : String(cause)} Try Save again.`;
+    creationError.value = `Could not create playlist. ${cause instanceof Error ? cause.message : String(cause)} Try Save again.`
   } finally {
-    creatingPlaylist.value = false;
+    creatingPlaylist.value = false
   }
 }
 
 function cancelPlaylistCreation(): void {
-  isCreatingPlaylist.value = false;
+  isCreatingPlaylist.value = false
 }
 
 function savePlaylist(playlist: Playlist): void {
-  playlistEditorTarget.value = null;
-  emit("upsertPlaylist", playlist);
+  playlistEditorTarget.value = null
+  emit('upsertPlaylist', playlist)
 }
 
 function addTracksToPlaylist(playlist: Playlist, trackIds: string[]): void {
-  if (
-    props.isUpdating ||
-    playlist.id === "favorites" ||
-    playlist.id === "most-played"
-  ) {
-    return;
+  if (props.isUpdating || playlist.id === 'favorites' || playlist.id === 'most-played') {
+    return
   }
 
-  const ids = new Set(playlist.trackIds);
+  const ids = new Set(playlist.trackIds)
   for (const id of trackIds) {
-    ids.add(id);
+    ids.add(id)
   }
-  emit("upsertPlaylist", {
+  emit('upsertPlaylist', {
     ...playlist,
     trackIds: [...ids],
-  });
+  })
 }
 
 function removeTracksFromPlaylist(tracks: MediaItem[]): void {
-  const playlist = activePlaylist.value;
+  const playlist = activePlaylist.value
   if (props.isUpdating || !playlist || !canRemoveFromPlaylist.value) {
-    return;
+    return
   }
 
-  const removedIds = new Set(tracks.map((track) => track.id));
-  const trackIds = playlist.trackIds.filter((id) => !removedIds.has(id));
+  const removedIds = new Set(tracks.map((track) => track.id))
+  const trackIds = playlist.trackIds.filter((id) => !removedIds.has(id))
   if (trackIds.length === playlist.trackIds.length) {
-    return;
+    return
   }
 
-  emit("upsertPlaylist", { ...playlist, trackIds });
-  clearTrackSelection();
+  emit('upsertPlaylist', { ...playlist, trackIds })
+  clearTrackSelection()
 }
 
 function deletePlaylist(id: string): void {
   if (activePlaylistId.value === id) {
-    activePlaylistId.value = undefined;
+    activePlaylistId.value = undefined
   }
-  playlistEditorTarget.value = null;
-  emit("deletePlaylist", id);
+  playlistEditorTarget.value = null
+  emit('deletePlaylist', id)
 }
 
 function setDisplayMode(mode: LibraryDisplayMode): void {
-  displayMode.value = mode;
+  displayMode.value = mode
 }
 
 function clearTrackSelection(): void {
-  selectedTrackIds.value = new Set();
-  trackSelectionAnchorId.value = null;
+  selectedTrackIds.value = new Set()
+  trackSelectionAnchorId.value = null
 }
 
 function selectTrack(
   track: MediaItem,
   modifiers: TrackSelectionModifiers = { additive: false, range: false },
 ): void {
-  const next = new Set(selectedTrackIds.value);
-  const anchorId = trackSelectionAnchorId.value;
-  const anchorIndex = anchorId
-    ? libraryTracks.value.findIndex((item) => item.id === anchorId)
-    : -1;
-  const trackIndex = libraryTracks.value.findIndex(
-    (item) => item.id === track.id,
-  );
+  const next = new Set(selectedTrackIds.value)
+  const anchorId = trackSelectionAnchorId.value
+  const anchorIndex = anchorId ? libraryTracks.value.findIndex((item) => item.id === anchorId) : -1
+  const trackIndex = libraryTracks.value.findIndex((item) => item.id === track.id)
 
   if (modifiers.range && anchorIndex !== -1 && trackIndex !== -1) {
-    const start = Math.min(anchorIndex, trackIndex);
-    const end = Math.max(anchorIndex, trackIndex);
-    const range = libraryTracks.value
-      .slice(start, end + 1)
-      .map((item) => item.id);
-    selectedTrackIds.value = modifiers.additive
-      ? new Set([...next, ...range])
-      : new Set(range);
+    const start = Math.min(anchorIndex, trackIndex)
+    const end = Math.max(anchorIndex, trackIndex)
+    const range = libraryTracks.value.slice(start, end + 1).map((item) => item.id)
+    selectedTrackIds.value = modifiers.additive ? new Set([...next, ...range]) : new Set(range)
   } else if (modifiers.additive) {
     if (next.has(track.id)) {
-      next.delete(track.id);
+      next.delete(track.id)
     } else {
-      next.add(track.id);
+      next.add(track.id)
     }
-    selectedTrackIds.value = next;
-    trackSelectionAnchorId.value = track.id;
+    selectedTrackIds.value = next
+    trackSelectionAnchorId.value = track.id
   } else {
-    selectedTrackIds.value = new Set([track.id]);
-    trackSelectionAnchorId.value = track.id;
+    selectedTrackIds.value = new Set([track.id])
+    trackSelectionAnchorId.value = track.id
   }
 
-  selectedLibraryItem.value = selectedTrackIds.value.size
-    ? { id: track.id, kind: "track" }
-    : null;
+  selectedLibraryItem.value = selectedTrackIds.value.size ? { id: track.id, kind: 'track' } : null
 }
 
 function selectContextMenuTarget(track: MediaItem): void {
   if (!selectedTrackIds.value.has(track.id)) {
-    selectTrack(track);
+    selectTrack(track)
   }
 }
 
 function startTrackDrag(track: MediaItem, event: DragEvent): void {
   if (!selectedTrackIds.value.has(track.id)) {
-    selectTrack(track);
+    selectTrack(track)
   }
 
-  const trackIds = selectedTracks.value.map((item) => item.id);
+  const trackIds = selectedTracks.value.map((item) => item.id)
   if (!event.dataTransfer || trackIds.length === 0) {
-    return;
+    return
   }
 
-  event.dataTransfer.effectAllowed = "copy";
-  event.dataTransfer.setData(
-    LIBRARY_TRACK_IDS_MIME_TYPE,
-    JSON.stringify(trackIds),
-  );
-  event.dataTransfer.setData(
-    "text/plain",
-    [LIBRARY_TRACK_IDS_TEXT_PREFIX, ...trackIds].join("\n"),
-  );
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData(LIBRARY_TRACK_IDS_MIME_TYPE, JSON.stringify(trackIds))
+  event.dataTransfer.setData('text/plain', [LIBRARY_TRACK_IDS_TEXT_PREFIX, ...trackIds].join('\n'))
 
-  const source = event.target;
-  if (
-    !(source instanceof HTMLElement) ||
-    typeof event.dataTransfer.setDragImage !== "function"
-  ) {
-    return;
+  const source = event.target
+  if (!(source instanceof HTMLElement) || typeof event.dataTransfer.setDragImage !== 'function') {
+    return
   }
 
-  finishTrackDrag();
-  const sourceBounds = source.getBoundingClientRect();
-  const dragImage = source.cloneNode(true) as HTMLElement;
-  dragImage.removeAttribute("data-track-id");
-  dragImage.setAttribute("aria-hidden", "true");
+  finishTrackDrag()
+  const sourceBounds = source.getBoundingClientRect()
+  const dragImage = source.cloneNode(true) as HTMLElement
+  dragImage.removeAttribute('data-track-id')
+  dragImage.setAttribute('aria-hidden', 'true')
   Object.assign(dragImage.style, {
     height: `${sourceBounds.height}px`,
     left: `${sourceBounds.left}px`,
-    margin: "0",
-    pointerEvents: "none",
-    position: "fixed",
+    margin: '0',
+    pointerEvents: 'none',
+    position: 'fixed',
     top: `${sourceBounds.top}px`,
-    transform: "none",
+    transform: 'none',
     width: `${sourceBounds.width}px`,
-    zIndex: "2147483647",
-  });
-  document.body.append(dragImage);
+    zIndex: '2147483647',
+  })
+  document.body.append(dragImage)
   event.dataTransfer.setDragImage(
     dragImage,
     Math.max(0, event.clientX - sourceBounds.left),
     Math.max(0, event.clientY - sourceBounds.top),
-  );
-  trackDragImage = dragImage;
+  )
+  trackDragImage = dragImage
 }
 
 function finishTrackDrag(): void {
-  trackDragImage?.remove();
-  trackDragImage = null;
+  trackDragImage?.remove()
+  trackDragImage = null
 }
 
 function playTracks(tracks: MediaItem[]): void {
-  const track = tracks[0];
+  const track = tracks[0]
   if (!track || props.isUpdating) {
-    return;
+    return
   }
 
   if (!selectedTrackIds.value.has(track.id)) {
-    selectTrack(track);
+    selectTrack(track)
   }
   emit(
-    "playTrack",
-    (activeCollection.value === "tracks" &&
+    'playTrack',
+    (activeCollection.value === 'tracks' &&
     (searchTerms.value.length || activePlaylist.value || trackFilter.value)
       ? libraryTracks.value
       : tracks
     ).map((item) => item.id),
     track.id,
-  );
+  )
 }
 
 function selectedPlaybackTracks(): MediaItem[] {
   if (selectedTracks.value.length > 0) {
-    return selectedTracks.value;
+    return selectedTracks.value
   }
   if (selectedAlbum.value) {
     return searchedTracks.value.filter(
       (track) =>
         track.artist === selectedAlbum.value?.artist &&
         track.album?.trim() === selectedAlbum.value?.title,
-    );
+    )
   }
   if (selectedArtist.value) {
-    return searchedTracks.value.filter(
-      (track) => track.artist === selectedArtist.value?.name,
-    );
+    return searchedTracks.value.filter((track) => track.artist === selectedArtist.value?.name)
   }
-  return [];
+  return []
 }
 
 function togglePlayback(): void {
   if (isPlaying.value) {
-    emit("toggle");
-    return;
+    emit('toggle')
+    return
   }
 
-  const tracks = selectedPlaybackTracks();
+  const tracks = selectedPlaybackTracks()
   if (tracks.length > 0) {
-    playTracks(tracks);
+    playTracks(tracks)
   }
 }
 
 function playTracksNext(tracks: MediaItem[]): void {
   if (props.isUpdating) {
-    return;
+    return
   }
 
   // Emit all IDs in a single batch event (reversed so first resolves first in queue).
-  const ids = [...tracks].reverse().map((t) => t.id);
+  const ids = [...tracks].reverse().map((t) => t.id)
   if (ids.length > 0) {
-    emit("playNext", ids);
+    emit('playNext', ids)
   }
 }
 
 function addTracksToQueue(tracks: MediaItem[]): void {
   if (props.isUpdating) {
-    return;
+    return
   }
 
-  const ids = tracks.map((t) => t.id);
+  const ids = tracks.map((t) => t.id)
   if (ids.length > 0) {
-    emit("addToQueue", ids);
+    emit('addToQueue', ids)
   }
 }
 
 function toggleFavorites(ids: string[]): void {
-  const deduplicated = [...new Set(ids)];
+  const deduplicated = [...new Set(ids)]
   if (deduplicated.length > 0) {
-    emit("toggleFavorite", deduplicated);
+    emit('toggleFavorite', deduplicated)
   }
 }
 
 function playAlbum(album: LibraryAlbum): void {
   playTracks(
     searchedTracks.value.filter(
-      (track) =>
-        track.artist === album.artist && track.album?.trim() === album.title,
+      (track) => track.artist === album.artist && track.album?.trim() === album.title,
     ),
-  );
+  )
 }
 
 function playArtist(artist: LibraryArtist): void {
-  playTracks(
-    searchedTracks.value.filter((track) => track.artist === artist.name),
-  );
+  playTracks(searchedTracks.value.filter((track) => track.artist === artist.name))
 }
 
 function playPlaylist(playlist: Playlist): void {
   if (playlist.id === activePlaylist.value?.id) {
-    playTracks(libraryTracks.value);
+    playTracks(libraryTracks.value)
   }
 }
 
 function playActivePlaylist(): void {
   if (activePlaylist.value) {
-    playPlaylist(activePlaylist.value);
+    playPlaylist(activePlaylist.value)
   }
 }
 
 function selectAlbum(album: LibraryAlbum): void {
-  clearTrackSelection();
-  selectedLibraryItem.value = { key: album.key, kind: "album" };
+  clearTrackSelection()
+  selectedLibraryItem.value = { key: album.key, kind: 'album' }
 }
 
 function selectArtist(artist: LibraryArtist): void {
-  clearTrackSelection();
-  selectedLibraryItem.value = { kind: "artist", name: artist.name };
+  clearTrackSelection()
+  selectedLibraryItem.value = { kind: 'artist', name: artist.name }
 }
 
 function openTrackMetadataEditor(track: MediaItem): void {
-  const tracks = selectedTracks.value.some(
-    (selected) => selected.id === track.id,
-  )
+  const tracks = selectedTracks.value.some((selected) => selected.id === track.id)
     ? selectedTracks.value
-    : [track];
+    : [track]
   metadataEditorTarget.value = {
-    kind: "track",
+    kind: 'track',
     name: tracks.length > 1 ? `${tracks.length} selected tracks` : track.title,
     tracks,
-  };
+  }
 }
 
 function openTrackAlbum(track: MediaItem): void {
@@ -877,100 +797,97 @@ function openTrackAlbum(track: MediaItem): void {
     ? libraryAlbums.value.find(
         (candidate) => candidate.key === `${track.artist}\u0000${track.album}`,
       )
-    : undefined;
+    : undefined
   if (album) {
-    openAlbum(album);
+    openAlbum(album)
   }
 }
 
 function openTrackArtist(track: MediaItem): void {
-  const artist = libraryArtists.value.find(
-    (candidate) => candidate.name === track.artist,
-  );
+  const artist = libraryArtists.value.find((candidate) => candidate.name === track.artist)
   if (artist) {
-    openArtist(artist);
+    openArtist(artist)
   }
 }
 
 function requestTrackRemoval(tracks: MediaItem[]): void {
-  trackRemovalTarget.value = tracks;
+  trackRemovalTarget.value = tracks
 }
 
 function confirmTrackRemoval(): void {
   if (trackRemovalTarget.value.length === 0) {
-    return;
+    return
   }
 
-  const ids = trackRemovalTarget.value.map((track) => track.id);
-  trackRemovalTarget.value = [];
-  emit("removeTracks", ids);
+  const ids = trackRemovalTarget.value.map((track) => track.id)
+  trackRemovalTarget.value = []
+  emit('removeTracks', ids)
 }
 
 function openAlbumMetadataEditor(album: LibraryAlbum): void {
   metadataEditorTarget.value = {
-    kind: "album",
+    kind: 'album',
     name: album.title,
     tracks: allTracks.value.filter(
-      (track) =>
-        track.artist === album.artist && track.album?.trim() === album.title,
+      (track) => track.artist === album.artist && track.album?.trim() === album.title,
     ),
-  };
+  }
 }
 
 function openArtistMetadataEditor(artist: LibraryArtist): void {
   metadataEditorTarget.value = {
-    kind: "artist",
+    kind: 'artist',
     name: artist.name,
     tracks: allTracks.value.filter((track) => track.artist === artist.name),
-  };
+  }
 }
 
 function saveMetadata(updates: TrackMetadataUpdate[]): void {
-  metadataEditorTarget.value = null;
-  emit("updateTracksMetadata", updates);
+  metadataEditorTarget.value = null
+  emit('updateTracksMetadata', updates)
 }
 
 function openAlbum(album: LibraryAlbum): void {
-  selectAlbum(album);
-  trackFilter.value = { label: album.title, type: "album", value: album.key };
-  activeCollection.value = "tracks";
-  displayMode.value = "list";
+  selectAlbum(album)
+  trackFilter.value = { label: album.title, type: 'album', value: album.key }
+  activeCollection.value = 'tracks'
+  displayMode.value = 'list'
 }
 
 function openArtist(artist: LibraryArtist): void {
-  selectArtist(artist);
+  selectArtist(artist)
   trackFilter.value = {
     label: artist.name,
-    type: "artist",
+    type: 'artist',
     value: artist.name,
-  };
-  activeCollection.value = "tracks";
-  displayMode.value = "list";
+  }
+  activeCollection.value = 'tracks'
+  displayMode.value = 'list'
 }
 
 function setSort(option: LibrarySortOption): void {
-  sortBy.value = option;
-  libraryOptionsOpen.value = false;
+  sortBy.value = option
+  libraryOptionsOpen.value = false
 }
 
 function setGroup(option: LibraryGroupOption): void {
-  groupBy.value = option;
-  libraryOptionsOpen.value = false;
+  groupBy.value = option
+  libraryOptionsOpen.value = false
 }
 
 function setGridItemSize(size: number): void {
-  gridItemSize.value = size;
+  gridItemSize.value = size
 }
 
 function toggleOptions(open: boolean): void {
-  libraryOptionsOpen.value = open;
+  libraryOptionsOpen.value = open
 }
 
 function resizeSidebar(width: number): void {
-  sidebarWidth.value = Math.min(360, Math.max(180, Math.round(width)));
+  sidebarWidth.value = Math.min(360, Math.max(180, Math.round(width)))
 }
 
-onBeforeUnmount(finishTrackDrag);
+onBeforeUnmount(finishTrackDrag)
 </script>
 
 <template>
@@ -1020,11 +937,7 @@ onBeforeUnmount(finishTrackDrag);
 
     <section
       class="library-content col-start-2 row-start-1 grid min-h-0 min-w-0 border-l border-(--line) max-[760px]:col-start-1"
-      :class="
-        searchOpen
-          ? 'grid-rows-[auto_auto_minmax(0,1fr)]'
-          : 'grid-rows-[auto_minmax(0,1fr)]'
-      "
+      :class="searchOpen ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'"
     >
       <div class="min-w-0">
         <LibraryHeader
@@ -1072,8 +985,7 @@ onBeforeUnmount(finishTrackDrag);
           <p role="status" class="min-w-0 flex-1 break-words">
             {{ importProgress.message }}
             <span class="text-(--muted-text)">
-              {{ importProgress.completedSources }} /
-              {{ importProgress.totalSources }} sources,
+              {{ importProgress.completedSources }} / {{ importProgress.totalSources }} sources,
               {{ importProgress.importedTracks }} track(s) found
             </span>
           </p>
@@ -1084,7 +996,7 @@ onBeforeUnmount(finishTrackDrag);
             :disabled="isCancelling"
             @click="emit('cancelImport', importProgress.runId)"
           >
-            {{ isCancelling ? "Cancelling…" : "Cancel import" }}
+            {{ isCancelling ? 'Cancelling…' : 'Cancel import' }}
           </button>
         </section>
       </div>
@@ -1109,9 +1021,7 @@ onBeforeUnmount(finishTrackDrag);
           data-search-count
           class="shrink-0 text-xs text-(--muted-text)"
           >{{
-            activeCollection === "tracks"
-              ? libraryTracks.length
-              : searchedTracks.length
+            activeCollection === 'tracks' ? libraryTracks.length : searchedTracks.length
           }}
           matches</span
         >
@@ -1129,9 +1039,7 @@ onBeforeUnmount(finishTrackDrag);
       <div
         v-if="
           searchQuery.trim() &&
-          !(activeCollection === 'tracks'
-            ? libraryTracks.length
-            : searchedTracks.length)
+          !(activeCollection === 'tracks' ? libraryTracks.length : searchedTracks.length)
         "
         data-search-empty
         class="p-6 text-sm text-(--muted-text)"
@@ -1147,8 +1055,7 @@ onBeforeUnmount(finishTrackDrag);
         :track-filter="trackFilter"
         :tracks="libraryTracks"
         :favorite-track-ids="
-          playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
-          []
+          playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ?? []
         "
         @clear-track-filter="trackFilter = null"
         @add-to-queue="addTracksToQueue"
@@ -1173,8 +1080,7 @@ onBeforeUnmount(finishTrackDrag);
         :playing-item-id="playingItemId"
         :selected-track-ids="[...selectedTrackIds]"
         :favorite-track-ids="
-          playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
-          []
+          playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ?? []
         "
         :grid-item-size="gridItemSize"
         :groups="groupedTracks"
@@ -1237,8 +1143,7 @@ onBeforeUnmount(finishTrackDrag);
 
     <LibraryPlaybackFooter
       :favorite-track-ids="
-        playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ??
-        []
+        playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ?? []
       "
       @toggle-favorite="toggleFavorites([$event])"
       :current-item="currentItem"
@@ -1284,20 +1189,15 @@ onBeforeUnmount(finishTrackDrag);
       @close="trackRemovalTarget = []"
     >
       <div class="w-full min-w-0">
-        <h2
-          id="track-removal-title"
-          class="text-lg font-semibold text-(--text)"
-        >
+        <h2 id="track-removal-title" class="text-lg font-semibold text-(--text)">
           Remove from library?
         </h2>
         <p class="mt-2 break-words text-sm text-(--muted-text)">
           <template v-if="trackRemovalTarget.length === 1">
-            Remove {{ trackRemovalTarget[0]?.title }} from your library and
-            every playlist?
+            Remove {{ trackRemovalTarget[0]?.title }} from your library and every playlist?
           </template>
           <template v-else>
-            Remove {{ trackRemovalTarget.length }} tracks from your library and
-            every playlist?
+            Remove {{ trackRemovalTarget.length }} tracks from your library and every playlist?
           </template>
         </p>
         <div class="mt-6 flex justify-end gap-3">
@@ -1314,7 +1214,7 @@ onBeforeUnmount(finishTrackDrag);
             type="button"
             @click="confirmTrackRemoval"
           >
-            Remove {{ trackRemovalTarget.length === 1 ? "track" : "tracks" }}
+            Remove {{ trackRemovalTarget.length === 1 ? 'track' : 'tracks' }}
           </button>
         </div>
       </div>

@@ -1,146 +1,125 @@
 <script setup lang="ts">
-import {
-  Disc3,
-  ExternalLink,
-  ListPlus,
-  Mic2,
-  Pencil,
-  Play,
-} from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { Disc3, ExternalLink, ListPlus, Mic2, Pencil, Play } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
 
-import type { MediaItem } from "@/api";
-import { formatDuration } from "@/lib/time";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import type { LibraryAlbum, LibraryArtist } from "./types";
-import YouTubeArtwork from "../YouTubeArtwork.vue";
+import type { MediaItem } from '@/api'
+import { formatDuration } from '@/lib/time'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import type { LibraryAlbum, LibraryArtist } from './types'
+import YouTubeArtwork from '../YouTubeArtwork.vue'
 
 const props = withDefaults(
   defineProps<{
-    isOpen: boolean;
-    selectedTrack: MediaItem | null;
-    selectedTracks?: MediaItem[];
-    selectedAlbum: LibraryAlbum | null;
-    selectedArtist: LibraryArtist | null;
+    isOpen: boolean
+    selectedTrack: MediaItem | null
+    selectedTracks?: MediaItem[]
+    selectedAlbum: LibraryAlbum | null
+    selectedArtist: LibraryArtist | null
   }>(),
   {
     selectedTracks: () => [],
   },
-);
+)
 
 const emit = defineEmits<{
-  editTrack: [track: MediaItem];
-  editAlbum: [album: LibraryAlbum];
-  editArtist: [artist: LibraryArtist];
-  playNext: [tracks: MediaItem[]];
-  addToQueue: [tracks: MediaItem[]];
-}>();
+  editTrack: [track: MediaItem]
+  editAlbum: [album: LibraryAlbum]
+  editArtist: [artist: LibraryArtist]
+  playNext: [tracks: MediaItem[]]
+  addToQueue: [tracks: MediaItem[]]
+}>()
 
 interface TrackDetail {
-  label: string;
-  value: string;
+  label: string
+  value: string
 }
 
-const numberFormat = new Intl.NumberFormat();
+const numberFormat = new Intl.NumberFormat()
 const timestampFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-const isDescriptionExpanded = ref(false);
-const hasLongDescription = computed(
-  () => (props.selectedTrack?.description?.length ?? 0) > 280,
-);
-const hasMultipleTracks = computed(() => props.selectedTracks.length > 1);
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+const isDescriptionExpanded = ref(false)
+const hasLongDescription = computed(() => (props.selectedTrack?.description?.length ?? 0) > 280)
+const hasMultipleTracks = computed(() => props.selectedTracks.length > 1)
 const selectedTracksDurationMs = computed(() =>
   props.selectedTracks.reduce((total, track) => total + track.durationMs, 0),
-);
+)
 const trackDetails = computed<TrackDetail[]>(() => {
-  const track = props.selectedTrack;
+  const track = props.selectedTrack
   if (!track) {
-    return [];
+    return []
   }
 
   const optionalDetails: Array<TrackDetail | null> = [
-    track.albumArtist
-      ? { label: "Album artist", value: track.albumArtist }
-      : null,
+    track.albumArtist ? { label: 'Album artist', value: track.albumArtist } : null,
     track.trackNumber !== undefined && track.trackNumber !== null
-      ? { label: "Track number", value: String(track.trackNumber) }
+      ? { label: 'Track number', value: String(track.trackNumber) }
       : null,
     track.discNumber !== undefined && track.discNumber !== null
-      ? { label: "Disc number", value: String(track.discNumber) }
+      ? { label: 'Disc number', value: String(track.discNumber) }
       : null,
-    track.releaseDate ? { label: "Released", value: track.releaseDate } : null,
-    track.uploadDate ? { label: "Uploaded", value: track.uploadDate } : null,
-    track.channel ? { label: "Channel", value: track.channel } : null,
-    track.channelId ? { label: "Channel ID", value: track.channelId } : null,
-    track.uploader ? { label: "Uploader", value: track.uploader } : null,
-    track.uploaderId ? { label: "Uploader ID", value: track.uploaderId } : null,
-    track.label ? { label: "Label", value: track.label } : null,
-    track.genres?.length
-      ? { label: "Genres", value: track.genres.join(", ") }
-      : null,
-    track.categories?.length
-      ? { label: "Categories", value: track.categories.join(", ") }
-      : null,
-    track.tags?.length ? { label: "Tags", value: track.tags.join(", ") } : null,
-    track.language ? { label: "Language", value: track.language } : null,
-    track.availability
-      ? { label: "Availability", value: track.availability }
-      : null,
-    { label: "Stream", value: track.isLive ? "Live" : "On demand" },
+    track.releaseDate ? { label: 'Released', value: track.releaseDate } : null,
+    track.uploadDate ? { label: 'Uploaded', value: track.uploadDate } : null,
+    track.channel ? { label: 'Channel', value: track.channel } : null,
+    track.channelId ? { label: 'Channel ID', value: track.channelId } : null,
+    track.uploader ? { label: 'Uploader', value: track.uploader } : null,
+    track.uploaderId ? { label: 'Uploader ID', value: track.uploaderId } : null,
+    track.label ? { label: 'Label', value: track.label } : null,
+    track.genres?.length ? { label: 'Genres', value: track.genres.join(', ') } : null,
+    track.categories?.length ? { label: 'Categories', value: track.categories.join(', ') } : null,
+    track.tags?.length ? { label: 'Tags', value: track.tags.join(', ') } : null,
+    track.language ? { label: 'Language', value: track.language } : null,
+    track.availability ? { label: 'Availability', value: track.availability } : null,
+    { label: 'Stream', value: track.isLive ? 'Live' : 'On demand' },
     track.viewCount !== undefined && track.viewCount !== null
-      ? { label: "Views", value: numberFormat.format(track.viewCount) }
+      ? { label: 'Views', value: numberFormat.format(track.viewCount) }
       : null,
     track.likeCount !== undefined && track.likeCount !== null
-      ? { label: "Likes", value: numberFormat.format(track.likeCount) }
+      ? { label: 'Likes', value: numberFormat.format(track.likeCount) }
       : null,
-    track.provider ? { label: "Provider", value: track.provider } : null,
-    { label: "Track ID", value: track.id },
+    track.provider ? { label: 'Provider', value: track.provider } : null,
+    { label: 'Track ID', value: track.id },
     {
-      label: "Metadata",
-      value: track.metadataDirty ? "Refresh pending" : "Complete",
+      label: 'Metadata',
+      value: track.metadataDirty ? 'Refresh pending' : 'Complete',
     },
     {
-      label: "Play count",
+      label: 'Play count',
       value: numberFormat.format(track.playCount ?? 0),
     },
     track.lastPlayedAtMs
       ? {
-          label: "Last played",
+          label: 'Last played',
           value: timestampFormat.format(new Date(track.lastPlayedAtMs)),
         }
       : null,
-  ];
+  ]
 
   return [
-    { label: "Album", value: track.album || "—" },
-    { label: "Duration", value: formatDuration(track.durationMs) },
-    ...optionalDetails.filter(
-      (detail): detail is TrackDetail => detail !== null,
-    ),
-  ];
-});
+    { label: 'Album', value: track.album || '—' },
+    { label: 'Duration', value: formatDuration(track.durationMs) },
+    ...optionalDetails.filter((detail): detail is TrackDetail => detail !== null),
+  ]
+})
 
 function formatPlayHistory(timestampMs: number): string {
-  return timestampFormat.format(new Date(timestampMs));
+  return timestampFormat.format(new Date(timestampMs))
 }
 
 watch(
   () => props.selectedTrack?.description,
   () => {
-    isDescriptionExpanded.value = false;
+    isDescriptionExpanded.value = false
   },
-);
+)
 </script>
 
 <template>
   <aside
     class="library-info-panel col-start-3 row-start-1 min-h-0 w-68 min-w-68 overflow-hidden border-l border-(--line) transition-all duration-200 ease-out motion-reduce:transition-none max-[1040px]:hidden"
     :class="
-      props.isOpen
-        ? 'translate-x-0 opacity-100'
-        : 'translate-x-3 pointer-events-none opacity-0'
+      props.isOpen ? 'translate-x-0 opacity-100' : 'translate-x-3 pointer-events-none opacity-0'
     "
     :data-library-info="
       hasMultipleTracks
@@ -161,9 +140,7 @@ watch(
     <ScrollArea class="size-full">
       <div class="p-5">
         <div v-if="hasMultipleTracks" data-library-info="tracks">
-          <p
-            class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
-          >
+          <p class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase">
             Tracks
           </p>
           <h2 class="m-0 text-lg font-semibold text-(--text)">
@@ -204,9 +181,7 @@ watch(
               :missing-icon="Disc3"
             />
           </div>
-          <p
-            class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
-          >
+          <p class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase">
             Track
           </p>
           <h2 class="m-0 text-lg font-semibold text-(--text)">
@@ -264,7 +239,7 @@ watch(
               type="button"
               @click="isDescriptionExpanded = !isDescriptionExpanded"
             >
-              {{ isDescriptionExpanded ? "Show less" : "Show more" }}
+              {{ isDescriptionExpanded ? 'Show less' : 'Show more' }}
             </button>
           </section>
           <dl class="mt-6 grid gap-3 border-t border-(--line) pt-4 text-xs">
@@ -325,14 +300,8 @@ watch(
             >
               Play history
             </h3>
-            <ol
-              class="mt-2 grid gap-1 pl-4 text-xs text-(--text)"
-              data-play-history
-            >
-              <li
-                v-for="timestampMs in props.selectedTrack.playHistoryMs"
-                :key="timestampMs"
-              >
+            <ol class="mt-2 grid gap-1 pl-4 text-xs text-(--text)" data-play-history>
+              <li v-for="timestampMs in props.selectedTrack.playHistoryMs" :key="timestampMs">
                 {{ formatPlayHistory(timestampMs) }}
               </li>
             </ol>
@@ -359,9 +328,7 @@ watch(
               :missing-icon="Disc3"
             />
           </div>
-          <p
-            class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
-          >
+          <p class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase">
             Album
           </p>
           <h2 class="m-0 text-lg font-semibold text-(--text)">
@@ -406,9 +373,7 @@ watch(
               :missing-icon="Mic2"
             />
           </div>
-          <p
-            class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase"
-          >
+          <p class="mb-1 text-[0.65rem] font-semibold tracking-wide text-(--subtle-text) uppercase">
             Artist
           </p>
           <h2 class="m-0 text-lg font-semibold text-(--text)">
@@ -460,11 +425,6 @@ watch(
 .cover-art {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(
-    138deg,
-    var(--artwork-a),
-    var(--artwork-b) 58%,
-    var(--artwork-c)
-  );
+  background: linear-gradient(138deg, var(--artwork-a), var(--artwork-b) 58%, var(--artwork-c));
 }
 </style>

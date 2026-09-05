@@ -1,187 +1,168 @@
-import {
-  DOMWrapper,
-  enableAutoUnmount,
-  flushPromises,
-  mount,
-} from "@vue/test-utils";
-const body = () => new DOMWrapper(document.body);
-import { afterEach, describe, expect, it, vi } from "vitest";
-enableAutoUnmount(afterEach);
+import { DOMWrapper, enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+const body = () => new DOMWrapper(document.body)
+import { afterEach, describe, expect, it, vi } from 'vitest'
+enableAutoUnmount(afterEach)
 
-import type { MediaItem, PlaybackSnapshot, PlaybackTransport } from "@/api";
-import { Slider } from "@/components/ui/slider";
-import LibrarySidebar from "../library/LibrarySidebar.vue";
-import LibraryWindow from "../LibraryWindow.vue";
-import { dragSlider } from "./slider-interaction";
+import type { MediaItem, PlaybackSnapshot, PlaybackTransport } from '@/api'
+import { Slider } from '@/components/ui/slider'
+import LibrarySidebar from '../library/LibrarySidebar.vue'
+import LibraryWindow from '../LibraryWindow.vue'
+import { dragSlider } from './slider-interaction'
 
 const importedTracks: MediaItem[] = [
   {
-    album: "API Sessions",
-    artist: "Google for Developers",
+    album: 'API Sessions',
+    artist: 'Google for Developers',
     durationMs: 238_000,
-    id: "M7lc1UVf-VE",
-    title: "YouTube Developers Live",
+    id: 'M7lc1UVf-VE',
+    title: 'YouTube Developers Live',
   },
   {
-    album: "Creator Music",
-    artist: "YouTube Creators",
+    album: 'Creator Music',
+    artist: 'YouTube Creators',
     durationMs: 207_000,
-    id: "BaW_jenozKc",
-    title: "Creator Studio Session",
+    id: 'BaW_jenozKc',
+    title: 'Creator Studio Session',
   },
-];
+]
 
 const snapshot: PlaybackSnapshot = {
-  status: "paused",
+  status: 'paused',
   currentItem: importedTracks[0],
   positionMs: 0,
   queue: importedTracks,
   volumePercent: 64,
-};
+}
 const transport: PlaybackTransport = {
   currentItem: importedTracks[0],
   positionMs: 0,
-  status: "paused",
+  status: 'paused',
   volumePercent: 64,
-};
+}
 
 function createTrackDataTransfer(): DataTransfer {
-  const values = new Map<string, string>();
-  const types: string[] = [];
+  const values = new Map<string, string>()
+  const types: string[] = []
 
   return {
-    effectAllowed: "uninitialized",
-    getData: (type: string) => values.get(type) ?? "",
+    effectAllowed: 'uninitialized',
+    getData: (type: string) => values.get(type) ?? '',
     setData: (type: string, value: string) => {
-      values.set(type, value);
+      values.set(type, value)
       if (!types.includes(type)) {
-        types.push(type);
+        types.push(type)
       }
     },
     types,
-  } as unknown as DataTransfer;
+  } as unknown as DataTransfer
 }
 
-function createPlainTextTrackDataTransfer(
-  types: string[] = ["text/plain"],
-): DataTransfer {
-  const values = new Map<string, string>();
+function createPlainTextTrackDataTransfer(types: string[] = ['text/plain']): DataTransfer {
+  const values = new Map<string, string>()
 
   return {
-    effectAllowed: "uninitialized",
-    getData: (type: string) => values.get(type) ?? "",
+    effectAllowed: 'uninitialized',
+    getData: (type: string) => values.get(type) ?? '',
     setData: (type: string, value: string) => {
-      if (type === "text/plain") {
-        values.set(type, value);
+      if (type === 'text/plain') {
+        values.set(type, value)
       }
     },
     types,
-  } as unknown as DataTransfer;
+  } as unknown as DataTransfer
 }
 
-describe("LibraryWindow", () => {
-  it("renders from stable library tracks and separate transport state", () => {
+describe('LibraryWindow', () => {
+  it('renders from stable library tracks and separate transport state', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, tracks: importedTracks, transport },
-    });
+    })
 
-    expect(wrapper.findAll("[data-track-id]")).toHaveLength(2);
-    expect(wrapper.get('[aria-label="Track progress"]').text()).toContain(
-      "0:00",
-    );
-  });
+    expect(wrapper.findAll('[data-track-id]')).toHaveLength(2)
+    expect(wrapper.get('[aria-label="Track progress"]').text()).toContain('0:00')
+  })
 
-  it("shows playback command errors in the library window", () => {
+  it('shows playback command errors in the library window', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
-        errorMessage: "the audio player failed",
+        errorMessage: 'the audio player failed',
         isUpdating: false,
         snapshot,
       },
-    });
+    })
 
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      "the audio player failed",
-    );
-  });
+    expect(wrapper.get('[role="alert"]').text()).toBe('the audio player failed')
+  })
 
-  it("keeps tracks, albums, and artists in the library window", async () => {
+  it('keeps tracks, albums, and artists in the library window', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    expect(wrapper.get("h1").text()).toBe("Albums");
-    const albumTable = wrapper.get("[data-library-album-list]");
-    expect(albumTable.text()).toContain("Album");
-    expect(albumTable.text()).toContain("Artist");
-    expect(albumTable.text()).toContain("Tracks");
-    expect(albumTable.text()).toContain("Duration");
-    expect(albumTable.findAll("tbody .album-tile")).toHaveLength(2);
-    expect(wrapper.text()).toContain("API Sessions");
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    expect(wrapper.get('h1').text()).toBe('Albums')
+    const albumTable = wrapper.get('[data-library-album-list]')
+    expect(albumTable.text()).toContain('Album')
+    expect(albumTable.text()).toContain('Artist')
+    expect(albumTable.text()).toContain('Tracks')
+    expect(albumTable.text()).toContain('Duration')
+    expect(albumTable.findAll('tbody .album-tile')).toHaveLength(2)
+    expect(wrapper.text()).toContain('API Sessions')
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    expect(wrapper.get("h1").text()).toBe("Artists");
-    const artistTable = wrapper.get("[data-library-artist-list]");
-    expect(artistTable.text()).toContain("Artist");
-    expect(artistTable.text()).toContain("Albums");
-    expect(artistTable.text()).toContain("Tracks");
-    expect(artistTable.text()).toContain("Duration");
-    expect(artistTable.findAll("tbody .artist-tile")).toHaveLength(2);
-    expect(wrapper.text()).toContain("Google for Developers");
-  });
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    expect(wrapper.get('h1').text()).toBe('Artists')
+    const artistTable = wrapper.get('[data-library-artist-list]')
+    expect(artistTable.text()).toContain('Artist')
+    expect(artistTable.text()).toContain('Albums')
+    expect(artistTable.text()).toContain('Tracks')
+    expect(artistTable.text()).toContain('Duration')
+    expect(artistTable.findAll('tbody .artist-tile')).toHaveLength(2)
+    expect(wrapper.text()).toContain('Google for Developers')
+  })
 
-  it("keeps the selected collection when switching between list and grid", async () => {
+  it('keeps the selected collection when switching between list and grid', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
 
-    expect(wrapper.get("h1").text()).toBe("Tracks");
-    expect(
-      wrapper.get('button[aria-label="Grid view"]').attributes("aria-pressed"),
-    ).toBe("true");
-    expect(wrapper.find(".track-grid").exists()).toBe(true);
+    expect(wrapper.get('h1').text()).toBe('Tracks')
+    expect(wrapper.get('button[aria-label="Grid view"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('.track-grid').exists()).toBe(true)
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    expect(wrapper.get("h1").text()).toBe("Albums");
-    expect(wrapper.find(".album-tile").exists()).toBe(true);
-    expect(
-      wrapper.get('button[aria-label="Grid view"]').attributes("aria-pressed"),
-    ).toBe("true");
-  });
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    expect(wrapper.get('h1').text()).toBe('Albums')
+    expect(wrapper.find('.album-tile').exists()).toBe(true)
+    expect(wrapper.get('button[aria-label="Grid view"]').attributes('aria-pressed')).toBe('true')
+  })
 
-  it("sorts tracks in both list and grid views", async () => {
+  it('sorts tracks in both list and grid views', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper
-      .get('button[aria-label="More library options"]')
-      .trigger("click");
-    await wrapper.get('[data-sort="title-desc"]').trigger("click");
-    expect(
-      wrapper.get('[data-track-id="M7lc1UVf-VE"] .track-title').text(),
-    ).toBe("YouTube Developers Live");
+    await wrapper.get('button[aria-label="More library options"]').trigger('click')
+    await wrapper.get('[data-sort="title-desc"]').trigger('click')
+    expect(wrapper.get('[data-track-id="M7lc1UVf-VE"] .track-title').text()).toBe(
+      'YouTube Developers Live',
+    )
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    expect(wrapper.get(".track-grid .track-tile").text()).toContain(
-      "YouTube Developers Live",
-    );
-  });
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    expect(wrapper.get('.track-grid .track-tile').text()).toContain('YouTube Developers Live')
+  })
 
-  it("sections grid entries by the active sort field", async () => {
+  it('sections grid entries by the active sort field', async () => {
     const sectionTracks: MediaItem[] = [
-      { ...importedTracks[0], id: "alpha", title: "Alpha" },
-      { ...importedTracks[1], id: "beta", title: "Beta" },
-      { ...importedTracks[0], id: "another", title: "Another" },
-    ];
+      { ...importedTracks[0], id: 'alpha', title: 'Alpha' },
+      { ...importedTracks[1], id: 'beta', title: 'Beta' },
+      { ...importedTracks[0], id: 'another', title: 'Another' },
+    ]
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -192,160 +173,139 @@ describe("LibraryWindow", () => {
           queue: sectionTracks,
         },
       },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
 
+    expect(wrapper.findAll('[data-library-section]').map((section) => section.text())).toEqual([
+      'A',
+      'B',
+    ])
     expect(
-      wrapper
-        .findAll("[data-library-section]")
-        .map((section) => section.text()),
-    ).toEqual(["A", "B"]);
-    expect(
-      wrapper
-        .findAll(".library-group")
-        .map((group) => group.findAll("[data-track-id]").length),
-    ).toEqual([2, 1]);
+      wrapper.findAll('.library-group').map((group) => group.findAll('[data-track-id]').length),
+    ).toEqual([2, 1])
 
-    await wrapper
-      .get('button[aria-label="More library options"]')
-      .trigger("click");
-    await wrapper.get('[data-sort="title-desc"]').trigger("click");
+    await wrapper.get('button[aria-label="More library options"]').trigger('click')
+    await wrapper.get('[data-sort="title-desc"]').trigger('click')
 
-    expect(
-      wrapper
-        .findAll("[data-library-section]")
-        .map((section) => section.text()),
-    ).toEqual(["B", "A"]);
+    expect(wrapper.findAll('[data-library-section]').map((section) => section.text())).toEqual([
+      'B',
+      'A',
+    ])
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    expect(
-      wrapper
-        .findAll("[data-library-section]")
-        .map((section) => section.text()),
-    ).toEqual(["C", "A"]);
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    expect(wrapper.findAll('[data-library-section]').map((section) => section.text())).toEqual([
+      'C',
+      'A',
+    ])
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    expect(
-      wrapper
-        .findAll("[data-library-section]")
-        .map((section) => section.text()),
-    ).toEqual(["Y", "G"]);
-  });
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    expect(wrapper.findAll('[data-library-section]').map((section) => section.text())).toEqual([
+      'Y',
+      'G',
+    ])
+  })
 
-  it("virtualizes every library grid collection", async () => {
+  it('virtualizes every library grid collection', async () => {
     const tracks = Array.from({ length: 240 }, (_, index) => ({
       ...importedTracks[index % importedTracks.length]!,
-      album: `Album ${index.toString().padStart(3, "0")}`,
-      artist: `Artist ${index.toString().padStart(3, "0")}`,
+      album: `Album ${index.toString().padStart(3, '0')}`,
+      artist: `Artist ${index.toString().padStart(3, '0')}`,
       id: `track-${index}`,
-      title: `Track ${index.toString().padStart(3, "0")}`,
-    }));
+      title: `Track ${index.toString().padStart(3, '0')}`,
+    }))
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, currentItem: tracks[0], queue: tracks },
       },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    expect(wrapper.get("[data-library-grid-virtualizer]")).toBeDefined();
-    expect(wrapper.findAll("[data-track-id]").length).toBeLessThan(
-      tracks.length,
-    );
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    expect(wrapper.get('[data-library-grid-virtualizer]')).toBeDefined()
+    expect(wrapper.findAll('[data-track-id]').length).toBeLessThan(tracks.length)
 
-    const trackGrid = wrapper.get(
-      '[aria-label="Tracks grid"] [data-slot="scroll-area-viewport"]',
-    );
-    trackGrid.element.scrollTop = 10_000;
-    await trackGrid.trigger("scroll");
-    expect(wrapper.find('[data-track-id="track-200"]').exists()).toBe(true);
-    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false);
+    const trackGrid = wrapper.get('[aria-label="Tracks grid"] [data-slot="scroll-area-viewport"]')
+    trackGrid.element.scrollTop = 10_000
+    await trackGrid.trigger('scroll')
+    expect(wrapper.find('[data-track-id="track-200"]').exists()).toBe(true)
+    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false)
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    expect(wrapper.findAll(".album-tile").length).toBeLessThan(tracks.length);
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    expect(wrapper.findAll('.album-tile').length).toBeLessThan(tracks.length)
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    expect(wrapper.findAll(".artist-tile").length).toBeLessThan(tracks.length);
-  });
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    expect(wrapper.findAll('.artist-tile').length).toBeLessThan(tracks.length)
+  })
 
-  it("sorts tracks from table column headers", async () => {
+  it('sorts tracks from table column headers', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    const titleHeader = wrapper.get('[data-sort-column="title"]');
-    expect(titleHeader.attributes("aria-sort")).toBe("ascending");
+    const titleHeader = wrapper.get('[data-sort-column="title"]')
+    expect(titleHeader.attributes('aria-sort')).toBe('ascending')
 
-    await titleHeader.get("button").trigger("click");
+    await titleHeader.get('button').trigger('click')
 
-    expect(titleHeader.attributes("aria-sort")).toBe("descending");
-    expect(
-      wrapper.get('[data-track-id="M7lc1UVf-VE"] .track-title').text(),
-    ).toBe("YouTube Developers Live");
+    expect(titleHeader.attributes('aria-sort')).toBe('descending')
+    expect(wrapper.get('[data-track-id="M7lc1UVf-VE"] .track-title').text()).toBe(
+      'YouTube Developers Live',
+    )
 
-    for (const column of ["artist", "album", "duration"] as const) {
-      const header = wrapper.get(`[data-sort-column="${column}"]`);
+    for (const column of ['artist', 'album', 'duration'] as const) {
+      const header = wrapper.get(`[data-sort-column="${column}"]`)
 
-      await header.get("button").trigger("click");
+      await header.get('button').trigger('click')
 
-      expect(header.attributes("aria-sort")).toBe("ascending");
+      expect(header.attributes('aria-sort')).toBe('ascending')
     }
-  });
+  })
 
-  it("sorts album and artist tables from every data column header", async () => {
+  it('sorts album and artist tables from every data column header', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
+    await wrapper.get('[data-collection="albums"]').trigger('click')
     for (const [column, direction] of [
-      ["title", "descending"],
-      ["artist", "ascending"],
-      ["track-count", "ascending"],
-      ["duration", "ascending"],
+      ['title', 'descending'],
+      ['artist', 'ascending'],
+      ['track-count', 'ascending'],
+      ['duration', 'ascending'],
     ] as const) {
-      const header = wrapper
-        .get("[data-library-album-list]")
-        .get(`[data-sort-column="${column}"]`);
+      const header = wrapper.get('[data-library-album-list]').get(`[data-sort-column="${column}"]`)
 
-      await header.get("button").trigger("click");
+      await header.get('button').trigger('click')
 
-      expect(header.attributes("aria-sort")).toBe(direction);
+      expect(header.attributes('aria-sort')).toBe(direction)
     }
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    for (const column of [
-      "title",
-      "album-count",
-      "track-count",
-      "duration",
-    ] as const) {
-      const header = wrapper
-        .get("[data-library-artist-list]")
-        .get(`[data-sort-column="${column}"]`);
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    for (const column of ['title', 'album-count', 'track-count', 'duration'] as const) {
+      const header = wrapper.get('[data-library-artist-list]').get(`[data-sort-column="${column}"]`)
 
-      await header.get("button").trigger("click");
+      await header.get('button').trigger('click')
 
-      expect(header.attributes("aria-sort")).toBe("ascending");
+      expect(header.attributes('aria-sort')).toBe('ascending')
     }
-  });
+  })
 
-  it("orders album and artist rows by their count columns", async () => {
+  it('orders album and artist rows by their count columns', async () => {
     const countTracks: MediaItem[] = [
-      { ...importedTracks[0], album: "Big", artist: "Band A", id: "big-1" },
-      { ...importedTracks[0], album: "Big", artist: "Band A", id: "big-2" },
-      { ...importedTracks[1], album: "Small", artist: "Band B", id: "small-1" },
+      { ...importedTracks[0], album: 'Big', artist: 'Band A', id: 'big-1' },
+      { ...importedTracks[0], album: 'Big', artist: 'Band A', id: 'big-2' },
+      { ...importedTracks[1], album: 'Small', artist: 'Band B', id: 'small-1' },
       {
         ...importedTracks[0],
-        album: "Medium",
-        artist: "Band A",
-        id: "medium-1",
+        album: 'Medium',
+        artist: 'Band A',
+        id: 'medium-1',
       },
-    ];
+    ]
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -356,98 +316,74 @@ describe("LibraryWindow", () => {
           queue: countTracks,
         },
       },
-    });
+    })
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    const albumTable = wrapper.get("[data-library-album-list]");
-    await albumTable
-      .get('[data-sort-column="track-count"] button')
-      .trigger("click");
-    expect(albumTable.findAll("tbody .album-tile")[0]!.text()).toContain(
-      "Small",
-    );
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    const albumTable = wrapper.get('[data-library-album-list]')
+    await albumTable.get('[data-sort-column="track-count"] button').trigger('click')
+    expect(albumTable.findAll('tbody .album-tile')[0]!.text()).toContain('Small')
 
-    await albumTable
-      .get('[data-sort-column="track-count"] button')
-      .trigger("click");
-    expect(albumTable.findAll("tbody .album-tile")[0]!.text()).toContain("Big");
+    await albumTable.get('[data-sort-column="track-count"] button').trigger('click')
+    expect(albumTable.findAll('tbody .album-tile')[0]!.text()).toContain('Big')
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    const artistTable = wrapper.get("[data-library-artist-list]");
-    await artistTable
-      .get('[data-sort-column="album-count"] button')
-      .trigger("click");
-    expect(artistTable.findAll("tbody .artist-tile")[0]!.text()).toContain(
-      "Band B",
-    );
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    const artistTable = wrapper.get('[data-library-artist-list]')
+    await artistTable.get('[data-sort-column="album-count"] button').trigger('click')
+    expect(artistTable.findAll('tbody .artist-tile')[0]!.text()).toContain('Band B')
 
-    await artistTable
-      .get('[data-sort-column="album-count"] button')
-      .trigger("click");
-    expect(artistTable.findAll("tbody .artist-tile")[0]!.text()).toContain(
-      "Band A",
-    );
-  });
+    await artistTable.get('[data-sort-column="album-count"] button').trigger('click')
+    expect(artistTable.findAll('tbody .artist-tile')[0]!.text()).toContain('Band A')
+  })
 
-  it("groups grid items without changing the list view", async () => {
+  it('groups grid items without changing the list view', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper
-      .get('button[aria-label="More library options"]')
-      .trigger("click");
-    await wrapper.get('[data-group="artist"]').trigger("click");
-    expect(wrapper.findAll(".library-group")).toHaveLength(0);
+    await wrapper.get('button[aria-label="More library options"]').trigger('click')
+    await wrapper.get('[data-group="artist"]').trigger('click')
+    expect(wrapper.findAll('.library-group')).toHaveLength(0)
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    expect(wrapper.findAll(".library-group")).toHaveLength(2);
-  });
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    expect(wrapper.findAll('.library-group')).toHaveLength(2)
+  })
 
-  it("filters tracks after double-clicking an album or artist", async () => {
+  it('filters tracks after double-clicking an album or artist', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    await wrapper.get(".album-tile").trigger("dblclick");
-    expect(wrapper.get("h1").text()).toBe("Tracks");
-    expect(wrapper.get("[data-library-filter]").text()).toContain(
-      "API Sessions",
-    );
-    expect(wrapper.findAll("[data-track-id]")).toHaveLength(1);
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    await wrapper.get('.album-tile').trigger('dblclick')
+    expect(wrapper.get('h1').text()).toBe('Tracks')
+    expect(wrapper.get('[data-library-filter]').text()).toContain('API Sessions')
+    expect(wrapper.findAll('[data-track-id]')).toHaveLength(1)
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    await wrapper.get(".artist-tile").trigger("dblclick");
-    expect(wrapper.get("h1").text()).toBe("Tracks");
-    expect(wrapper.get("[data-library-filter]").text()).toContain(
-      "Google for Developers",
-    );
-    expect(wrapper.findAll("[data-track-id]")).toHaveLength(1);
-  });
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    await wrapper.get('.artist-tile').trigger('dblclick')
+    expect(wrapper.get('h1').text()).toBe('Tracks')
+    expect(wrapper.get('[data-library-filter]').text()).toContain('Google for Developers')
+    expect(wrapper.findAll('[data-track-id]')).toHaveLength(1)
+  })
 
-  it("shows metadata for the selected track, album, or artist", async () => {
+  it('shows metadata for the selected track, album, or artist', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
-    expect(wrapper.get('[data-library-info="track"]').text()).toContain(
-      "Creator Studio Session",
-    );
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click')
+    expect(wrapper.get('[data-library-info="track"]').text()).toContain('Creator Studio Session')
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    await wrapper.get(".album-tile").trigger("click");
-    expect(wrapper.get('[data-library-info="album"]').text()).toContain(
-      "API Sessions",
-    );
-  });
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    await wrapper.get('.album-tile').trigger('click')
+    expect(wrapper.get('[data-library-info="album"]').text()).toContain('API Sessions')
+  })
 
-  it("plays a selected track, album, or artist when playback is idle", async () => {
-    const idleSnapshot = { ...snapshot, currentItem: null, queue: [] };
+  it('plays a selected track, album, or artist when playback is idle', async () => {
+    const idleSnapshot = { ...snapshot, currentItem: null, queue: [] }
 
     const trackWindow = mount(LibraryWindow, {
       attachTo: document.body,
@@ -456,12 +392,10 @@ describe("LibraryWindow", () => {
         snapshot: idleSnapshot,
         tracks: importedTracks,
       },
-    });
-    await trackWindow.get('[data-track-id="BaW_jenozKc"]').trigger("click");
-    await trackWindow.get('button[aria-label="Play"]').trigger("click");
-    expect(trackWindow.emitted("playTrack")).toEqual([
-      [["BaW_jenozKc"], "BaW_jenozKc"],
-    ]);
+    })
+    await trackWindow.get('[data-track-id="BaW_jenozKc"]').trigger('click')
+    await trackWindow.get('button[aria-label="Play"]').trigger('click')
+    expect(trackWindow.emitted('playTrack')).toEqual([[['BaW_jenozKc'], 'BaW_jenozKc']])
 
     const albumWindow = mount(LibraryWindow, {
       attachTo: document.body,
@@ -470,13 +404,11 @@ describe("LibraryWindow", () => {
         snapshot: idleSnapshot,
         tracks: importedTracks,
       },
-    });
-    await albumWindow.get('[data-collection="albums"]').trigger("click");
-    await albumWindow.get(".album-tile").trigger("click");
-    await albumWindow.get('button[aria-label="Play"]').trigger("click");
-    expect(albumWindow.emitted("playTrack")).toEqual([
-      [["M7lc1UVf-VE"], "M7lc1UVf-VE"],
-    ]);
+    })
+    await albumWindow.get('[data-collection="albums"]').trigger('click')
+    await albumWindow.get('.album-tile').trigger('click')
+    await albumWindow.get('button[aria-label="Play"]').trigger('click')
+    expect(albumWindow.emitted('playTrack')).toEqual([[['M7lc1UVf-VE'], 'M7lc1UVf-VE']])
 
     const artistWindow = mount(LibraryWindow, {
       attachTo: document.body,
@@ -485,16 +417,14 @@ describe("LibraryWindow", () => {
         snapshot: idleSnapshot,
         tracks: importedTracks,
       },
-    });
-    await artistWindow.get('[data-collection="artists"]').trigger("click");
-    await artistWindow.get(".artist-tile").trigger("click");
-    await artistWindow.get('button[aria-label="Play"]').trigger("click");
-    expect(artistWindow.emitted("playTrack")).toEqual([
-      [["M7lc1UVf-VE"], "M7lc1UVf-VE"],
-    ]);
-  });
+    })
+    await artistWindow.get('[data-collection="artists"]').trigger('click')
+    await artistWindow.get('.artist-tile').trigger('click')
+    await artistWindow.get('button[aria-label="Play"]').trigger('click')
+    expect(artistWindow.emitted('playTrack')).toEqual([[['M7lc1UVf-VE'], 'M7lc1UVf-VE']])
+  })
 
-  it("does nothing when playback is idle and no library item is selected", async () => {
+  it('does nothing when playback is idle and no library item is selected', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -502,15 +432,15 @@ describe("LibraryWindow", () => {
         snapshot: { ...snapshot, currentItem: null, queue: [] },
         tracks: importedTracks,
       },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Play"]').trigger("click");
+    await wrapper.get('button[aria-label="Play"]').trigger('click')
 
-    expect(wrapper.emitted("playTrack")).toBeUndefined();
-    expect(wrapper.emitted("toggle")).toBeUndefined();
-  });
+    expect(wrapper.emitted('playTrack')).toBeUndefined()
+    expect(wrapper.emitted('toggle')).toBeUndefined()
+  })
 
-  it("queues selected tracks in playback order when playback is idle", async () => {
+  it('queues selected tracks in playback order when playback is idle', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -518,62 +448,52 @@ describe("LibraryWindow", () => {
         snapshot: { ...snapshot, currentItem: null, queue: [] },
         tracks: importedTracks,
       },
-    });
+    })
 
-    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
-    await wrapper
-      .get('[data-track-id="BaW_jenozKc"]')
-      .trigger("click", { metaKey: true });
-    await wrapper
-      .get('button[aria-label="Play 2 tracks next"]')
-      .trigger("click");
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger('click')
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click', { metaKey: true })
+    await wrapper.get('button[aria-label="Play 2 tracks next"]').trigger('click')
 
-    expect(wrapper.emitted("playNext")).toEqual([
-      [["M7lc1UVf-VE", "BaW_jenozKc"]],
-    ]);
-  });
+    expect(wrapper.emitted('playNext')).toEqual([[['M7lc1UVf-VE', 'BaW_jenozKc']]])
+  })
 
-  it("edits the selected track metadata in a modal", async () => {
+  it('edits the selected track metadata in a modal', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
-    await wrapper
-      .get('[aria-label="Edit track YouTube Developers Live"]')
-      .trigger("click");
-    expect(body().get('[role="dialog"]').text()).toContain("Edit Track");
-    expect(body().get('[role="dialog"]').attributes("data-state")).toBe("open");
-    expect(body().get('[role="dialog"]').attributes("aria-modal")).toBe("true");
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger('click')
+    await wrapper.get('[aria-label="Edit track YouTube Developers Live"]').trigger('click')
+    expect(body().get('[role="dialog"]').text()).toContain('Edit Track')
+    expect(body().get('[role="dialog"]').attributes('data-state')).toBe('open')
+    expect(body().get('[role="dialog"]').attributes('aria-modal')).toBe('true')
 
-    await body()
-      .get('[data-metadata-field="title"]')
-      .setValue("Renamed session");
-    await body().get('[role="dialog"] form').trigger("submit");
+    await body().get('[data-metadata-field="title"]').setValue('Renamed session')
+    await body().get('[role="dialog"] form').trigger('submit')
 
-    expect(wrapper.emitted("updateTracksMetadata")).toEqual([
+    expect(wrapper.emitted('updateTracksMetadata')).toEqual([
       [
         [
           {
-            id: "M7lc1UVf-VE",
-            metadata: { title: "Renamed session" },
+            id: 'M7lc1UVf-VE',
+            metadata: { title: 'Renamed session' },
           },
         ],
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("edits album metadata across its tracks without changing their titles", async () => {
+  it('edits album metadata across its tracks without changing their titles', async () => {
     const albumTracks: MediaItem[] = [
-      { ...importedTracks[0], album: "Shared", id: "shared-1", title: "First" },
+      { ...importedTracks[0], album: 'Shared', id: 'shared-1', title: 'First' },
       {
         ...importedTracks[0],
-        album: "Shared",
-        id: "shared-2",
-        title: "Second",
+        album: 'Shared',
+        id: 'shared-2',
+        title: 'Second',
       },
-    ];
+    ]
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -584,35 +504,35 @@ describe("LibraryWindow", () => {
           queue: albumTracks,
         },
       },
-    });
+    })
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    await wrapper.get(".album-tile").trigger("click");
-    await wrapper.get('[aria-label="Edit album Shared"]').trigger("click");
-    await body().get('[data-metadata-field="album"]').setValue("Renamed album");
-    await body().get('[role="dialog"] form').trigger("submit");
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    await wrapper.get('.album-tile').trigger('click')
+    await wrapper.get('[aria-label="Edit album Shared"]').trigger('click')
+    await body().get('[data-metadata-field="album"]').setValue('Renamed album')
+    await body().get('[role="dialog"] form').trigger('submit')
 
-    expect(wrapper.emitted("updateTracksMetadata")).toEqual([
+    expect(wrapper.emitted('updateTracksMetadata')).toEqual([
       [
         [
           {
-            id: "shared-1",
-            metadata: { album: "Renamed album" },
+            id: 'shared-1',
+            metadata: { album: 'Renamed album' },
           },
           {
-            id: "shared-2",
-            metadata: { album: "Renamed album" },
+            id: 'shared-2',
+            metadata: { album: 'Renamed album' },
           },
         ],
       ],
-    ]);
-  });
+    ])
+  })
 
   it("edits artist metadata across that artist's tracks", async () => {
     const artistTracks: MediaItem[] = [
-      { ...importedTracks[0], id: "artist-1", title: "First" },
-      { ...importedTracks[0], id: "artist-2", title: "Second" },
-    ];
+      { ...importedTracks[0], id: 'artist-1', title: 'First' },
+      { ...importedTracks[0], id: 'artist-2', title: 'Second' },
+    ]
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -623,319 +543,281 @@ describe("LibraryWindow", () => {
           queue: artistTracks,
         },
       },
-    });
+    })
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    await wrapper.get(".artist-tile").trigger("click");
-    await wrapper
-      .get('[aria-label="Edit artist Google for Developers"]')
-      .trigger("click");
-    await body()
-      .get('[data-metadata-field="artist"]')
-      .setValue("Renamed artist");
-    await body().get('[role="dialog"] form').trigger("submit");
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    await wrapper.get('.artist-tile').trigger('click')
+    await wrapper.get('[aria-label="Edit artist Google for Developers"]').trigger('click')
+    await body().get('[data-metadata-field="artist"]').setValue('Renamed artist')
+    await body().get('[role="dialog"] form').trigger('submit')
 
-    expect(wrapper.emitted("updateTracksMetadata")).toEqual([
+    expect(wrapper.emitted('updateTracksMetadata')).toEqual([
       [
         [
           {
-            id: "artist-1",
-            metadata: { artist: "Renamed artist" },
+            id: 'artist-1',
+            metadata: { artist: 'Renamed artist' },
           },
           {
-            id: "artist-2",
-            metadata: { artist: "Renamed artist" },
+            id: 'artist-2',
+            metadata: { artist: 'Renamed artist' },
           },
         ],
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("shows complete metadata and listening history for a selected track", async () => {
+  it('shows complete metadata and listening history for a selected track', async () => {
     const detailedTrack: MediaItem = {
       ...importedTracks[0],
-      albumArtist: "Google",
-      availability: "public",
-      categories: ["Science & Technology", "Music"],
-      channel: "Google Developers",
-      channelId: "UC_x5XG1OV2P6uZZ5FSM9Ttw",
-      description: "A complete metadata fixture.",
+      albumArtist: 'Google',
+      availability: 'public',
+      categories: ['Science & Technology', 'Music'],
+      channel: 'Google Developers',
+      channelId: 'UC_x5XG1OV2P6uZZ5FSM9Ttw',
+      description: 'A complete metadata fixture.',
       discNumber: 1,
-      genres: ["Educational"],
+      genres: ['Educational'],
       isLive: false,
-      language: "en",
+      language: 'en',
       lastPlayedAtMs: 1_734_000_060_000,
       likeCount: 7,
       metadataDirty: false,
       playCount: 2,
       playHistoryMs: [1_734_000_000_000, 1_734_000_060_000],
-      provider: "youtube",
-      releaseDate: "2025-01-02",
-      sourceUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
-      tags: ["API", "Developers"],
-      thumbnailUrl: "https://i.ytimg.com/vi/M7lc1UVf-VE/maxresdefault.jpg",
+      provider: 'youtube',
+      releaseDate: '2025-01-02',
+      sourceUrl: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+      tags: ['API', 'Developers'],
+      thumbnailUrl: 'https://i.ytimg.com/vi/M7lc1UVf-VE/maxresdefault.jpg',
       trackNumber: 3,
-      uploadDate: "2025-01-03",
-      uploader: "Google for Developers",
-      uploaderId: "GoogleDevelopers",
+      uploadDate: '2025-01-03',
+      uploader: 'Google for Developers',
+      uploaderId: 'GoogleDevelopers',
       viewCount: 42,
-    };
+    }
     const detailedSnapshot = {
       ...snapshot,
       currentItem: detailedTrack,
       queue: [detailedTrack, importedTracks[1]],
-    };
+    }
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot: detailedSnapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger('click')
 
-    const sidebar = wrapper.get('[data-library-info="track"]');
+    const sidebar = wrapper.get('[data-library-info="track"]')
     for (const text of [
-      "Track number",
-      "Disc number",
-      "Uploaded",
-      "Description",
-      "Channel ID",
-      "Uploader",
-      "Uploader ID",
-      "Categories",
-      "Tags",
-      "Language",
-      "Availability",
-      "Views",
-      "Likes",
-      "Provider",
-      "Play count",
-      "Last played",
-      "Play history",
+      'Track number',
+      'Disc number',
+      'Uploaded',
+      'Description',
+      'Channel ID',
+      'Uploader',
+      'Uploader ID',
+      'Categories',
+      'Tags',
+      'Language',
+      'Availability',
+      'Views',
+      'Likes',
+      'Provider',
+      'Play count',
+      'Last played',
+      'Play history',
     ]) {
-      expect(sidebar.text()).toContain(text);
+      expect(sidebar.text()).toContain(text)
     }
-    expect(sidebar.get("[data-track-source]").attributes("href")).toBe(
-      detailedTrack.sourceUrl,
-    );
-    expect(sidebar.get("[data-track-thumbnail]").attributes("href")).toBe(
+    expect(sidebar.get('[data-track-source]').attributes('href')).toBe(detailedTrack.sourceUrl)
+    expect(sidebar.get('[data-track-thumbnail]').attributes('href')).toBe(
       detailedTrack.thumbnailUrl,
-    );
-    expect(sidebar.findAll("[data-play-history] li")).toHaveLength(2);
-  });
+    )
+    expect(sidebar.findAll('[data-play-history] li')).toHaveLength(2)
+  })
 
-  it("expands and collapses a long selected-track description", async () => {
+  it('expands and collapses a long selected-track description', async () => {
     const detailedTrack: MediaItem = {
       ...importedTracks[0],
-      description: "Long description. ".repeat(30),
-    };
+      description: 'Long description. '.repeat(30),
+    }
     const detailedSnapshot = {
       ...snapshot,
       currentItem: detailedTrack,
       queue: [detailedTrack, importedTracks[1]],
-    };
+    }
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot: detailedSnapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger('click')
 
-    const description = wrapper.get("[data-track-description]");
-    const toggle = wrapper.get("[data-track-description-toggle]");
-    expect(description.classes()).toContain("line-clamp-6");
-    expect(toggle.text()).toBe("Show more");
-    expect(toggle.attributes("aria-expanded")).toBe("false");
+    const description = wrapper.get('[data-track-description]')
+    const toggle = wrapper.get('[data-track-description-toggle]')
+    expect(description.classes()).toContain('line-clamp-6')
+    expect(toggle.text()).toBe('Show more')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
 
-    await toggle.trigger("click");
-    expect(description.classes()).not.toContain("line-clamp-6");
-    expect(toggle.text()).toBe("Show less");
-    expect(toggle.attributes("aria-expanded")).toBe("true");
+    await toggle.trigger('click')
+    expect(description.classes()).not.toContain('line-clamp-6')
+    expect(toggle.text()).toBe('Show less')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
 
-    await toggle.trigger("click");
-    expect(description.classes()).toContain("line-clamp-6");
-    expect(toggle.text()).toBe("Show more");
-  });
+    await toggle.trigger('click')
+    expect(description.classes()).toContain('line-clamp-6')
+    expect(toggle.text()).toBe('Show more')
+  })
 
-  it("exposes a grid item size slider in grid view", async () => {
+  it('exposes a grid item size slider in grid view', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    expect(wrapper.find('[aria-label="Grid item size"]').exists()).toBe(false);
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    expect(wrapper.get('[aria-label="Grid item size"]')).toBeDefined();
-  });
+    expect(wrapper.find('[aria-label="Grid item size"]').exists()).toBe(false)
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    expect(wrapper.get('[aria-label="Grid item size"]')).toBeDefined()
+  })
 
-  it("provides a native drag strip without a visible application header", () => {
+  it('provides a native drag strip without a visible application header', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    expect(wrapper.find(".application-header").exists()).toBe(false);
-    expect(wrapper.get(".application-drag-region").attributes()).toHaveProperty(
-      "data-tauri-drag-region",
-    );
-  });
+    expect(wrapper.find('.application-header').exists()).toBe(false)
+    expect(wrapper.get('.application-drag-region').attributes()).toHaveProperty(
+      'data-tauri-drag-region',
+    )
+  })
 
-  it("uses one continuous glass surface for the library shell", () => {
+  it('uses one continuous glass surface for the library shell', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    expect(wrapper.get("aside").classes()).not.toContain(
-      "bg-[var(--glass-sidebar)]",
-    );
-    expect(wrapper.get(".library-content").classes()).not.toContain(
-      "bg-[oklch(0.12_0.012_248/0.22)]",
-    );
-    expect(wrapper.get("footer").classes()).not.toContain(
-      "bg-[var(--glass-sidebar)]",
-    );
-  });
+    expect(wrapper.get('aside').classes()).not.toContain('bg-[var(--glass-sidebar)]')
+    expect(wrapper.get('.library-content').classes()).not.toContain(
+      'bg-[oklch(0.12_0.012_248/0.22)]',
+    )
+    expect(wrapper.get('footer').classes()).not.toContain('bg-[var(--glass-sidebar)]')
+  })
 
-  it("applies sidebar resize updates to the library grid", async () => {
+  it('applies sidebar resize updates to the library grid', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    expect(wrapper.get("main").attributes("style")).toContain(
-      "--library-sidebar-width: 244px",
-    );
+    expect(wrapper.get('main').attributes('style')).toContain('--library-sidebar-width: 244px')
 
-    await wrapper.getComponent(LibrarySidebar).vm.$emit("resizeSidebar", 300);
+    await wrapper.getComponent(LibrarySidebar).vm.$emit('resizeSidebar', 300)
 
-    expect(wrapper.get("main").attributes("style")).toContain(
-      "--library-sidebar-width: 300px",
-    );
-  });
+    expect(wrapper.get('main').attributes('style')).toContain('--library-sidebar-width: 300px')
+  })
 
-  it("disables sidebar width transitions during a pointer resize", async () => {
+  it('disables sidebar width transitions during a pointer resize', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    const library = wrapper.get("main");
-    const divider = wrapper.get("[data-library-sidebar-resize]");
-    expect(library.classes()).toContain("transition-[grid-template-columns]");
+    const library = wrapper.get('main')
+    const divider = wrapper.get('[data-library-sidebar-resize]')
+    expect(library.classes()).toContain('transition-[grid-template-columns]')
 
-    await divider.trigger("mousedown", { button: 0, clientX: 300 });
+    await divider.trigger('mousedown', { button: 0, clientX: 300 })
 
-    expect(library.classes()).toContain("transition-none");
-    expect(library.classes()).not.toContain(
-      "transition-[grid-template-columns]",
-    );
+    expect(library.classes()).toContain('transition-none')
+    expect(library.classes()).not.toContain('transition-[grid-template-columns]')
 
-    window.dispatchEvent(new MouseEvent("mouseup"));
-    await wrapper.vm.$nextTick();
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    await wrapper.vm.$nextTick()
 
-    expect(library.classes()).toContain("transition-[grid-template-columns]");
-    expect(library.classes()).not.toContain("transition-none");
-  });
+    expect(library.classes()).toContain('transition-[grid-template-columns]')
+    expect(library.classes()).not.toContain('transition-none')
+  })
 
-  it("uses shared scroll areas for library content surfaces", async () => {
+  it('uses shared scroll areas for library content surfaces', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    const sidebar = wrapper.get("[data-library-selected-sidebar]");
-    expect(sidebar.find("[data-slot='scroll-area-viewport']").exists()).toBe(
-      true,
-    );
+    const sidebar = wrapper.get('[data-library-selected-sidebar]')
+    expect(sidebar.find("[data-slot='scroll-area-viewport']").exists()).toBe(true)
     expect(
-      wrapper
-        .get("[data-library-sidebar]")
-        .find("[data-slot='scroll-area-viewport']")
-        .exists(),
-    ).toBe(true);
+      wrapper.get('[data-library-sidebar]').find("[data-slot='scroll-area-viewport']").exists(),
+    ).toBe(true)
     expect(
-      wrapper
-        .get("[data-library-track-list]")
-        .find("[data-slot='scroll-area-viewport']")
-        .exists(),
-    ).toBe(true);
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+      wrapper.get('[data-library-track-list]').find("[data-slot='scroll-area-viewport']").exists(),
+    ).toBe(true)
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
     expect(
-      wrapper
-        .get('[aria-label="Tracks grid"]')
-        .find("[data-slot='scroll-area-viewport']")
-        .exists(),
-    ).toBe(true);
-  });
+      wrapper.get('[aria-label="Tracks grid"]').find("[data-slot='scroll-area-viewport']").exists(),
+    ).toBe(true)
+  })
 
-  it("keeps playback footer controls within the smallest library window", () => {
+  it('keeps playback footer controls within the smallest library window', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const footer = wrapper.get("[data-library-playback-footer]");
+    })
+    const footer = wrapper.get('[data-library-playback-footer]')
 
-    expect(footer.classes()).toContain("min-w-0");
-    expect(footer.classes()).toContain("max-[920px]:grid");
-    expect(footer.classes()).not.toContain("min-w-max");
-    expect(footer.element.closest("[data-slot='scroll-area']")).toBeNull();
-  });
+    expect(footer.classes()).toContain('min-w-0')
+    expect(footer.classes()).toContain('max-[920px]:grid')
+    expect(footer.classes()).not.toContain('min-w-max')
+    expect(footer.element.closest("[data-slot='scroll-area']")).toBeNull()
+  })
 
-  it("uses the compact reference-style library header and track table", () => {
+  it('uses the compact reference-style library header and track table', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        snapshot: { ...snapshot, status: "playing" },
+        snapshot: { ...snapshot, status: 'playing' },
       },
-    });
+    })
 
-    expect(wrapper.text()).not.toContain("Your library");
-    expect(wrapper.text()).not.toContain(
-      "Artwork and queue are in the Window menu",
-    );
-    expect(wrapper.get('[aria-label="Library view options"]')).toBeDefined();
+    expect(wrapper.text()).not.toContain('Your library')
+    expect(wrapper.text()).not.toContain('Artwork and queue are in the Window menu')
+    expect(wrapper.get('[aria-label="Library view options"]')).toBeDefined()
     expect(
       wrapper
         .findAll('[aria-label="Library view options"] button')
-        .map((button) => button.attributes("aria-label")),
-    ).toEqual([
-      "Open library search",
-      "List view",
-      "Grid view",
-      "More library options",
-    ]);
-    expect(wrapper.findAll("thead th")).toHaveLength(6);
+        .map((button) => button.attributes('aria-label')),
+    ).toEqual(['Open library search', 'List view', 'Grid view', 'More library options'])
+    expect(wrapper.findAll('thead th')).toHaveLength(6)
+    expect(wrapper.findAll('[data-library-track-virtualizer] [role="row"]')).toHaveLength(2)
+    expect(wrapper.findAll('.track-row-artwork')).toHaveLength(0)
+    expect(wrapper.get('.track-playing-indicator')).toBeDefined()
     expect(
-      wrapper.findAll('[data-library-track-virtualizer] [role="row"]'),
-    ).toHaveLength(2);
-    expect(wrapper.findAll(".track-row-artwork")).toHaveLength(0);
-    expect(wrapper.get(".track-playing-indicator")).toBeDefined();
-    expect(
-      wrapper
-        .get("[data-library-track-list]")
-        .findAll('[aria-label^="Favorite "]'),
-    ).toHaveLength(2);
-    expect(wrapper.text()).toContain("YouTube Developers Live");
-    expect(wrapper.text()).toContain("Google for Developers");
-    expect(wrapper.text()).toContain("API Sessions");
-    expect(wrapper.text()).toContain("3:58");
-    expect(wrapper.text()).not.toContain("Night Drive over the City");
-  });
+      wrapper.get('[data-library-track-list]').findAll('[aria-label^="Favorite "]'),
+    ).toHaveLength(2)
+    expect(wrapper.text()).toContain('YouTube Developers Live')
+    expect(wrapper.text()).toContain('Google for Developers')
+    expect(wrapper.text()).toContain('API Sessions')
+    expect(wrapper.text()).toContain('3:58')
+    expect(wrapper.text()).not.toContain('Night Drive over the City')
+  })
 
-  it("shows active metadata work as a remaining counter after the library summary", () => {
+  it('shows active metadata work as a remaining counter after the library summary', () => {
     const activeRefreshes = {
       completedTracks: 4,
       jobs: [
         {
-          message: "Fetching full YouTube metadata.",
-          state: "refreshing" as const,
+          message: 'Fetching full YouTube metadata.',
+          state: 'refreshing' as const,
           title: importedTracks[0].title,
           trackId: importedTracks[0].id,
         },
       ],
       totalTracks: 9,
-    };
+    }
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -943,13 +825,13 @@ describe("LibraryWindow", () => {
         metadataRefreshes: activeRefreshes,
         snapshot,
       },
-    });
+    })
 
-    const summary = wrapper.get("[data-library-summary]");
-    const remaining = body().get("[data-metadata-refresh-remaining]");
-    expect(summary.text()).toContain("2 songs");
-    expect(remaining.text()).toBe("Refreshing metadata · 5 left");
-    expect(summary.element.nextElementSibling).toBe(remaining.element);
+    const summary = wrapper.get('[data-library-summary]')
+    const remaining = body().get('[data-metadata-refresh-remaining]')
+    expect(summary.text()).toContain('2 songs')
+    expect(remaining.text()).toBe('Refreshing metadata · 5 left')
+    expect(summary.element.nextElementSibling).toBe(remaining.element)
 
     const completedWrapper = mount(LibraryWindow, {
       attachTo: document.body,
@@ -958,17 +840,15 @@ describe("LibraryWindow", () => {
         metadataRefreshes: {
           ...activeRefreshes,
           completedTracks: 9,
-          jobs: [{ ...activeRefreshes.jobs[0], state: "completed" }],
+          jobs: [{ ...activeRefreshes.jobs[0], state: 'completed' }],
         },
         snapshot,
       },
-    });
-    expect(
-      completedWrapper.find("[data-metadata-refresh-remaining]").exists(),
-    ).toBe(false);
-  });
+    })
+    expect(completedWrapper.find('[data-metadata-refresh-remaining]').exists()).toBe(false)
+  })
 
-  it("keeps skipped metadata details accessible after refresh finishes", async () => {
+  it('keeps skipped metadata details accessible after refresh finishes', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -979,37 +859,31 @@ describe("LibraryWindow", () => {
           totalTracks: 1,
           jobs: [
             {
-              trackId: "one",
-              title: "For Supporters",
-              state: "skipped",
+              trackId: 'one',
+              title: 'For Supporters',
+              state: 'skipped',
               message:
-                "Subscriber-only content is unavailable to this YouTube session. Hidden from the library and play queue.",
+                'Subscriber-only content is unavailable to this YouTube session. Hidden from the library and play queue.',
             },
           ],
         },
       },
-    });
-    const trigger = wrapper.get("[data-metadata-refresh-remaining]");
-    expect(trigger.text()).toContain("1 skipped");
-    expect(trigger.text()).not.toContain("Metadata refreshed");
-    expect(trigger.attributes("aria-label")).toContain("1 skipped");
-    await trigger.trigger("click");
-    await flushPromises();
-    expect(body().get('[data-refresh-group="skipped"]').text()).toContain(
-      "Subscriber-only",
-    );
-    expect(body().find('[aria-label="Retry failed metadata"]').exists()).toBe(
-      false,
-    );
-    await body().get('[aria-label="Close metadata refresh"]').trigger("click");
-    await flushPromises();
-    expect(document.activeElement).toBe(trigger.element);
-    expect(wrapper.find("[data-metadata-refresh-remaining]").exists()).toBe(
-      true,
-    );
-  });
+    })
+    const trigger = wrapper.get('[data-metadata-refresh-remaining]')
+    expect(trigger.text()).toContain('1 skipped')
+    expect(trigger.text()).not.toContain('Metadata refreshed')
+    expect(trigger.attributes('aria-label')).toContain('1 skipped')
+    await trigger.trigger('click')
+    await flushPromises()
+    expect(body().get('[data-refresh-group="skipped"]').text()).toContain('Subscriber-only')
+    expect(body().find('[aria-label="Retry failed metadata"]').exists()).toBe(false)
+    await body().get('[aria-label="Close metadata refresh"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(trigger.element)
+    expect(wrapper.find('[data-metadata-refresh-remaining]').exists()).toBe(true)
+  })
 
-  it("opens refresh details in a popover and restores focus after closing", async () => {
+  it('opens refresh details in a popover and restores focus after closing', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -1020,166 +894,142 @@ describe("LibraryWindow", () => {
           totalTracks: 1,
           jobs: [
             {
-              trackId: "one",
-              title: "Current refresh",
-              state: "refreshing",
-              message: "Fetching",
+              trackId: 'one',
+              title: 'Current refresh',
+              state: 'refreshing',
+              message: 'Fetching',
             },
           ],
         },
       },
-    });
-    const trigger = wrapper.get("[data-metadata-refresh-remaining]");
-    await trigger.trigger("click");
-    await flushPromises();
-    expect(trigger.attributes("aria-haspopup")).toBe("dialog");
-    expect(
-      body().get("[data-metadata-refresh-popover]").attributes("role"),
-    ).toBe("dialog");
-    expect(wrapper.find('[aria-label="Metadata refreshes"]').exists()).toBe(
-      false,
-    );
-    await body().get('[aria-label="Close metadata refresh"]').trigger("click");
-    await flushPromises();
-    expect(body().find('[aria-label="Metadata refreshes"]').exists()).toBe(
-      false,
-    );
-    expect(document.activeElement).toBe(trigger.element);
+    })
+    const trigger = wrapper.get('[data-metadata-refresh-remaining]')
+    await trigger.trigger('click')
+    await flushPromises()
+    expect(trigger.attributes('aria-haspopup')).toBe('dialog')
+    expect(body().get('[data-metadata-refresh-popover]').attributes('role')).toBe('dialog')
+    expect(wrapper.find('[aria-label="Metadata refreshes"]').exists()).toBe(false)
+    await body().get('[aria-label="Close metadata refresh"]').trigger('click')
+    await flushPromises()
+    expect(body().find('[aria-label="Metadata refreshes"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(trigger.element)
     await wrapper.setProps({
       metadataRefreshes: {
         completedTracks: 1,
         totalTracks: 1,
         jobs: [
           {
-            trackId: "one",
-            title: "Current refresh",
-            state: "failed",
-            message: "Try again later",
+            trackId: 'one',
+            title: 'Current refresh',
+            state: 'failed',
+            message: 'Try again later',
           },
         ],
       },
-    });
-    expect(wrapper.get("[data-metadata-refresh-remaining]").text()).toContain(
-      "1 failed",
-    );
-    await wrapper.get("[data-metadata-refresh-remaining]").trigger("click");
-    await flushPromises();
-    await body().get('[aria-label="Retry failed metadata"]').trigger("click");
-    expect(wrapper.emitted("retryMetadataRefreshes")).toHaveLength(1);
-    await body()
-      .get('[aria-label="Close metadata refresh"]')
-      .trigger("keydown", { key: "Escape" });
-    await flushPromises();
-    expect(body().find("[data-metadata-refresh-popover]").exists()).toBe(false);
-  });
+    })
+    expect(wrapper.get('[data-metadata-refresh-remaining]').text()).toContain('1 failed')
+    await wrapper.get('[data-metadata-refresh-remaining]').trigger('click')
+    await flushPromises()
+    await body().get('[aria-label="Retry failed metadata"]').trigger('click')
+    expect(wrapper.emitted('retryMetadataRefreshes')).toHaveLength(1)
+    await body().get('[aria-label="Close metadata refresh"]').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(body().find('[data-metadata-refresh-popover]').exists()).toBe(false)
+  })
 
-  it("truncates track metadata within a fixed-layout table", () => {
+  it('truncates track metadata within a fixed-layout table', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    expect(wrapper.get("table").classes()).toContain("table-fixed");
-    for (const selector of [".track-title", ".track-artist", ".track-album"]) {
-      const cellText = wrapper.get(selector);
-      expect(cellText.classes()).toContain("overflow-hidden");
-      expect(cellText.classes()).toContain("text-ellipsis");
-      expect(cellText.classes()).toContain("whitespace-nowrap");
+    expect(wrapper.get('table').classes()).toContain('table-fixed')
+    for (const selector of ['.track-title', '.track-artist', '.track-album']) {
+      const cellText = wrapper.get(selector)
+      expect(cellText.classes()).toContain('overflow-hidden')
+      expect(cellText.classes()).toContain('text-ellipsis')
+      expect(cellText.classes()).toContain('whitespace-nowrap')
     }
-  });
+  })
 
-  it("keeps track headings above a masked virtualized library", async () => {
+  it('keeps track headings above a masked virtualized library', async () => {
     const tracks = Array.from({ length: 200 }, (_, index) => ({
       ...importedTracks[index % importedTracks.length]!,
       id: `track-${index}`,
       title: `Track ${index}`,
-    }));
+    }))
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, queue: tracks },
       },
-    });
-    const trackList = wrapper.get(
-      "[data-library-track-list] [data-slot='scroll-area-viewport']",
-    );
+    })
+    const trackList = wrapper.get("[data-library-track-list] [data-slot='scroll-area-viewport']")
 
-    expect(wrapper.get("[data-library-track-header]").classes()).toContain(
-      "shrink-0",
-    );
-    expect(wrapper.get("thead").classes()).not.toContain("sticky");
-    expect(wrapper.find("[data-library-track-header-fade]").exists()).toBe(
-      false,
-    );
-    expect(trackList.classes()).toContain("library-track-scroll");
-    expect(wrapper.find("[data-library-track-content-fade]").exists()).toBe(
-      false,
-    );
-    expect(wrapper.findAll("tbody [data-track-id]").length).toBeLessThan(
-      tracks.length,
-    );
+    expect(wrapper.get('[data-library-track-header]').classes()).toContain('shrink-0')
+    expect(wrapper.get('thead').classes()).not.toContain('sticky')
+    expect(wrapper.find('[data-library-track-header-fade]').exists()).toBe(false)
+    expect(trackList.classes()).toContain('library-track-scroll')
+    expect(wrapper.find('[data-library-track-content-fade]').exists()).toBe(false)
+    expect(wrapper.findAll('tbody [data-track-id]').length).toBeLessThan(tracks.length)
 
-    trackList.element.scrollTop = 36 * 100;
-    await trackList.trigger("scroll");
+    trackList.element.scrollTop = 36 * 100
+    await trackList.trigger('scroll')
 
-    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
-    expect(
-      wrapper.get('[data-track-id="track-100"]').attributes("data-index"),
-    ).toBe("100");
-    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false);
-  });
+    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true)
+    expect(wrapper.get('[data-track-id="track-100"]').attributes('data-index')).toBe('100')
+    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(false)
+  })
 
-  it("positions virtualized track rows outside a table body", () => {
+  it('positions virtualized track rows outside a table body', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const virtualizer = wrapper.get("[data-library-track-virtualizer]");
+    })
+    const virtualizer = wrapper.get('[data-library-track-virtualizer]')
 
-    expect(virtualizer.findAll('[role="row"]')).toHaveLength(2);
-    expect(virtualizer.find("table").exists()).toBe(false);
-  });
+    expect(virtualizer.findAll('[role="row"]')).toHaveLength(2)
+    expect(virtualizer.find('table').exists()).toBe(false)
+  })
 
-  it("resets virtual track position when the list remounts", async () => {
+  it('resets virtual track position when the list remounts', async () => {
     const tracks = Array.from({ length: 200 }, (_, index) => ({
       ...importedTracks[index % importedTracks.length]!,
       id: `track-${index}`,
       title: `Track ${index}`,
-    }));
+    }))
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         snapshot: { ...snapshot, queue: tracks },
       },
-    });
-    const trackList = wrapper.get(
-      "[data-library-track-list] [data-slot='scroll-area-viewport']",
-    );
+    })
+    const trackList = wrapper.get("[data-library-track-list] [data-slot='scroll-area-viewport']")
 
-    trackList.element.scrollTop = 36 * 100;
-    await trackList.trigger("scroll");
-    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true);
+    trackList.element.scrollTop = 36 * 100
+    await trackList.trigger('scroll')
+    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(true)
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    await wrapper.get('button[aria-label="List view"]').trigger("click");
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    await wrapper.get('button[aria-label="List view"]').trigger('click')
 
-    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(true);
-    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(false);
-  });
+    expect(wrapper.find('[data-track-id="track-0"]').exists()).toBe(true)
+    expect(wrapper.find('[data-track-id="track-100"]').exists()).toBe(false)
+  })
 
-  it("uses the window viewport when the list has no measurable height", async () => {
+  it('uses the window viewport when the list has no measurable height', async () => {
     const tracks = Array.from({ length: 200 }, (_, index) => ({
       ...importedTracks[index % importedTracks.length]!,
       id: `track-${index}`,
       title: `Track ${index}`,
-    }));
-    const originalInnerHeight = window.innerHeight;
-    Object.defineProperty(window, "innerHeight", {
+    }))
+    const originalInnerHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', {
       configurable: true,
       value: 1_200,
-    });
+    })
 
     try {
       const wrapper = mount(LibraryWindow, {
@@ -1188,568 +1038,480 @@ describe("LibraryWindow", () => {
           isUpdating: false,
           snapshot: { ...snapshot, queue: tracks },
         },
-      });
-      const trackList = wrapper.get(
-        "[data-library-track-list] [data-slot='scroll-area-viewport']",
-      );
-      Object.defineProperty(trackList.element, "clientHeight", {
+      })
+      const trackList = wrapper.get("[data-library-track-list] [data-slot='scroll-area-viewport']")
+      Object.defineProperty(trackList.element, 'clientHeight', {
         configurable: true,
         value: 0,
-      });
-      window.dispatchEvent(new Event("resize"));
-      await wrapper.vm.$nextTick();
+      })
+      window.dispatchEvent(new Event('resize'))
+      await wrapper.vm.$nextTick()
 
       expect(
-        wrapper.findAll("[data-library-track-virtualizer] [data-track-id]")
-          .length,
-      ).toBeGreaterThan(26);
+        wrapper.findAll('[data-library-track-virtualizer] [data-track-id]').length,
+      ).toBeGreaterThan(26)
     } finally {
-      Object.defineProperty(window, "innerHeight", {
+      Object.defineProperty(window, 'innerHeight', {
         configurable: true,
         value: originalInnerHeight,
-      });
+      })
     }
-  });
+  })
 
-  it("provides keyboard-resizable track columns", async () => {
+  it('provides keyboard-resizable track columns', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const titleColumn = wrapper.get('col[data-column="title"]');
-    const initialWidth = titleColumn.attributes("style");
-    const titleResizeHandle = wrapper.get(
-      '[role="separator"][aria-label="Resize Title column"]',
-    );
-    expect(
-      wrapper.findAll('[role="separator"][aria-label$="column"]'),
-    ).toHaveLength(4);
+    })
+    const titleColumn = wrapper.get('col[data-column="title"]')
+    const initialWidth = titleColumn.attributes('style')
+    const titleResizeHandle = wrapper.get('[role="separator"][aria-label="Resize Title column"]')
+    expect(wrapper.findAll('[role="separator"][aria-label$="column"]')).toHaveLength(4)
 
-    await titleResizeHandle.trigger("keydown", { key: "ArrowRight" });
+    await titleResizeHandle.trigger('keydown', { key: 'ArrowRight' })
 
-    expect(titleColumn.attributes("style")).not.toBe(initialWidth);
-  });
+    expect(titleColumn.attributes('style')).not.toBe(initialWidth)
+  })
 
-  it("resizes track columns by dragging a header boundary", async () => {
+  it('resizes track columns by dragging a header boundary', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const table = wrapper.get("table");
-    vi.spyOn(table.element, "getBoundingClientRect").mockReturnValue({
+    })
+    const table = wrapper.get('table')
+    vi.spyOn(table.element, 'getBoundingClientRect').mockReturnValue({
       width: 1_000,
-    } as DOMRect);
-    const titleColumn = wrapper.get('col[data-column="title"]');
-    const initialWidth = titleColumn.attributes("style");
+    } as DOMRect)
+    const titleColumn = wrapper.get('col[data-column="title"]')
+    const initialWidth = titleColumn.attributes('style')
 
     await wrapper
       .get('[aria-label="Resize Title column"]')
-      .trigger("mousedown", { button: 0, clientX: 300 });
-    window.dispatchEvent(new MouseEvent("mousemove", { clientX: 350 }));
-    window.dispatchEvent(new MouseEvent("mouseup"));
-    await wrapper.vm.$nextTick();
+      .trigger('mousedown', { button: 0, clientX: 300 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 350 }))
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    await wrapper.vm.$nextTick()
 
-    expect(titleColumn.attributes("style")).not.toBe(initialWidth);
-  });
+    expect(titleColumn.attributes('style')).not.toBe(initialWidth)
+  })
 
-  it("selects a track for metadata without starting playback", async () => {
+  it('selects a track for metadata without starting playback', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click')
 
-    expect(wrapper.get('[data-library-info="track"]').text()).toContain(
-      "Creator Studio Session",
-    );
-    expect(wrapper.emitted("playTrack")).toBeUndefined();
-  });
+    expect(wrapper.get('[data-library-info="track"]').text()).toContain('Creator Studio Session')
+    expect(wrapper.emitted('playTrack')).toBeUndefined()
+  })
 
-  it("selects multiple tracks and updates their shared details and context actions", async () => {
+  it('selects multiple tracks and updates their shared details and context actions', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
-    await wrapper
-      .get('[data-track-id="BaW_jenozKc"]')
-      .trigger("click", { metaKey: true });
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger('click')
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click', { metaKey: true })
 
+    expect(wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes('data-selected')).toBe('true')
+    expect(wrapper.get('[data-track-id="BaW_jenozKc"]').attributes('data-selected')).toBe('true')
+    expect(wrapper.get('[data-library-info="tracks"]').text()).toContain('2 tracks selected')
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
     expect(
-      wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes("data-selected"),
-    ).toBe("true");
+      wrapper.get('.track-grid [data-track-id="M7lc1UVf-VE"]').attributes('data-selected'),
+    ).toBe('true')
     expect(
-      wrapper.get('[data-track-id="BaW_jenozKc"]').attributes("data-selected"),
-    ).toBe("true");
-    expect(wrapper.get('[data-library-info="tracks"]').text()).toContain(
-      "2 tracks selected",
-    );
+      wrapper.get('.track-grid [data-track-id="BaW_jenozKc"]').attributes('data-selected'),
+    ).toBe('true')
+    await wrapper.get('button[aria-label="List view"]').trigger('click')
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    expect(
-      wrapper
-        .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
-        .attributes("data-selected"),
-    ).toBe("true");
-    expect(
-      wrapper
-        .get('.track-grid [data-track-id="BaW_jenozKc"]')
-        .attributes("data-selected"),
-    ).toBe("true");
-    await wrapper.get('button[aria-label="List view"]').trigger("click");
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('contextmenu')
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+    const menu = document.body.querySelector('[data-track-context-menu]')
+    expect(menu?.textContent).toContain('Play 2 tracks')
+    expect(menu?.textContent).toContain('Add 2 tracks to queue')
+    expect(menu?.textContent).toContain('Remove 2 tracks from library…')
+    expect(menu?.textContent).not.toContain('Go to album')
+    expect(menu?.textContent).toContain('Edit metadata')
 
-    const menu = document.body.querySelector("[data-track-context-menu]");
-    expect(menu?.textContent).toContain("Play 2 tracks");
-    expect(menu?.textContent).toContain("Add 2 tracks to queue");
-    expect(menu?.textContent).toContain("Remove 2 tracks from library…");
-    expect(menu?.textContent).not.toContain("Go to album");
-    expect(menu?.textContent).toContain("Edit metadata");
+    await document.querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')?.click()
+    expect(body().get('[role="dialog"]').text()).toContain('Remove 2 tracks from your library')
 
-    await document
-      .querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')
-      ?.click();
-    expect(body().get('[role="dialog"]').text()).toContain(
-      "Remove 2 tracks from your library",
-    );
+    await body().get('[data-confirm-track-removal]').trigger('click')
+    expect(wrapper.emitted('removeTracks')).toEqual([[['BaW_jenozKc', 'M7lc1UVf-VE']]])
+    wrapper.unmount()
+  })
 
-    await body().get("[data-confirm-track-removal]").trigger("click");
-    expect(wrapper.emitted("removeTracks")).toEqual([
-      [["BaW_jenozKc", "M7lc1UVf-VE"]],
-    ]);
-    wrapper.unmount();
-  });
-
-  it("adds selected tracks to a user playlist when dropped in the sidebar", async () => {
+  it('adds selected tracks to a user playlist when dropped in the sidebar', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        playlists: [{ id: "focus", name: "Focus", trackIds: ["M7lc1UVf-VE"] }],
+        playlists: [{ id: 'focus', name: 'Focus', trackIds: ['M7lc1UVf-VE'] }],
         snapshot,
       },
-    });
-    const dataTransfer = createTrackDataTransfer();
+    })
+    const dataTransfer = createTrackDataTransfer()
 
-    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger("click");
-    await wrapper
-      .get('[data-track-id="BaW_jenozKc"]')
-      .trigger("click", { metaKey: true });
-    await wrapper
-      .get('[data-track-id="BaW_jenozKc"]')
-      .trigger("dragstart", { dataTransfer });
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("dragover", { dataTransfer });
+    await wrapper.get('[data-track-id="M7lc1UVf-VE"]').trigger('click')
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click', { metaKey: true })
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('dragstart', { dataTransfer })
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('dragover', { dataTransfer })
 
-    expect(
-      wrapper
-        .get('[data-playlist-reorder-item="focus"]')
-        .attributes("data-drop-target"),
-    ).toBe("true");
+    expect(wrapper.get('[data-playlist-reorder-item="focus"]').attributes('data-drop-target')).toBe(
+      'true',
+    )
 
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("drop", { dataTransfer });
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('drop', { dataTransfer })
 
-    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+    expect(wrapper.emitted('upsertPlaylist')).toEqual([
       [
         {
-          id: "focus",
-          name: "Focus",
-          trackIds: ["M7lc1UVf-VE", "BaW_jenozKc"],
+          id: 'focus',
+          name: 'Focus',
+          trackIds: ['M7lc1UVf-VE', 'BaW_jenozKc'],
         },
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("enables native WebKit dragging from list and grid track items", async () => {
+  it('enables native WebKit dragging from list and grid track items', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const dataTransfer = createTrackDataTransfer();
-    const setDragImage = vi.fn();
-    dataTransfer.setDragImage = setDragImage;
+    })
+    const dataTransfer = createTrackDataTransfer()
+    const setDragImage = vi.fn()
+    dataTransfer.setDragImage = setDragImage
 
-    const listTrack = wrapper.get('[data-track-id="BaW_jenozKc"]');
-    expect(listTrack.attributes("draggable")).toBe("true");
-    expect(listTrack.classes()).toContain("library-track-drag-source");
+    const listTrack = wrapper.get('[data-track-id="BaW_jenozKc"]')
+    expect(listTrack.attributes('draggable')).toBe('true')
+    expect(listTrack.classes()).toContain('library-track-drag-source')
 
-    await listTrack.trigger("dragstart", { dataTransfer });
+    await listTrack.trigger('dragstart', { dataTransfer })
 
-    expect(setDragImage).toHaveBeenCalledOnce();
-    const dragImage = setDragImage.mock.calls[0]?.[0] as HTMLElement;
-    expect(document.body.contains(dragImage)).toBe(true);
-    expect(dragImage.style.transform).toBe("none");
+    expect(setDragImage).toHaveBeenCalledOnce()
+    const dragImage = setDragImage.mock.calls[0]?.[0] as HTMLElement
+    expect(document.body.contains(dragImage)).toBe(true)
+    expect(dragImage.style.transform).toBe('none')
 
-    await listTrack.trigger("dragend", { dataTransfer });
-    expect(document.body.contains(dragImage)).toBe(false);
+    await listTrack.trigger('dragend', { dataTransfer })
+    expect(document.body.contains(dragImage)).toBe(false)
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
 
-    const gridTrack = wrapper.get('.track-grid [data-track-id="BaW_jenozKc"]');
-    expect(gridTrack.attributes("draggable")).toBe("true");
-    expect(gridTrack.classes()).toContain("library-track-drag-source");
+    const gridTrack = wrapper.get('.track-grid [data-track-id="BaW_jenozKc"]')
+    expect(gridTrack.attributes('draggable')).toBe('true')
+    expect(gridTrack.classes()).toContain('library-track-drag-source')
 
-    wrapper.unmount();
-  });
+    wrapper.unmount()
+  })
 
-  it("adds selected tracks when WebKit exposes only text/plain drag data", async () => {
+  it('adds selected tracks when WebKit exposes only text/plain drag data', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
+        playlists: [{ id: 'focus', name: 'Focus', trackIds: [] }],
         snapshot,
       },
-    });
-    const dataTransfer = createPlainTextTrackDataTransfer();
+    })
+    const dataTransfer = createPlainTextTrackDataTransfer()
 
-    await wrapper
-      .get('[data-track-id="BaW_jenozKc"]')
-      .trigger("dragstart", { dataTransfer });
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("dragover", { dataTransfer });
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("drop", { dataTransfer });
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('dragstart', { dataTransfer })
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('dragover', { dataTransfer })
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('drop', { dataTransfer })
 
-    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+    expect(wrapper.emitted('upsertPlaylist')).toEqual([
       [
         {
-          id: "focus",
-          name: "Focus",
-          trackIds: ["BaW_jenozKc"],
+          id: 'focus',
+          name: 'Focus',
+          trackIds: ['BaW_jenozKc'],
         },
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("adds selected tracks when WebKit withholds drag type metadata", async () => {
+  it('adds selected tracks when WebKit withholds drag type metadata', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
+        playlists: [{ id: 'focus', name: 'Focus', trackIds: [] }],
         snapshot,
       },
-    });
-    const dataTransfer = createPlainTextTrackDataTransfer([]);
+    })
+    const dataTransfer = createPlainTextTrackDataTransfer([])
 
-    await wrapper
-      .get('[data-track-id="BaW_jenozKc"]')
-      .trigger("dragstart", { dataTransfer });
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("dragover", { dataTransfer });
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('dragstart', { dataTransfer })
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('dragover', { dataTransfer })
 
-    expect(
-      wrapper
-        .get('[data-playlist-reorder-item="focus"]')
-        .attributes("data-drop-target"),
-    ).toBe("true");
+    expect(wrapper.get('[data-playlist-reorder-item="focus"]').attributes('data-drop-target')).toBe(
+      'true',
+    )
 
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("drop", { dataTransfer });
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('drop', { dataTransfer })
 
-    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+    expect(wrapper.emitted('upsertPlaylist')).toEqual([
       [
         {
-          id: "focus",
-          name: "Focus",
-          trackIds: ["BaW_jenozKc"],
+          id: 'focus',
+          name: 'Focus',
+          trackIds: ['BaW_jenozKc'],
         },
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("adds selected grid tracks to a user playlist when dropped in the sidebar", async () => {
+  it('adds selected grid tracks to a user playlist when dropped in the sidebar', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        playlists: [{ id: "focus", name: "Focus", trackIds: [] }],
+        playlists: [{ id: 'focus', name: 'Focus', trackIds: [] }],
         snapshot,
       },
-    });
-    const dataTransfer = createTrackDataTransfer();
+    })
+    const dataTransfer = createTrackDataTransfer()
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    await wrapper
-      .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
-      .trigger("click");
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    await wrapper.get('.track-grid [data-track-id="M7lc1UVf-VE"]').trigger('click')
     await wrapper
       .get('.track-grid [data-track-id="BaW_jenozKc"]')
-      .trigger("click", { metaKey: true });
+      .trigger('click', { metaKey: true })
     await wrapper
       .get('.track-grid [data-track-id="BaW_jenozKc"]')
-      .trigger("dragstart", { dataTransfer });
-    await wrapper
-      .get('[data-playlist-reorder-item="focus"]')
-      .trigger("drop", { dataTransfer });
+      .trigger('dragstart', { dataTransfer })
+    await wrapper.get('[data-playlist-reorder-item="focus"]').trigger('drop', { dataTransfer })
 
-    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+    expect(wrapper.emitted('upsertPlaylist')).toEqual([
       [
         {
-          id: "focus",
-          name: "Focus",
-          trackIds: ["BaW_jenozKc", "M7lc1UVf-VE"],
+          id: 'focus',
+          name: 'Focus',
+          trackIds: ['BaW_jenozKc', 'M7lc1UVf-VE'],
         },
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("routes shuffle and repeat mode controls through the library command boundary", async () => {
+  it('routes shuffle and repeat mode controls through the library command boundary', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Enable shuffle"]').trigger("click");
-    await wrapper
-      .get('button[aria-label="Enable repeat all"]')
-      .trigger("click");
+    await wrapper.get('button[aria-label="Enable shuffle"]').trigger('click')
+    await wrapper.get('button[aria-label="Enable repeat all"]').trigger('click')
 
-    expect(wrapper.emitted("toggleShuffle")).toEqual([[]]);
-    expect(wrapper.emitted("cycleRepeatMode")).toEqual([[]]);
-  });
+    expect(wrapper.emitted('toggleShuffle')).toEqual([[]])
+    expect(wrapper.emitted('cycleRepeatMode')).toEqual([[]])
+  })
 
-  it("shows the active shuffle and repeat modes with distinct icons", async () => {
+  it('shows the active shuffle and repeat modes with distinct icons', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        snapshot: { ...snapshot, repeatMode: "all", shuffleEnabled: true },
+        snapshot: { ...snapshot, repeatMode: 'all', shuffleEnabled: true },
       },
-    });
+    })
 
-    const shuffle = wrapper.get('button[aria-label="Disable shuffle"]');
-    const repeat = wrapper.get('button[aria-label="Enable repeat one"]');
-    expect(shuffle.attributes("aria-pressed")).toBe("true");
-    expect(repeat.attributes("data-repeat-mode")).toBe("all");
-    expect(repeat.find("svg").classes()).toContain("lucide-repeat-2");
+    const shuffle = wrapper.get('button[aria-label="Disable shuffle"]')
+    const repeat = wrapper.get('button[aria-label="Enable repeat one"]')
+    expect(shuffle.attributes('aria-pressed')).toBe('true')
+    expect(repeat.attributes('data-repeat-mode')).toBe('all')
+    expect(repeat.find('svg').classes()).toContain('lucide-repeat-2')
 
     await wrapper.setProps({
-      snapshot: { ...snapshot, repeatMode: "one", shuffleEnabled: true },
+      snapshot: { ...snapshot, repeatMode: 'one', shuffleEnabled: true },
       isUpdating: true,
-    });
+    })
 
-    const repeatOne = wrapper.get('button[aria-label="Disable repeat"]');
-    expect(repeatOne.attributes("data-repeat-mode")).toBe("one");
-    expect(repeatOne.find("svg").classes()).toContain("lucide-repeat-1");
-    expect(shuffle.attributes("disabled")).toBeDefined();
-    expect(repeatOne.attributes("disabled")).toBeDefined();
-  });
+    const repeatOne = wrapper.get('button[aria-label="Disable repeat"]')
+    expect(repeatOne.attributes('data-repeat-mode')).toBe('one')
+    expect(repeatOne.find('svg').classes()).toContain('lucide-repeat-1')
+    expect(shuffle.attributes('disabled')).toBeDefined()
+    expect(repeatOne.attributes('disabled')).toBeDefined()
+  })
 
-  it("highlights the selected track separately from the playing track", async () => {
+  it('highlights the selected track separately from the playing track', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click')
+
+    expect(wrapper.get('[data-track-id="BaW_jenozKc"]').attributes('data-selected')).toBe('true')
+    expect(wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes('data-selected')).toBe('false')
+    expect(wrapper.find('.track-playing-indicator').exists()).toBe(false)
+
+    await wrapper.setProps({ snapshot: { ...snapshot, status: 'playing' } })
+
+    expect(wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes('data-playing')).toBe('true')
+    expect(
+      wrapper.get('[data-track-id="M7lc1UVf-VE"]').find('.track-playing-indicator').exists(),
+    ).toBe(true)
+
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
 
     expect(
-      wrapper.get('[data-track-id="BaW_jenozKc"]').attributes("data-selected"),
-    ).toBe("true");
+      wrapper.get('.track-grid [data-track-id="BaW_jenozKc"]').attributes('data-selected'),
+    ).toBe('true')
     expect(
-      wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes("data-selected"),
-    ).toBe("false");
-    expect(wrapper.find(".track-playing-indicator").exists()).toBe(false);
-
-    await wrapper.setProps({ snapshot: { ...snapshot, status: "playing" } });
-
-    expect(
-      wrapper.get('[data-track-id="M7lc1UVf-VE"]').attributes("data-playing"),
-    ).toBe("true");
-    expect(
-      wrapper
-        .get('[data-track-id="M7lc1UVf-VE"]')
-        .find(".track-playing-indicator")
-        .exists(),
-    ).toBe(true);
-
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-
-    expect(
-      wrapper
-        .get('.track-grid [data-track-id="BaW_jenozKc"]')
-        .attributes("data-selected"),
-    ).toBe("true");
+      wrapper.get('.track-grid [data-track-id="M7lc1UVf-VE"]').attributes('data-playing'),
+    ).toBe('true')
     expect(
       wrapper
         .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
-        .attributes("data-playing"),
-    ).toBe("true");
-    expect(
-      wrapper
-        .get('.track-grid [data-track-id="M7lc1UVf-VE"]')
-        .find(".track-playing-indicator")
+        .find('.track-playing-indicator')
         .exists(),
-    ).toBe(true);
-  });
+    ).toBe(true)
+  })
 
-  it("creates a one-item queue when playing from the unfiltered Tracks list", async () => {
+  it('creates a one-item queue when playing from the unfiltered Tracks list', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    const row = wrapper.get('[data-track-id="BaW_jenozKc"]');
-    const playButton = row.get(
-      'button[aria-label="Play Creator Studio Session"]',
-    );
-    expect(playButton.attributes("data-track-action")).toBe("play");
-    expect(playButton.classes()).toContain("opacity-0");
-    expect(playButton.classes()).toContain("group-hover:opacity-100");
-    expect(playButton.classes()).not.toContain("rounded-full");
-    expect(playButton.classes()).not.toContain(
-      "bg-[oklch(0.72_0.04_268/0.92)]",
-    );
+    const row = wrapper.get('[data-track-id="BaW_jenozKc"]')
+    const playButton = row.get('button[aria-label="Play Creator Studio Session"]')
+    expect(playButton.attributes('data-track-action')).toBe('play')
+    expect(playButton.classes()).toContain('opacity-0')
+    expect(playButton.classes()).toContain('group-hover:opacity-100')
+    expect(playButton.classes()).not.toContain('rounded-full')
+    expect(playButton.classes()).not.toContain('bg-[oklch(0.72_0.04_268/0.92)]')
 
-    await playButton.trigger("click");
-    await row.trigger("dblclick");
+    await playButton.trigger('click')
+    await row.trigger('dblclick')
 
-    expect(wrapper.emitted("playTrack")).toEqual([
-      [["BaW_jenozKc"], "BaW_jenozKc"],
-      [["BaW_jenozKc"], "BaW_jenozKc"],
-    ]);
-  });
+    expect(wrapper.emitted('playTrack')).toEqual([
+      [['BaW_jenozKc'], 'BaW_jenozKc'],
+      [['BaW_jenozKc'], 'BaW_jenozKc'],
+    ])
+  })
 
-  it("adds the selected track to the front or end of the play queue", async () => {
+  it('adds the selected track to the front or end of the play queue', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("click");
-    await wrapper
-      .get('button[aria-label="Play Creator Studio Session next"]')
-      .trigger("click");
-    await wrapper
-      .get('button[aria-label="Add Creator Studio Session to queue"]')
-      .trigger("click");
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('click')
+    await wrapper.get('button[aria-label="Play Creator Studio Session next"]').trigger('click')
+    await wrapper.get('button[aria-label="Add Creator Studio Session to queue"]').trigger('click')
 
-    expect(wrapper.emitted("playNext")).toEqual([[["BaW_jenozKc"]]]);
-    expect(wrapper.emitted("addToQueue")).toEqual([[["BaW_jenozKc"]]]);
-  });
+    expect(wrapper.emitted('playNext')).toEqual([[['BaW_jenozKc']]])
+    expect(wrapper.emitted('addToQueue')).toEqual([[['BaW_jenozKc']]])
+  })
 
-  it("opens a track action menu with the current library actions", async () => {
+  it('opens a track action menu with the current library actions', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('contextmenu')
 
-    const menu = document.body.querySelector("[data-track-context-menu]");
-    expect(menu?.textContent).toContain("Play");
-    expect(menu?.textContent).toContain("Play next");
-    expect(menu?.textContent).toContain("Add to queue");
-    expect(menu?.textContent).toContain("Add to Favorites");
-    expect(menu?.textContent).toContain("Go to album");
-    expect(menu?.textContent).toContain("Go to artist");
-    expect(menu?.textContent).toContain("Edit metadata");
-    expect(menu?.textContent).toContain("Remove from library…");
+    const menu = document.body.querySelector('[data-track-context-menu]')
+    expect(menu?.textContent).toContain('Play')
+    expect(menu?.textContent).toContain('Play next')
+    expect(menu?.textContent).toContain('Add to queue')
+    expect(menu?.textContent).toContain('Add to Favorites')
+    expect(menu?.textContent).toContain('Go to album')
+    expect(menu?.textContent).toContain('Go to artist')
+    expect(menu?.textContent).toContain('Edit metadata')
+    expect(menu?.textContent).toContain('Remove from library…')
 
-    wrapper.unmount();
-  });
+    wrapper.unmount()
+  })
 
-  it("routes a track context action through the library command", async () => {
+  it('routes a track context action through the library command', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('contextmenu')
     await document
-      .querySelector<HTMLButtonElement>(
-        '[data-track-context-action="play-next"]',
-      )
-      ?.click();
+      .querySelector<HTMLButtonElement>('[data-track-context-action="play-next"]')
+      ?.click()
 
-    expect(wrapper.emitted("playNext")).toEqual([[["BaW_jenozKc"]]]);
+    expect(wrapper.emitted('playNext')).toEqual([[['BaW_jenozKc']]])
 
-    wrapper.unmount();
-  });
+    wrapper.unmount()
+  })
 
-  it("requires confirmation before removing a track from the durable library", async () => {
+  it('requires confirmation before removing a track from the durable library', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger("contextmenu");
-    await document
-      .querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')
-      ?.click();
+    await wrapper.get('[data-track-id="BaW_jenozKc"]').trigger('contextmenu')
+    await document.querySelector<HTMLButtonElement>('[data-track-context-action="remove"]')?.click()
 
-    expect(body().get('[role="dialog"]').text()).toContain(
-      "Remove from library?",
-    );
-    expect(wrapper.emitted("removeTracks")).toBeUndefined();
+    expect(body().get('[role="dialog"]').text()).toContain('Remove from library?')
+    expect(wrapper.emitted('removeTracks')).toBeUndefined()
 
-    await body().get("[data-confirm-track-removal]").trigger("click");
-    expect(wrapper.emitted("removeTracks")).toEqual([[["BaW_jenozKc"]]]);
-    wrapper.unmount();
-  });
+    await body().get('[data-confirm-track-removal]').trigger('click')
+    expect(wrapper.emitted('removeTracks')).toEqual([[['BaW_jenozKc']]])
+    wrapper.unmount()
+  })
 
-  it("opens contextual actions from track grid, collection rows, and playlists", async () => {
+  it('opens contextual actions from track grid, collection rows, and playlists', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
-        playlists: [
-          { id: "focus", name: "Focus", trackIds: [importedTracks[0]!.id] },
-        ],
+        playlists: [{ id: 'focus', name: 'Focus', trackIds: [importedTracks[0]!.id] }],
         snapshot,
       },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Grid view"]').trigger("click");
-    await wrapper.get(".track-grid .track-tile").trigger("contextmenu");
-    expect(document.querySelector("[data-track-context-menu]")).not.toBeNull();
+    await wrapper.get('button[aria-label="Grid view"]').trigger('click')
+    await wrapper.get('.track-grid .track-tile').trigger('contextmenu')
+    expect(document.querySelector('[data-track-context-menu]')).not.toBeNull()
 
-    await wrapper.get('[data-collection="albums"]').trigger("click");
-    await wrapper.get(".album-tile").trigger("contextmenu");
-    expect(document.querySelector("[data-album-context-menu]")).not.toBeNull();
+    await wrapper.get('[data-collection="albums"]').trigger('click')
+    await wrapper.get('.album-tile').trigger('contextmenu')
+    expect(document.querySelector('[data-album-context-menu]')).not.toBeNull()
 
-    await wrapper.get('[data-collection="artists"]').trigger("click");
-    await wrapper.get(".artist-tile").trigger("contextmenu");
-    expect(document.querySelector("[data-artist-context-menu]")).not.toBeNull();
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    await wrapper.get('.artist-tile').trigger('contextmenu')
+    expect(document.querySelector('[data-artist-context-menu]')).not.toBeNull()
 
-    await wrapper.get('[data-playlist-id="focus"]').trigger("contextmenu");
-    expect(
-      document.querySelector("[data-playlist-context-menu]"),
-    ).not.toBeNull();
+    await wrapper.get('[data-playlist-id="focus"]').trigger('contextmenu')
+    expect(document.querySelector('[data-playlist-context-menu]')).not.toBeNull()
 
-    wrapper.unmount();
-  });
+    wrapper.unmount()
+  })
 
-  it("uses dense square-corner track rows", () => {
+  it('uses dense square-corner track rows', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const row = wrapper.get('[data-track-id="BaW_jenozKc"]');
+    })
+    const row = wrapper.get('[data-track-id="BaW_jenozKc"]')
 
-    expect(row.classes()).toContain("h-9");
-    expect(
-      row.get(".track-title").element.closest('[role="gridcell"]')?.classList,
-    ).toContain("px-3");
+    expect(row.classes()).toContain('h-9')
+    expect(row.get('.track-title').element.closest('[role="gridcell"]')?.classList).toContain(
+      'px-3',
+    )
     for (const cell of row.findAll('[role="gridcell"]')) {
-      expect(cell.classes()).not.toContain("rounded-l-md");
-      expect(cell.classes()).not.toContain("rounded-r-md");
+      expect(cell.classes()).not.toContain('rounded-l-md')
+      expect(cell.classes()).not.toContain('rounded-r-md')
     }
-  });
+  })
 
-  it("shows a spinning metadata refresh icon for tracks with incomplete metadata", () => {
+  it('shows a spinning metadata refresh icon for tracks with incomplete metadata', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
@@ -1764,336 +1526,291 @@ describe("LibraryWindow", () => {
           ],
         },
       },
-    });
+    })
 
-    const indicator = wrapper.get(
-      '[data-track-id="M7lc1UVf-VE"] [data-metadata-dirty]',
-    );
+    const indicator = wrapper.get('[data-track-id="M7lc1UVf-VE"] [data-metadata-dirty]')
 
-    expect(indicator.attributes("aria-label")).toBe("Metadata refresh pending");
-    expect(indicator.classes()).toContain("animate-spin");
-    expect(indicator.text()).toBe("");
-  });
+    expect(indicator.attributes('aria-label')).toBe('Metadata refresh pending')
+    expect(indicator.classes()).toContain('animate-spin')
+    expect(indicator.text()).toBe('')
+  })
 
-  it("provides the complete reference-style playback strip", async () => {
+  it('provides the complete reference-style playback strip', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
     for (const label of [
-      "Enable shuffle",
-      "Previous track",
-      "Play",
-      "Next track",
-      "Enable repeat all",
+      'Enable shuffle',
+      'Previous track',
+      'Play',
+      'Next track',
+      'Enable repeat all',
     ]) {
-      expect(wrapper.get(`button[aria-label="${label}"]`)).toBeDefined();
+      expect(wrapper.get(`button[aria-label="${label}"]`)).toBeDefined()
     }
 
-    expect(wrapper.findAll('input[type="range"]')).toHaveLength(0);
-    expect(
-      wrapper.get('[data-slot="slider"][aria-label="Track progress"]'),
-    ).toBeDefined();
+    expect(wrapper.findAll('input[type="range"]')).toHaveLength(0)
+    expect(wrapper.get('[data-slot="slider"][aria-label="Track progress"]')).toBeDefined()
     const volume = wrapper
       .findAllComponents(Slider)
-      .find((slider) => slider.attributes("aria-label") === "Volume");
-    expect(volume).toBeDefined();
-    volume!.vm.$emit("update:modelValue", [72]);
-    expect(wrapper.emitted("setVolume")).toEqual([[72]]);
-  });
+      .find((slider) => slider.attributes('aria-label') === 'Volume')
+    expect(volume).toBeDefined()
+    volume!.vm.$emit('update:modelValue', [72])
+    expect(wrapper.emitted('setVolume')).toEqual([[72]])
+  })
 
-  it("shows a loading spinner in the main play button while playback starts", () => {
+  it('shows a loading spinner in the main play button while playback starts', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isStarting: true, isUpdating: true, snapshot },
-    });
+    })
 
-    const playButton = wrapper.get('button[aria-label="Starting playback"]');
-    expect(playButton.attributes("aria-busy")).toBe("true");
-    expect(playButton.get("[data-playback-starting]").classes()).toContain(
-      "animate-spin",
-    );
-  });
+    const playButton = wrapper.get('button[aria-label="Starting playback"]')
+    expect(playButton.attributes('aria-busy')).toBe('true')
+    expect(playButton.get('[data-playback-starting]').classes()).toContain('animate-spin')
+  })
 
-  it("mutes and restores the prior library volume from its icon", async () => {
+  it('mutes and restores the prior library volume from its icon', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Mute volume"]').trigger("click");
-    expect(wrapper.emitted("toggleMute")).toEqual([[]]);
+    await wrapper.get('button[aria-label="Mute volume"]').trigger('click')
+    expect(wrapper.emitted('toggleMute')).toEqual([[]])
 
-    await wrapper.setProps({ snapshot: { ...snapshot, volumePercent: 0 } });
-    await wrapper.get('button[aria-label="Unmute volume"]').trigger("click");
+    await wrapper.setProps({ snapshot: { ...snapshot, volumePercent: 0 } })
+    await wrapper.get('button[aria-label="Unmute volume"]').trigger('click')
 
-    expect(wrapper.emitted("toggleMute")).toEqual([[], []]);
-  });
+    expect(wrapper.emitted('toggleMute')).toEqual([[], []])
+  })
 
-  it("commits pointer drags from the progress and volume scrubbers", async () => {
+  it('commits pointer drags from the progress and volume scrubbers', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const volume = wrapper.get('[data-slot="slider"][aria-label="Volume"]');
-    const progress = wrapper.get(
-      '[data-slot="slider"][aria-label="Track progress"]',
-    );
+    })
+    const volume = wrapper.get('[data-slot="slider"][aria-label="Volume"]')
+    const progress = wrapper.get('[data-slot="slider"][aria-label="Track progress"]')
 
-    await dragSlider(volume, 25);
-    await dragSlider(progress, 50);
+    await dragSlider(volume, 25)
+    await dragSlider(progress, 50)
 
-    expect(wrapper.emitted("setVolume")).toEqual([[25]]);
-    expect(wrapper.emitted("seek")).toEqual([[119_000]]);
-  });
+    expect(wrapper.emitted('setVolume')).toEqual([[25]])
+    expect(wrapper.emitted('seek')).toEqual([[119_000]])
+  })
 
-  it("keeps selected-item details in an animated right sidebar", async () => {
+  it('keeps selected-item details in an animated right sidebar', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
-    const footer = wrapper.get("[data-library-playback-footer]");
+    })
+    const footer = wrapper.get('[data-library-playback-footer]')
 
     expect(
-      [...footer.element.children].map((element) =>
-        element.getAttribute("data-playback-control"),
-      ),
-    ).toEqual([
-      "now-playing",
-      "transport",
-      "favorite",
-      "progress",
-      "volume",
-      "details",
-    ]);
+      [...footer.element.children].map((element) => element.getAttribute('data-playback-control')),
+    ).toEqual(['now-playing', 'transport', 'favorite', 'progress', 'volume', 'details'])
 
-    const sidebar = wrapper.get("[data-library-selected-sidebar]");
-    expect(sidebar.text()).toContain("YouTube Developers Live");
-    expect(sidebar.text()).not.toContain("Up next");
-    expect(sidebar.classes()).toContain("transition-all");
+    const sidebar = wrapper.get('[data-library-selected-sidebar]')
+    expect(sidebar.text()).toContain('YouTube Developers Live')
+    expect(sidebar.text()).not.toContain('Up next')
+    expect(sidebar.classes()).toContain('transition-all')
 
-    const detailsToggle = footer.get(
-      'button[aria-label="Show selection details"]',
-    );
-    expect(detailsToggle.attributes("aria-pressed")).toBe("false");
-    expect(sidebar.classes()).toContain("opacity-0");
+    const detailsToggle = footer.get('button[aria-label="Show selection details"]')
+    expect(detailsToggle.attributes('aria-pressed')).toBe('false')
+    expect(sidebar.classes()).toContain('opacity-0')
 
-    await detailsToggle.trigger("click");
+    await detailsToggle.trigger('click')
     expect(
-      footer
-        .get('button[aria-label="Hide selection details"]')
-        .attributes("aria-pressed"),
-    ).toBe("true");
-    expect(sidebar.classes()).toContain("opacity-100");
+      footer.get('button[aria-label="Hide selection details"]').attributes('aria-pressed'),
+    ).toBe('true')
+    expect(sidebar.classes()).toContain('opacity-100')
 
-    await footer
-      .get('button[aria-label="Hide selection details"]')
-      .trigger("click");
-    expect(sidebar.classes()).toContain("opacity-0");
-  });
+    await footer.get('button[aria-label="Hide selection details"]').trigger('click')
+    expect(sidebar.classes()).toContain('opacity-0')
+  })
 
-  it("delegates track favorite changes from the table", async () => {
+  it('delegates track favorite changes from the table', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    const favorite = wrapper.get(
-      'button[aria-label="Favorite Creator Studio Session"]',
-    );
-    expect(favorite.attributes("aria-pressed")).toBe("false");
+    const favorite = wrapper.get('button[aria-label="Favorite Creator Studio Session"]')
+    expect(favorite.attributes('aria-pressed')).toBe('false')
 
-    await favorite.trigger("click");
+    await favorite.trigger('click')
 
-    expect(wrapper.emitted("toggleFavorite")).toEqual([[["BaW_jenozKc"]]]);
-  });
+    expect(wrapper.emitted('toggleFavorite')).toEqual([[['BaW_jenozKc']]])
+  })
 
-  it("keeps the left sidebar navigation controls", () => {
+  it('keeps the left sidebar navigation controls', () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    expect(wrapper.findAll("[data-collection]")).toHaveLength(3);
-    expect(wrapper.get("[data-library-sidebar]").text()).toContain("Library");
-  });
+    expect(wrapper.findAll('[data-collection]')).toHaveLength(3)
+    expect(wrapper.get('[data-library-sidebar]').text()).toContain('Library')
+  })
 
-  it("shows default playlists and filters tracks by their stable IDs", async () => {
+  it('shows default playlists and filters tracks by their stable IDs', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
           {
-            id: "favorites",
-            name: "Favorites",
-            trackIds: ["BaW_jenozKc"],
+            id: 'favorites',
+            name: 'Favorites',
+            trackIds: ['BaW_jenozKc'],
           },
-          { id: "most-played", name: "Most Played", trackIds: ["M7lc1UVf-VE"] },
+          { id: 'most-played', name: 'Most Played', trackIds: ['M7lc1UVf-VE'] },
         ],
         snapshot,
       },
-    });
+    })
 
-    expect(wrapper.get('[data-playlist-id="favorites"]').text()).toContain(
-      "Favorites",
-    );
-    expect(wrapper.get('[data-playlist-id="most-played"]').text()).toContain(
-      "Most Played",
-    );
+    expect(wrapper.get('[data-playlist-id="favorites"]').text()).toContain('Favorites')
+    expect(wrapper.get('[data-playlist-id="most-played"]').text()).toContain('Most Played')
 
-    await wrapper.get('[data-playlist-id="favorites"]').trigger("click");
+    await wrapper.get('[data-playlist-id="favorites"]').trigger('click')
 
-    expect(wrapper.get("h1").text()).toBe("Favorites");
-    expect(wrapper.findAll("[data-track-id]")).toHaveLength(1);
-    expect(wrapper.get('[data-track-id="BaW_jenozKc"]').text()).toContain(
-      "Creator Studio Session",
-    );
-  });
+    expect(wrapper.get('h1').text()).toBe('Favorites')
+    expect(wrapper.findAll('[data-track-id]')).toHaveLength(1)
+    expect(wrapper.get('[data-track-id="BaW_jenozKc"]').text()).toContain('Creator Studio Session')
+  })
 
-  it("plays a selected playlist in its visible sorted order", async () => {
+  it('plays a selected playlist in its visible sorted order', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
           {
-            id: "focus",
-            name: "Focus",
-            trackIds: ["M7lc1UVf-VE", "BaW_jenozKc"],
+            id: 'focus',
+            name: 'Focus',
+            trackIds: ['M7lc1UVf-VE', 'BaW_jenozKc'],
           },
         ],
         snapshot,
       },
-    });
+    })
 
-    await wrapper.get('[data-playlist-id="focus"]').trigger("click");
+    await wrapper.get('[data-playlist-id="focus"]').trigger('click')
 
-    expect(
-      wrapper.get('[data-playlist-id="focus"]').attributes("aria-current"),
-    ).toBe("page");
-    expect(
-      wrapper.get('[data-collection="tracks"]').attributes("aria-current"),
-    ).toBeUndefined();
+    expect(wrapper.get('[data-playlist-id="focus"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.get('[data-collection="tracks"]').attributes('aria-current')).toBeUndefined()
 
-    await wrapper.get('button[aria-label="Play Focus"]').trigger("click");
+    await wrapper.get('button[aria-label="Play Focus"]').trigger('click')
 
-    expect(wrapper.emitted("playTrack")).toEqual([
-      [["BaW_jenozKc", "M7lc1UVf-VE"], "BaW_jenozKc"],
-    ]);
-  });
+    expect(wrapper.emitted('playTrack')).toEqual([[['BaW_jenozKc', 'M7lc1UVf-VE'], 'BaW_jenozKc']])
+  })
 
-  it("delegates a reordered user playlist list", async () => {
+  it('delegates a reordered user playlist list', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
-          { id: "favorites", name: "Favorites", trackIds: [] },
-          { id: "most-played", name: "Most Played", trackIds: [] },
-          { id: "focus", name: "Focus", trackIds: [] },
-          { id: "road-trip", name: "Road Trip", trackIds: [] },
+          { id: 'favorites', name: 'Favorites', trackIds: [] },
+          { id: 'most-played', name: 'Most Played', trackIds: [] },
+          { id: 'focus', name: 'Focus', trackIds: [] },
+          { id: 'road-trip', name: 'Road Trip', trackIds: [] },
         ],
         snapshot,
       },
-    });
+    })
 
-    wrapper
-      .getComponent(LibrarySidebar)
-      .vm.$emit("reorderPlaylists", ["road-trip", "focus"]);
+    wrapper.getComponent(LibrarySidebar).vm.$emit('reorderPlaylists', ['road-trip', 'focus'])
 
-    expect(wrapper.emitted("reorderPlaylists")).toEqual([
-      [["road-trip", "focus"]],
-    ]);
-  });
+    expect(wrapper.emitted('reorderPlaylists')).toEqual([[['road-trip', 'focus']]])
+  })
 
-  it("shows the inline new-playlist editor after existing playlists", async () => {
+  it('shows the inline new-playlist editor after existing playlists', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: {
         isUpdating: false,
         playlists: [
-          { id: "focus", name: "Focus", trackIds: [] },
-          { id: "road-trip", name: "Road Trip", trackIds: [] },
+          { id: 'focus', name: 'Focus', trackIds: [] },
+          { id: 'road-trip', name: 'Road Trip', trackIds: [] },
         ],
         snapshot,
       },
-    });
+    })
 
-    await wrapper.get('button[aria-label="New playlist"]').trigger("click");
-    const editor = wrapper.get("[data-new-playlist-editor]");
+    await wrapper.get('button[aria-label="New playlist"]').trigger('click')
+    const editor = wrapper.get('[data-new-playlist-editor]')
 
     expect(
       wrapper
-        .get("[data-library-playlists]")
-        .findAll("[data-playlist-id], [data-new-playlist-editor]")
-        .map((element) => element.attributes("data-playlist-id") ?? "editor"),
-    ).toEqual(["focus", "road-trip", "editor"]);
+        .get('[data-library-playlists]')
+        .findAll('[data-playlist-id], [data-new-playlist-editor]')
+        .map((element) => element.attributes('data-playlist-id') ?? 'editor'),
+    ).toEqual(['focus', 'road-trip', 'editor'])
 
-    await editor
-      .get('input[aria-label="New playlist name"]')
-      .setValue("Road Trip");
-    await editor.trigger("submit");
+    await editor.get('input[aria-label="New playlist name"]').setValue('Road Trip')
+    await editor.trigger('submit')
 
-    expect(body().find('[role="dialog"]').exists()).toBe(false);
-    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+    expect(body().find('[role="dialog"]').exists()).toBe(false)
+    expect(wrapper.emitted('upsertPlaylist')).toEqual([
       [
         expect.objectContaining({
-          name: "Road Trip",
+          name: 'Road Trip',
           trackIds: [],
         }),
       ],
-    ]);
-  });
+    ])
+  })
 
-  it("edits and deletes a user playlist", async () => {
+  it('edits and deletes a user playlist', async () => {
     const playlist = {
-      id: "focus",
-      name: "Focus",
-      trackIds: ["M7lc1UVf-VE"],
-    };
+      id: 'focus',
+      name: 'Focus',
+      trackIds: ['M7lc1UVf-VE'],
+    }
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, playlists: [playlist], snapshot },
-    });
+    })
 
-    await wrapper.get('button[aria-label="Edit Focus"]').trigger("click");
-    const dialog = body().get('[role="dialog"]');
-    await dialog.get('[data-playlist-field="name"]').setValue("Deep Focus");
-    await dialog
-      .get('[data-playlist-track="BaW_jenozKc"] input')
-      .setValue(true);
-    await dialog.get("form").trigger("submit");
+    await wrapper.get('button[aria-label="Edit Focus"]').trigger('click')
+    const dialog = body().get('[role="dialog"]')
+    await dialog.get('[data-playlist-field="name"]').setValue('Deep Focus')
+    await dialog.get('[data-playlist-track="BaW_jenozKc"] input').setValue(true)
+    await dialog.get('form').trigger('submit')
 
-    expect(wrapper.emitted("upsertPlaylist")).toEqual([
+    expect(wrapper.emitted('upsertPlaylist')).toEqual([
       [
         {
-          id: "focus",
-          name: "Deep Focus",
-          trackIds: ["M7lc1UVf-VE", "BaW_jenozKc"],
+          id: 'focus',
+          name: 'Deep Focus',
+          trackIds: ['M7lc1UVf-VE', 'BaW_jenozKc'],
         },
       ],
-    ]);
+    ])
 
-    await wrapper.get('button[aria-label="Edit Focus"]').trigger("click");
-    await body().get("[data-playlist-editor-delete]").trigger("click");
-    await body().get("[data-playlist-editor-delete]").trigger("click");
+    await wrapper.get('button[aria-label="Edit Focus"]').trigger('click')
+    await body().get('[data-playlist-editor-delete]').trigger('click')
+    await body().get('[data-playlist-editor-delete]').trigger('click')
 
-    expect(wrapper.emitted("deletePlaylist")).toEqual([["focus"]]);
-  });
+    expect(wrapper.emitted('deletePlaylist')).toEqual([['focus']])
+  })
 
-  it("opens Import Music from the plus button beside Library", async () => {
+  it('opens Import Music from the plus button beside Library', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,
       props: { isUpdating: false, snapshot },
-    });
+    })
 
-    const heading = wrapper.get('[data-library-heading="library"]');
-    const button = heading.get('button[aria-label="Import music"]');
+    const heading = wrapper.get('[data-library-heading="library"]')
+    const button = heading.get('button[aria-label="Import music"]')
 
-    expect(heading.text()).toContain("Library");
-    await button.trigger("click");
-    expect(wrapper.emitted("openImport")).toEqual([[]]);
-  });
-});
+    expect(heading.text()).toContain('Library')
+    await button.trigger('click')
+    expect(wrapper.emitted('openImport')).toEqual([[]])
+  })
+})

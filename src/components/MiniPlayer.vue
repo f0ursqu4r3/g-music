@@ -15,99 +15,91 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-} from "lucide-vue-next";
-import { computed } from "vue";
+} from 'lucide-vue-next'
+import { computed } from 'vue'
 
-import type { PlaybackSnapshot } from "@/api";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { formatDuration } from "@/lib/time";
-import YouTubeArtwork from "./YouTubeArtwork.vue";
+import type { PlaybackSnapshot } from '@/api'
+import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { formatDuration } from '@/lib/time'
+import YouTubeArtwork from './YouTubeArtwork.vue'
 
 interface Props {
-  snapshot: PlaybackSnapshot;
-  isUpdating: boolean;
-  isStarting?: boolean;
-  favoriteTrackIds?: string[];
+  snapshot: PlaybackSnapshot
+  isUpdating: boolean
+  isStarting?: boolean
+  favoriteTrackIds?: string[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
   favoriteTrackIds: () => [],
   isStarting: false,
-});
+})
 
 const emit = defineEmits<{
-  toggle: [];
-  previous: [];
-  next: [];
-  seek: [positionMs: number];
-  setVolume: [volumePercent: number];
-  toggleMute: [];
-  toggleShuffle: [];
-  cycleRepeatMode: [];
-  toggleFavorite: [id: string];
-}>();
+  toggle: []
+  previous: []
+  next: []
+  seek: [positionMs: number]
+  setVolume: [volumePercent: number]
+  toggleMute: []
+  toggleShuffle: []
+  cycleRepeatMode: []
+  toggleFavorite: [id: string]
+}>()
 
-const currentItem = computed(() => props.snapshot.currentItem);
-const durationMs = computed(() => currentItem.value?.durationMs ?? 0);
-const isPlaying = computed(() => props.snapshot.status === "playing");
-const trackTitle = computed(
-  () => currentItem.value?.title ?? "Nothing playing",
-);
-const trackArtist = computed(
-  () => currentItem.value?.artist ?? "Choose a track to begin",
-);
-const remainingMs = computed(() =>
-  Math.max(durationMs.value - props.snapshot.positionMs, 0),
-);
+const currentItem = computed(() => props.snapshot.currentItem)
+const durationMs = computed(() => currentItem.value?.durationMs ?? 0)
+const isPlaying = computed(() => props.snapshot.status === 'playing')
+const trackTitle = computed(() => currentItem.value?.title ?? 'Nothing playing')
+const trackArtist = computed(() => currentItem.value?.artist ?? 'Choose a track to begin')
+const remainingMs = computed(() => Math.max(durationMs.value - props.snapshot.positionMs, 0))
 const isFavorite = computed(() =>
-  currentItem.value
-    ? props.favoriteTrackIds.includes(currentItem.value.id)
-    : false,
-);
-const repeatMode = computed(() => props.snapshot.repeatMode ?? "off");
+  currentItem.value ? props.favoriteTrackIds.includes(currentItem.value.id) : false,
+)
+const repeatMode = computed(() => props.snapshot.repeatMode ?? 'off')
 const repeatIcon = computed(() => {
-  if (repeatMode.value === "one") {
-    return Repeat1;
+  if (repeatMode.value === 'one') {
+    return Repeat1
   }
-  if (repeatMode.value === "all") {
-    return Repeat2;
+  if (repeatMode.value === 'all') {
+    return Repeat2
   }
-  return Repeat;
-});
+  return Repeat
+})
 const repeatLabel = computed(() => {
-  if (repeatMode.value === "one") {
-    return "Disable repeat";
+  if (repeatMode.value === 'one') {
+    return 'Disable repeat'
   }
-  if (repeatMode.value === "all") {
-    return "Enable repeat one";
+  if (repeatMode.value === 'all') {
+    return 'Enable repeat one'
   }
-  return "Enable repeat all";
-});
+  return 'Enable repeat all'
+})
 const volumeIcon = computed(() => {
   if (props.snapshot.volumePercent === 0) {
-    return VolumeX;
+    return VolumeX
   }
   if (props.snapshot.volumePercent <= 33) {
-    return Volume;
+    return Volume
   }
   if (props.snapshot.volumePercent <= 66) {
-    return Volume1;
+    return Volume1
   }
-  return Volume2;
-});
+  return Volume2
+})
 
 function emitSeek(values: number[]): void {
-  const value = values[0];
+  const value = values[0]
   if (Number.isFinite(value)) {
-    emit("seek", value);
+    emit('seek', value)
   }
 }
 
 function emitVolume(values: number[] | undefined): void {
-  const value = values?.[0];
-  if (typeof value === "number" && Number.isFinite(value)) {
-    emit("setVolume", value);
+  const value = values?.[0]
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    emit('setVolume', value)
   }
 }
 </script>
@@ -135,9 +127,7 @@ function emitVolume(values: number[] | undefined): void {
       />
     </div>
 
-    <div
-      class="grid min-w-0 grid-rows-[auto_1fr_auto] px-3.5 py-3 max-[390px]:px-3"
-    >
+    <div class="grid min-w-0 grid-rows-[auto_1fr_auto] px-3.5 py-3 max-[390px]:px-3">
       <header class="min-w-0 pr-14">
         <div class="min-w-0">
           <h1
@@ -156,9 +146,7 @@ function emitVolume(values: number[] | undefined): void {
       <div class="flex items-end justify-between gap-3 pt-2">
         <nav class="flex items-center gap-0.5" aria-label="Playback controls">
           <Button
-            :aria-label="
-              snapshot.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'
-            "
+            :aria-label="snapshot.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'"
             :aria-pressed="snapshot.shuffleEnabled ?? false"
             class="size-6 text-(--muted-text) aria-pressed:text-accent hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
             size="icon-xs"
@@ -179,17 +167,11 @@ function emitVolume(values: number[] | undefined): void {
             <SkipBack aria-hidden="true" />
           </Button>
           <Button
-            :aria-label="
-              isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'
-            "
+            :aria-label="isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'"
             :aria-busy="isStarting ? 'true' : undefined"
             class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) disabled:bg-(--text)/50 disabled:opacity-100 [&_svg]:size-4"
             size="icon"
-            :disabled="
-              isUpdating ||
-              isStarting ||
-              (!currentItem && snapshot.queue.length === 0)
-            "
+            :disabled="isUpdating || isStarting || (!currentItem && snapshot.queue.length === 0)"
             @click="emit('toggle')"
           >
             <LoaderCircle
@@ -198,11 +180,7 @@ function emitVolume(values: number[] | undefined): void {
               data-playback-starting
               aria-hidden="true"
             />
-            <Pause
-              v-else-if="isPlaying"
-              aria-hidden="true"
-              fill="currentColor"
-            />
+            <Pause v-else-if="isPlaying" aria-hidden="true" fill="currentColor" />
             <Play v-else aria-hidden="true" fill="currentColor" />
           </Button>
           <Button
@@ -237,10 +215,7 @@ function emitVolume(values: number[] | undefined): void {
             :disabled="!currentItem || isUpdating"
             @click="currentItem && emit('toggleFavorite', currentItem.id)"
           >
-            <Heart
-              :fill="isFavorite ? 'currentColor' : 'none'"
-              aria-hidden="true"
-            />
+            <Heart :fill="isFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
           </Button>
         </nav>
 
@@ -248,9 +223,7 @@ function emitVolume(values: number[] | undefined): void {
           class="grid w-24 grid-cols-[14px_minmax(0,1fr)_18px] items-center gap-1.5 text-(--muted-text) max-[390px]:hidden"
         >
           <Button
-            :aria-label="
-              snapshot.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'
-            "
+            :aria-label="snapshot.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'"
             class="size-5 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
             size="icon-xs"
             variant="ghost"
@@ -298,11 +271,6 @@ function emitVolume(values: number[] | undefined): void {
 
 <style scoped>
 .album-art {
-  background: linear-gradient(
-    136deg,
-    var(--artwork-a),
-    var(--artwork-b) 55%,
-    var(--artwork-c)
-  );
+  background: linear-gradient(136deg, var(--artwork-a), var(--artwork-b) 55%, var(--artwork-c));
 }
 </style>

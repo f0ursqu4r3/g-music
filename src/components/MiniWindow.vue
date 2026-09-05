@@ -1,42 +1,42 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, Palette, X } from "lucide-vue-next";
+import { ChevronDown, ChevronUp, Palette, X } from 'lucide-vue-next'
 
-import type { PlaybackSnapshot } from "@/api";
-import MiniPlayer from "@/components/MiniPlayer.vue";
-import QueueDrawer from "@/components/QueueDrawer.vue";
-import { Button } from "@/components/ui/button";
-import type { ThemeName } from "@/lib/theme";
+import type { PlaybackSnapshot } from '@/api'
+import MiniPlayer from '@/components/MiniPlayer.vue'
+import QueueDrawer from '@/components/QueueDrawer.vue'
+import { Button } from '@/components/ui/button'
+import type { ThemeName } from '@/lib/theme'
 
 interface Props {
-  snapshot: PlaybackSnapshot;
-  isUpdating: boolean;
-  isStarting?: boolean;
-  favoriteTrackIds?: string[];
-  queueExpanded: boolean;
-  theme: ThemeName;
+  snapshot: PlaybackSnapshot
+  isUpdating: boolean
+  isStarting?: boolean
+  favoriteTrackIds?: string[]
+  queueExpanded: boolean
+  theme: ThemeName
 }
 
 const props = withDefaults(defineProps<Props>(), {
   favoriteTrackIds: () => [],
   isStarting: false,
-});
+})
 
 const emit = defineEmits<{
-  toggle: [];
-  previous: [];
-  next: [];
-  seek: [positionMs: number];
-  setVolume: [volumePercent: number];
-  toggleMute: [];
-  move: [from: number, to: number];
-  remove: [index: number];
-  toggleQueue: [];
-  toggleTheme: [];
-  close: [];
-  toggleShuffle: [];
-  cycleRepeatMode: [];
-  toggleFavorite: [id: string];
-}>();
+  toggle: []
+  previous: []
+  next: []
+  seek: [positionMs: number]
+  setVolume: [volumePercent: number]
+  toggleMute: []
+  move: [from: number, to: number]
+  remove: [index: number]
+  toggleQueue: []
+  toggleTheme: []
+  close: []
+  toggleShuffle: []
+  cycleRepeatMode: []
+  toggleFavorite: [id: string]
+}>()
 </script>
 
 <template>
@@ -89,11 +89,7 @@ const emit = defineEmits<{
           <ChevronUp v-if="queueExpanded" aria-hidden="true" />
           <ChevronDown v-else aria-hidden="true" />
         </Button>
-        <Button
-          aria-label="Close mini player"
-          size="icon-xs"
-          variant="ghost"
-          @click="emit('close')"
+        <Button aria-label="Close mini player" size="icon-xs" variant="ghost" @click="emit('close')"
           ><X aria-hidden="true"
         /></Button>
       </nav>
@@ -109,13 +105,8 @@ const emit = defineEmits<{
   right: 0;
   left: 0;
   height: 1px;
-  content: "";
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--line-strong),
-    transparent
-  );
+  content: '';
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
   opacity: 0.7;
   pointer-events: none;
 }
@@ -126,7 +117,7 @@ const emit = defineEmits<{
   inset: 1px;
   border: 1px solid color-mix(in oklch, var(--line-strong), transparent 58%);
   border-radius: inherit;
-  content: "";
+  content: '';
   pointer-events: none;
 }
 </style>

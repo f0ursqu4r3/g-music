@@ -4,106 +4,94 @@ import {
   type Rect,
   useVirtualizer,
   type Virtualizer,
-} from "@tanstack/vue-virtual";
-import { computed, ref } from "vue";
+} from '@tanstack/vue-virtual'
+import { computed, ref } from 'vue'
 
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface GridGroup<T> {
-  items: T[];
-  label: string;
+  items: T[]
+  label: string
 }
 
 interface GridRow<T> {
-  items: T[];
-  key: string;
-  label: string;
+  items: T[]
+  key: string
+  label: string
 }
 
 const props = withDefaults(
   defineProps<{
-    getItemKey: (item: T) => string;
-    gridClass?: string;
-    gridItemSize: number;
-    groups: GridGroup<T>[];
-    itemHeightPadding?: number;
+    getItemKey: (item: T) => string
+    gridClass?: string
+    gridItemSize: number
+    groups: GridGroup<T>[]
+    itemHeightPadding?: number
   }>(),
   {
-    gridClass: "",
+    gridClass: '',
     itemHeightPadding: 48,
   },
-);
+)
 
 defineSlots<{
-  item(props: { item: T }): unknown;
-}>();
+  item(props: { item: T }): unknown
+}>()
 
-const horizontalPadding = 56;
-const gridGap = 16;
-const gridViewport = ref<HTMLElement | null>(null);
-const viewportWidth = ref(defaultViewportWidth());
+const horizontalPadding = 56
+const gridGap = 16
+const gridViewport = ref<HTMLElement | null>(null)
+const viewportWidth = ref(defaultViewportWidth())
 
 function defaultViewportHeight(): number {
-  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
+  return typeof window === 'undefined' ? 600 : window.innerHeight || 600
 }
 
 function defaultViewportWidth(): number {
-  return typeof window === "undefined" ? 1024 : window.innerWidth || 1024;
+  return typeof window === 'undefined' ? 1024 : window.innerWidth || 1024
 }
 
 function updateViewportWidth(element: HTMLElement | null): void {
-  viewportWidth.value = element?.clientWidth || defaultViewportWidth();
+  viewportWidth.value = element?.clientWidth || defaultViewportWidth()
 }
 
 function setGridViewport(element: HTMLElement | null): void {
-  gridViewport.value = element;
-  updateViewportWidth(element);
+  gridViewport.value = element
+  updateViewportWidth(element)
 }
 
 const columnCount = computed(() => {
-  const contentWidth = Math.max(viewportWidth.value - horizontalPadding, 1);
-  const minimumItemWidth = Math.min(props.gridItemSize, contentWidth);
+  const contentWidth = Math.max(viewportWidth.value - horizontalPadding, 1)
+  const minimumItemWidth = Math.min(props.gridItemSize, contentWidth)
 
-  return Math.max(
-    1,
-    Math.floor((contentWidth + gridGap) / (minimumItemWidth + gridGap)),
-  );
-});
+  return Math.max(1, Math.floor((contentWidth + gridGap) / (minimumItemWidth + gridGap)))
+})
 
 const rows = computed<GridRow<T>[]>(() => {
-  const nextRows: GridRow<T>[] = [];
+  const nextRows: GridRow<T>[] = []
 
   props.groups.forEach((group, groupIndex) => {
-    for (
-      let itemIndex = 0;
-      itemIndex < group.items.length;
-      itemIndex += columnCount.value
-    ) {
+    for (let itemIndex = 0; itemIndex < group.items.length; itemIndex += columnCount.value) {
       nextRows.push({
         items: group.items.slice(itemIndex, itemIndex + columnCount.value),
         key: `${groupIndex}-${itemIndex}`,
-        label: itemIndex === 0 ? group.label : "",
-      });
+        label: itemIndex === 0 ? group.label : '',
+      })
     }
-  });
+  })
 
-  return nextRows;
-});
+  return nextRows
+})
 
 function estimatedItemWidth(): number {
-  const contentWidth = Math.max(viewportWidth.value - horizontalPadding, 1);
-  return (
-    (contentWidth - gridGap * Math.max(columnCount.value - 1, 0)) /
-    columnCount.value
-  );
+  const contentWidth = Math.max(viewportWidth.value - horizontalPadding, 1)
+  return (contentWidth - gridGap * Math.max(columnCount.value - 1, 0)) / columnCount.value
 }
 
 function estimateRowHeight(index: number): number {
-  const row = rows.value[index];
-  const sectionHeight = row?.label ? 27 : 0;
-  return (
-    estimatedItemWidth() + props.itemHeightPadding + sectionHeight + gridGap
-  );
+  const row = rows.value[index]
+  const sectionHeight = row?.label ? 27 : 0
+  return estimatedItemWidth() + props.itemHeightPadding + sectionHeight + gridGap
 }
 
 function observeGridRect(
@@ -112,18 +100,18 @@ function observeGridRect(
 ): (() => void) | undefined {
   return observeElementRect(instance, (rect) => {
     if (rect.width > 0) {
-      viewportWidth.value = rect.width;
+      viewportWidth.value = rect.width
     }
     callback({
       ...rect,
       height: rect.height > 0 ? rect.height : defaultViewportHeight(),
       width: rect.width > 0 ? rect.width : viewportWidth.value,
-    });
-  });
+    })
+  })
 }
 
 const virtualizerOptions = computed(() => {
-  const scrollElement = gridViewport.value;
+  const scrollElement = gridViewport.value
 
   return {
     count: rows.value.length,
@@ -135,18 +123,16 @@ const virtualizerOptions = computed(() => {
     },
     observeElementRect: observeGridRect,
     overscan: 3,
-  };
-});
-const gridVirtualizer = useVirtualizer(virtualizerOptions);
+  }
+})
+const gridVirtualizer = useVirtualizer(virtualizerOptions)
 const virtualRows = computed(() =>
   gridVirtualizer.value.getVirtualItems().flatMap((virtualItem) => {
-    const row = rows.value[virtualItem.index];
-    return row ? [{ row, virtualItem }] : [];
+    const row = rows.value[virtualItem.index]
+    return row ? [{ row, virtualItem }] : []
   }),
-);
-const virtualGridHeight = computed(
-  () => `${gridVirtualizer.value.getTotalSize()}px`,
-);
+)
+const virtualGridHeight = computed(() => `${gridVirtualizer.value.getTotalSize()}px`)
 </script>
 
 <template>
@@ -172,11 +158,7 @@ const virtualGridHeight = computed(
             {{ row.label }}
           </h2>
           <div class="library-grid" :class="props.gridClass">
-            <div
-              v-for="item in row.items"
-              :key="props.getItemKey(item)"
-              class="min-w-0"
-            >
+            <div v-for="item in row.items" :key="props.getItemKey(item)" class="min-w-0">
               <slot name="item" :item="item" />
             </div>
           </div>
@@ -191,7 +173,7 @@ const virtualGridHeight = computed(
   display: grid;
   grid-template-columns: repeat(
     auto-fill,
-    minmax(min(v-bind("`${props.gridItemSize}px`"), 100%), 1fr)
+    minmax(min(v-bind('`${props.gridItemSize}px`'), 100%), 1fr)
   );
   align-content: start;
   gap: 1rem;

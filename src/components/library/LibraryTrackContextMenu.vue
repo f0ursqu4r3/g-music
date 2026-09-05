@@ -1,50 +1,49 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue'
 
-import type { MediaItem } from "@/api";
+import type { MediaItem } from '@/api'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+} from '@/components/ui/context-menu'
 
 const props = defineProps<{
-  canRemoveFromPlaylist?: boolean;
-  isUpdating?: boolean;
-  isFavorite: boolean;
-  selectedTracks: MediaItem[];
-  track: MediaItem;
-}>();
+  canRemoveFromPlaylist?: boolean
+  isUpdating?: boolean
+  isFavorite: boolean
+  selectedTracks: MediaItem[]
+  track: MediaItem
+}>()
 
 const emit = defineEmits<{
-  addToQueue: [tracks: MediaItem[]];
-  edit: [track: MediaItem];
-  openAlbum: [track: MediaItem];
-  openArtist: [track: MediaItem];
-  open: [track: MediaItem];
-  play: [tracks: MediaItem[]];
-  playNext: [tracks: MediaItem[]];
-  remove: [tracks: MediaItem[]];
-  removeFromPlaylist: [tracks: MediaItem[]];
-  toggleFavorite: [ids: string[]];
-}>();
+  addToQueue: [tracks: MediaItem[]]
+  edit: [track: MediaItem]
+  openAlbum: [track: MediaItem]
+  openArtist: [track: MediaItem]
+  open: [track: MediaItem]
+  play: [tracks: MediaItem[]]
+  playNext: [tracks: MediaItem[]]
+  remove: [tracks: MediaItem[]]
+  removeFromPlaylist: [tracks: MediaItem[]]
+  toggleFavorite: [ids: string[]]
+}>()
 
 const menuTracks = computed(() =>
   props.selectedTracks.some((track) => track.id === props.track.id)
     ? props.selectedTracks
     : [props.track],
-);
-const isMultiple = computed(() => menuTracks.value.length > 1);
+)
+const isMultiple = computed(() => menuTracks.value.length > 1)
 const trackCountLabel = computed(
-  () =>
-    `${menuTracks.value.length} ${menuTracks.value.length === 1 ? "track" : "tracks"}`,
-);
+  () => `${menuTracks.value.length} ${menuTracks.value.length === 1 ? 'track' : 'tracks'}`,
+)
 
 function selectMenuTarget(isOpen: boolean): void {
   if (isOpen) {
-    emit("open", props.track);
+    emit('open', props.track)
   }
 }
 </script>
@@ -55,23 +54,17 @@ function selectMenuTarget(isOpen: boolean): void {
       <slot />
     </ContextMenuTrigger>
     <ContextMenuContent data-track-context-menu>
-      <ContextMenuItem
-        data-track-context-action="play"
-        @select="emit('play', menuTracks)"
-      >
-        {{ isMultiple ? `Play ${trackCountLabel}` : "Play" }}
+      <ContextMenuItem data-track-context-action="play" @select="emit('play', menuTracks)">
+        {{ isMultiple ? `Play ${trackCountLabel}` : 'Play' }}
       </ContextMenuItem>
-      <ContextMenuItem
-        data-track-context-action="play-next"
-        @select="emit('playNext', menuTracks)"
-      >
-        {{ isMultiple ? `Play ${trackCountLabel} next` : "Play next" }}
+      <ContextMenuItem data-track-context-action="play-next" @select="emit('playNext', menuTracks)">
+        {{ isMultiple ? `Play ${trackCountLabel} next` : 'Play next' }}
       </ContextMenuItem>
       <ContextMenuItem
         data-track-context-action="add-to-queue"
         @select="emit('addToQueue', menuTracks)"
       >
-        {{ isMultiple ? `Add ${trackCountLabel} to queue` : "Add to queue" }}
+        {{ isMultiple ? `Add ${trackCountLabel} to queue` : 'Add to queue' }}
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
@@ -85,10 +78,10 @@ function selectMenuTarget(isOpen: boolean): void {
       >
         {{
           isMultiple
-            ? "Toggle Favorites"
+            ? 'Toggle Favorites'
             : props.isFavorite
-              ? "Remove from Favorites"
-              : "Add to Favorites"
+              ? 'Remove from Favorites'
+              : 'Add to Favorites'
         }}
       </ContextMenuItem>
       <ContextMenuItem
@@ -106,10 +99,7 @@ function selectMenuTarget(isOpen: boolean): void {
         Go to artist
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem
-        data-track-context-action="edit"
-        @select="emit('edit', props.track)"
-      >
+      <ContextMenuItem data-track-context-action="edit" @select="emit('edit', props.track)">
         Edit metadata
       </ContextMenuItem>
       <ContextMenuItem
@@ -118,22 +108,14 @@ function selectMenuTarget(isOpen: boolean): void {
         data-track-context-action="remove-from-playlist"
         @select="emit('removeFromPlaylist', menuTracks)"
       >
-        {{
-          isMultiple
-            ? `Remove ${trackCountLabel} from playlist`
-            : "Remove from playlist"
-        }}
+        {{ isMultiple ? `Remove ${trackCountLabel} from playlist` : 'Remove from playlist' }}
       </ContextMenuItem>
       <ContextMenuItem
         data-track-context-action="remove"
         variant="destructive"
         @select="emit('remove', menuTracks)"
       >
-        {{
-          isMultiple
-            ? `Remove ${trackCountLabel} from library…`
-            : "Remove from library…"
-        }}
+        {{ isMultiple ? `Remove ${trackCountLabel} from library…` : 'Remove from library…' }}
       </ContextMenuItem>
     </ContextMenuContent>
   </ContextMenu>

@@ -8,7 +8,7 @@ import {
   Loader,
   Play,
   Search,
-} from "lucide-vue-next";
+} from 'lucide-vue-next'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -19,86 +19,82 @@ import {
   PopoverTrigger,
   PopoverPortal,
   PopoverContent,
-} from "reka-ui";
-import { ref } from "vue";
+} from 'reka-ui'
+import { ref } from 'vue'
 
-import { Slider } from "@/components/ui/slider";
-import type {
-  LibraryDisplayMode,
-  LibraryGroupOption,
-  LibrarySortOption,
-} from "./types";
+import { Slider } from '@/components/ui/slider'
+import type { LibraryDisplayMode, LibraryGroupOption, LibrarySortOption } from './types'
 
 const props = withDefaults(
   defineProps<{
-    collectionTitle: string;
-    collectionSummary: string;
-    searchOpen?: boolean;
-    playlistName?: string;
-    canPlayPlaylist?: boolean;
-    isUpdating?: boolean;
-    errorMessage?: string;
-    displayMode: LibraryDisplayMode;
-    gridItemSize: number;
-    libraryOptionsOpen: boolean;
-    sortBy: LibrarySortOption;
-    groupBy: LibraryGroupOption;
-    metadataRefreshRemaining: number;
-    metadataRefreshFailed?: number;
-    metadataRefreshSkipped?: number;
-    hasActiveMetadataRefresh: boolean;
-    metadataRefreshDrawerOpen: boolean;
+    collectionTitle: string
+    collectionSummary: string
+    searchOpen?: boolean
+    playlistName?: string
+    canPlayPlaylist?: boolean
+    isUpdating?: boolean
+    errorMessage?: string
+    displayMode: LibraryDisplayMode
+    gridItemSize: number
+    libraryOptionsOpen: boolean
+    sortBy: LibrarySortOption
+    groupBy: LibraryGroupOption
+    metadataRefreshRemaining: number
+    metadataRefreshFailed?: number
+    metadataRefreshSkipped?: number
+    hasActiveMetadataRefresh: boolean
+    metadataRefreshDrawerOpen: boolean
   }>(),
   {
     errorMessage: undefined,
     metadataRefreshFailed: 0,
     metadataRefreshSkipped: 0,
   },
-);
+)
 
 const emit = defineEmits<{
-  setDisplayMode: [mode: LibraryDisplayMode];
-  toggleOptions: [open: boolean];
-  setSort: [option: LibrarySortOption];
-  setGroup: [option: LibraryGroupOption];
-  setGridItemSize: [size: number];
-  toggleMetadataRefresh: [open: boolean];
-  playPlaylist: [];
-  toggleSearch: [];
-}>();
+  setDisplayMode: [mode: LibraryDisplayMode]
+  toggleOptions: [open: boolean]
+  setSort: [option: LibrarySortOption]
+  setGroup: [option: LibraryGroupOption]
+  setGridItemSize: [size: number]
+  toggleMetadataRefresh: [open: boolean]
+  playPlaylist: []
+  toggleSearch: []
+}>()
 
-const summaryElement = ref<HTMLElement>();
+const summaryElement = ref<HTMLElement>()
 function restoreRefreshFocus(event: Event): void {
   if (
     !props.hasActiveMetadataRefresh &&
     !props.metadataRefreshFailed &&
     !props.metadataRefreshSkipped
   ) {
-    event.preventDefault();
-    summaryElement.value?.focus();
+    event.preventDefault()
+    summaryElement.value?.focus()
   }
 }
 
 const sortOptions: ReadonlyArray<readonly [LibrarySortOption, string]> = [
-  ["title-asc", "Title"],
-  ["title-desc", "Title (Z–A)"],
-  ["artist-asc", "Artist"],
-  ["artist-desc", "Artist (Z–A)"],
-  ["album-asc", "Album"],
-  ["album-desc", "Album (Z–A)"],
-  ["duration-desc", "Longest first"],
-  ["duration-asc", "Shortest first"],
-];
+  ['title-asc', 'Title'],
+  ['title-desc', 'Title (Z–A)'],
+  ['artist-asc', 'Artist'],
+  ['artist-desc', 'Artist (Z–A)'],
+  ['album-asc', 'Album'],
+  ['album-desc', 'Album (Z–A)'],
+  ['duration-desc', 'Longest first'],
+  ['duration-asc', 'Shortest first'],
+]
 const groupOptions: ReadonlyArray<readonly [LibraryGroupOption, string]> = [
-  ["none", "Sort sections"],
-  ["artist", "Artist"],
-  ["album", "Album"],
-];
+  ['none', 'Sort sections'],
+  ['artist', 'Artist'],
+  ['album', 'Album'],
+]
 
 function emitGridItemSize(values: number[]): void {
-  const value = values[0];
+  const value = values[0]
   if (Number.isFinite(value)) {
-    emit("setGridItemSize", value);
+    emit('setGridItemSize', value)
   }
 }
 </script>
@@ -126,9 +122,7 @@ function emitGridItemSize(values: number[]): void {
       <div
         class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.77rem] text-(--muted-text)"
       >
-        <span ref="summaryElement" data-library-summary tabindex="-1">{{
-          collectionSummary
-        }}</span>
+        <span ref="summaryElement" data-library-summary tabindex="-1">{{ collectionSummary }}</span>
         <PopoverRoot
           v-if="
             hasActiveMetadataRefresh ||
@@ -168,17 +162,14 @@ function emitGridItemSize(values: number[]): void {
               <span v-if="hasActiveMetadataRefresh"
                 >Refreshing metadata · {{ metadataRefreshRemaining }} left</span
               >
-              <span
-                v-else-if="!metadataRefreshFailed && !metadataRefreshSkipped"
+              <span v-else-if="!metadataRefreshFailed && !metadataRefreshSkipped"
                 >Metadata refreshed</span
               >
               <span v-if="metadataRefreshFailed" class="text-(--warning)"
-                >{{ hasActiveMetadataRefresh ? "· " : ""
-                }}{{ metadataRefreshFailed }} failed</span
+                >{{ hasActiveMetadataRefresh ? '· ' : '' }}{{ metadataRefreshFailed }} failed</span
               >
               <span v-if="metadataRefreshSkipped"
-                >{{
-                  hasActiveMetadataRefresh || metadataRefreshFailed ? "· " : ""
+                >{{ hasActiveMetadataRefresh || metadataRefreshFailed ? '· ' : ''
                 }}{{ metadataRefreshSkipped }} skipped</span
               >
               <ChevronRight
@@ -216,9 +207,7 @@ function emitGridItemSize(values: number[]): void {
 
     <nav class="flex items-center gap-1" aria-label="Library view options">
       <button
-        :aria-label="
-          searchOpen ? 'Close library search' : 'Open library search'
-        "
+        :aria-label="searchOpen ? 'Close library search' : 'Open library search'"
         :aria-expanded="!!searchOpen"
         :aria-controls="searchOpen ? 'library-search' : undefined"
         aria-keyshortcuts="Meta+f Control+f"
@@ -249,10 +238,7 @@ function emitGridItemSize(values: number[]): void {
         <Grid2X2 aria-hidden="true" />
       </button>
 
-      <DropdownMenuRoot
-        :open="libraryOptionsOpen"
-        @update:open="emit('toggleOptions', $event)"
-      >
+      <DropdownMenuRoot :open="libraryOptionsOpen" @update:open="emit('toggleOptions', $event)">
         <DropdownMenuTrigger
           aria-label="More library options"
           :aria-expanded="libraryOptionsOpen"

@@ -11,76 +11,70 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-} from "lucide-vue-next";
-import { computed } from "vue";
+} from 'lucide-vue-next'
+import { computed } from 'vue'
 
-import type { PlaybackSnapshot } from "@/api";
-import { Button } from "@/components/ui/button";
+import type { PlaybackSnapshot } from '@/api'
+import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { Slider } from "@/components/ui/slider";
-import { formatDuration } from "@/lib/time";
-import AutoScrollText from "./AutoScrollText.vue";
-import YouTubeArtwork from "./YouTubeArtwork.vue";
+} from '@/components/ui/context-menu'
+import { Slider } from '@/components/ui/slider'
+import { formatDuration } from '@/lib/time'
+import AutoScrollText from './AutoScrollText.vue'
+import YouTubeArtwork from './YouTubeArtwork.vue'
 
 interface Props {
-  snapshot: PlaybackSnapshot;
-  isUpdating: boolean;
-  isWindowFocused?: boolean;
-  isStarting?: boolean;
-  favoriteTrackIds?: string[];
+  snapshot: PlaybackSnapshot
+  isUpdating: boolean
+  isWindowFocused?: boolean
+  isStarting?: boolean
+  favoriteTrackIds?: string[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isWindowFocused: true,
   isStarting: false,
   favoriteTrackIds: () => [],
-});
+})
 const emit = defineEmits<{
-  toggle: [];
-  previous: [];
-  next: [];
-  seek: [positionMs: number];
-  toggleFavorite: [id: string];
-  toggleShuffle: [];
-  cycleRepeatMode: [];
-}>();
+  toggle: []
+  previous: []
+  next: []
+  seek: [positionMs: number]
+  toggleFavorite: [id: string]
+  toggleShuffle: []
+  cycleRepeatMode: []
+}>()
 
-const isPlaying = computed(() => props.snapshot.status === "playing");
-const currentItem = computed(() => props.snapshot.currentItem);
+const isPlaying = computed(() => props.snapshot.status === 'playing')
+const currentItem = computed(() => props.snapshot.currentItem)
 const isFavorite = computed(() =>
-  currentItem.value
-    ? props.favoriteTrackIds.includes(currentItem.value.id)
-    : false,
-);
-const repeatMode = computed(() => props.snapshot.repeatMode ?? "off");
+  currentItem.value ? props.favoriteTrackIds.includes(currentItem.value.id) : false,
+)
+const repeatMode = computed(() => props.snapshot.repeatMode ?? 'off')
 const repeatLabel = computed(() =>
-  repeatMode.value === "one"
-    ? "Disable repeat"
-    : repeatMode.value === "all"
-      ? "Enable repeat one"
-      : "Enable repeat all",
-);
+  repeatMode.value === 'one'
+    ? 'Disable repeat'
+    : repeatMode.value === 'all'
+      ? 'Enable repeat one'
+      : 'Enable repeat all',
+)
 const repeatIcon = computed(() =>
-  repeatMode.value === "one"
-    ? Repeat1
-    : repeatMode.value === "all"
-      ? Repeat2
-      : Repeat,
-);
+  repeatMode.value === 'one' ? Repeat1 : repeatMode.value === 'all' ? Repeat2 : Repeat,
+)
 const compactProgressMs = computed(() => {
-  const durationMs = currentItem.value?.durationMs ?? 0;
-  return Math.min(Math.max(props.snapshot.positionMs, 0), durationMs);
-});
+  const durationMs = currentItem.value?.durationMs ?? 0
+  return Math.min(Math.max(props.snapshot.positionMs, 0), durationMs)
+})
 
 function emitSeek(values: number[]): void {
-  const value = values[0];
+  const value = values[0]
   if (Number.isFinite(value)) {
-    emit("seek", value);
+    emit('seek', value)
   }
 }
 </script>
@@ -109,7 +103,7 @@ function emitSeek(values: number[]): void {
           :disabled="!currentItem || isUpdating"
           @select="currentItem && emit('toggleFavorite', currentItem.id)"
         >
-          {{ isFavorite ? "Remove from Favorites" : "Add to Favorites" }}
+          {{ isFavorite ? 'Remove from Favorites' : 'Add to Favorites' }}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -156,10 +150,7 @@ function emitSeek(values: number[]): void {
               :disabled="!currentItem || isUpdating"
               @click="currentItem && emit('toggleFavorite', currentItem.id)"
             >
-              <Heart
-                :fill="isFavorite ? 'currentColor' : 'none'"
-                aria-hidden="true"
-              />
+              <Heart :fill="isFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -171,19 +162,14 @@ function emitSeek(values: number[]): void {
         :aria-hidden="isWindowFocused ? undefined : 'true'"
         :inert="!isWindowFocused"
       >
-        <div
-          class="h-0.5 w-full rounded-full bg-[oklch(0.94_0.012_270/0.1)]"
-          aria-hidden="true"
-        />
+        <div class="h-0.5 w-full rounded-full bg-[oklch(0.94_0.012_270/0.1)]" aria-hidden="true" />
         <nav
           class="flex items-center justify-center gap-1.5 pt-5 pb-4"
           aria-label="Playback controls"
         >
           <Button
             class="text-[oklch(0.94_0.012_270/0.76)] hover:bg-[oklch(0.94_0.012_270/0.1)] hover:text-(--text)"
-            :aria-label="
-              snapshot.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'
-            "
+            :aria-label="snapshot.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'"
             :aria-pressed="snapshot.shuffleEnabled ?? false"
             :disabled="isUpdating || isStarting"
             size="icon-sm"
@@ -203,17 +189,11 @@ function emitSeek(values: number[]): void {
             <SkipBack aria-hidden="true" />
           </Button>
           <Button
-            :aria-label="
-              isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'
-            "
+            :aria-label="isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'"
             :aria-busy="isStarting ? 'true' : undefined"
             class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) disabled:bg-(--text)/50 disabled:opacity-100"
             size="icon"
-            :disabled="
-              isUpdating ||
-              isStarting ||
-              (!currentItem && snapshot.queue.length === 0)
-            "
+            :disabled="isUpdating || isStarting || (!currentItem && snapshot.queue.length === 0)"
             @click="emit('toggle')"
           >
             <LoaderCircle
@@ -222,11 +202,7 @@ function emitSeek(values: number[]): void {
               data-playback-starting
               aria-hidden="true"
             />
-            <Pause
-              v-else-if="isPlaying"
-              aria-hidden="true"
-              fill="currentColor"
-            />
+            <Pause v-else-if="isPlaying" aria-hidden="true" fill="currentColor" />
             <Play v-else aria-hidden="true" fill="currentColor" />
           </Button>
           <Button
@@ -267,9 +243,7 @@ function emitSeek(values: number[]): void {
             :disabled="isUpdating || isStarting || !currentItem"
             @value-commit="emitSeek"
           />
-          <span class="text-right">{{
-            formatDuration(currentItem?.durationMs ?? 0)
-          }}</span>
+          <span class="text-right">{{ formatDuration(currentItem?.durationMs ?? 0) }}</span>
         </div>
       </div>
     </section>
@@ -292,12 +266,7 @@ function emitSeek(values: number[]): void {
       color-mix(in oklch, var(--artwork-a), transparent 8%),
       transparent 43%
     ),
-    linear-gradient(
-      148deg,
-      var(--artwork-a),
-      var(--artwork-b) 54%,
-      var(--artwork-c)
-    );
+    linear-gradient(148deg, var(--artwork-a), var(--artwork-b) 54%, var(--artwork-c));
 }
 
 .artwork-information-gradient {

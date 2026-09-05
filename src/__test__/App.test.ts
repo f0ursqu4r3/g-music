@@ -1,16 +1,16 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { enableAutoUnmount, mount } from "@vue/test-utils";
-import { Storage } from "happy-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { nextTick } from "vue";
-import { flushApp as flushPromises } from "./flushApp";
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
+import { Storage } from 'happy-dom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
+import { flushApp as flushPromises } from './flushApp'
 
-import App from "../App.vue";
-import LibraryWindow from "../components/LibraryWindow.vue";
-import MiniWindow from "../components/MiniWindow.vue";
-import QueueWindow from "../components/QueueWindow.vue";
+import App from '../App.vue'
+import LibraryWindow from '../components/LibraryWindow.vue'
+import MiniWindow from '../components/MiniWindow.vue'
+import QueueWindow from '../components/QueueWindow.vue'
 
-enableAutoUnmount(afterEach);
+enableAutoUnmount(afterEach)
 
 const playbackMocks = vi.hoisted(() => ({
   applySnapshot: vi.fn(),
@@ -29,49 +29,49 @@ const playbackMocks = vi.hoisted(() => ({
   toggleFavorite: vi.fn(),
   toggleMute: vi.fn(),
   toggleShuffle: vi.fn(),
-}));
+}))
 const windowMocks = vi.hoisted(() => ({
   showImport: vi.fn(),
-}));
+}))
 const eventMocks = vi.hoisted(() => ({
   listen: vi.fn().mockResolvedValue(vi.fn()),
-}));
+}))
 
-vi.mock("@tauri-apps/api/window", () => ({
+vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: vi.fn(),
   LogicalSize: vi.fn(),
-}));
+}))
 
-vi.mock("@tauri-apps/api/event", () => eventMocks);
+vi.mock('@tauri-apps/api/event', () => eventMocks)
 
-vi.mock("@/api", async (importOriginal) => {
-  const api = await importOriginal<typeof import("@/api")>();
+vi.mock('@/api', async (importOriginal) => {
+  const api = await importOriginal<typeof import('@/api')>()
 
   return {
     ...api,
     windowApi: windowMocks,
-  };
-});
+  }
+})
 
-vi.mock("@/composables/usePlayback", () => ({
+vi.mock('@/composables/usePlayback', () => ({
   usePlayback: () => ({
     applySnapshot: playbackMocks.applySnapshot,
     snapshot: {
       value: {
-        status: "paused",
+        status: 'paused',
         currentItem: {
-          id: "night-drive",
-          title: "Night Drive",
-          artist: "Chromatic Skies",
+          id: 'night-drive',
+          title: 'Night Drive',
+          artist: 'Chromatic Skies',
           durationMs: 238_000,
         },
         positionMs: 57_000,
         volumePercent: 72,
         queue: [
           {
-            id: "night-drive",
-            title: "Night Drive",
-            artist: "Chromatic Skies",
+            id: 'night-drive',
+            title: 'Night Drive',
+            artist: 'Chromatic Skies',
             durationMs: 238_000,
           },
         ],
@@ -81,16 +81,16 @@ vi.mock("@/composables/usePlayback", () => ({
       value: {
         playlists: [
           {
-            id: "favorites",
-            name: "Favorites",
-            trackIds: ["night-drive"],
+            id: 'favorites',
+            name: 'Favorites',
+            trackIds: ['night-drive'],
           },
         ],
         tracks: [
           {
-            id: "night-drive",
-            title: "Night Drive",
-            artist: "Chromatic Skies",
+            id: 'night-drive',
+            title: 'Night Drive',
+            artist: 'Chromatic Skies',
             durationMs: 238_000,
           },
         ],
@@ -98,11 +98,11 @@ vi.mock("@/composables/usePlayback", () => ({
     },
     transport: {
       value: {
-        status: "paused",
+        status: 'paused',
         currentItem: {
-          id: "night-drive",
-          title: "Night Drive",
-          artist: "Chromatic Skies",
+          id: 'night-drive',
+          title: 'Night Drive',
+          artist: 'Chromatic Skies',
           durationMs: 238_000,
         },
         positionMs: 57_000,
@@ -116,8 +116,8 @@ vi.mock("@/composables/usePlayback", () => ({
     metadataRefreshes: {
       value: { completedTracks: 0, jobs: [], totalTracks: 0 },
     },
-    errorMessage: { value: "" },
-    errorCode: { value: "" },
+    errorMessage: { value: '' },
+    errorCode: { value: '' },
     refresh: playbackMocks.refresh,
     initialize: playbackMocks.refresh,
     sync: playbackMocks.sync,
@@ -139,289 +139,267 @@ vi.mock("@/composables/usePlayback", () => ({
     updateImportProgress: vi.fn(),
     updateMetadataRefreshes: vi.fn(),
   }),
-}));
+}))
 
-describe("application landmarks", () => {
+describe('application landmarks', () => {
   beforeEach(() => {
     // Node 26 exposes a native storage getter. Use the browser test environment.
-    vi.stubGlobal("localStorage", new Storage());
-    playbackMocks.applySnapshot.mockReset();
-    playbackMocks.cycleRepeatMode.mockReset();
-    playbackMocks.importYouTubeUrls.mockReset();
-    playbackMocks.moveQueueItem.mockReset();
-    playbackMocks.reorderPlaylists.mockReset();
-    playbackMocks.removeQueueItem.mockReset();
-    playbackMocks.removeTracks.mockReset();
-    playbackMocks.next.mockReset();
-    playbackMocks.playTrack.mockReset();
-    playbackMocks.previous.mockReset();
-    playbackMocks.refresh.mockReset();
-    playbackMocks.sync.mockReset();
-    playbackMocks.toggle.mockReset();
-    playbackMocks.toggleFavorite.mockReset();
-    playbackMocks.toggleMute.mockReset();
-    playbackMocks.toggleShuffle.mockReset();
-    windowMocks.showImport.mockReset();
-    eventMocks.listen.mockReset();
-    eventMocks.listen.mockResolvedValue(vi.fn());
-    window.history.replaceState({}, "", "/?view=library");
-    window.localStorage.clear();
-  });
+    vi.stubGlobal('localStorage', new Storage())
+    playbackMocks.applySnapshot.mockReset()
+    playbackMocks.cycleRepeatMode.mockReset()
+    playbackMocks.importYouTubeUrls.mockReset()
+    playbackMocks.moveQueueItem.mockReset()
+    playbackMocks.reorderPlaylists.mockReset()
+    playbackMocks.removeQueueItem.mockReset()
+    playbackMocks.removeTracks.mockReset()
+    playbackMocks.next.mockReset()
+    playbackMocks.playTrack.mockReset()
+    playbackMocks.previous.mockReset()
+    playbackMocks.refresh.mockReset()
+    playbackMocks.sync.mockReset()
+    playbackMocks.toggle.mockReset()
+    playbackMocks.toggleFavorite.mockReset()
+    playbackMocks.toggleMute.mockReset()
+    playbackMocks.toggleShuffle.mockReset()
+    windowMocks.showImport.mockReset()
+    eventMocks.listen.mockReset()
+    eventMocks.listen.mockResolvedValue(vi.fn())
+    window.history.replaceState({}, '', '/?view=library')
+    window.localStorage.clear()
+  })
 
   afterEach(() => {
-    vi.useRealTimers();
-    document.documentElement.removeAttribute("data-theme");
-  });
+    vi.useRealTimers()
+    document.documentElement.removeAttribute('data-theme')
+  })
 
-  it("renders exactly one main landmark for the active native window", async () => {
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('renders exactly one main landmark for the active native window', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    expect(wrapper.findAll("main")).toHaveLength(1);
-    expect(wrapper.get("main").attributes("aria-label")).toBe("Music library");
-  });
+    expect(wrapper.findAll('main')).toHaveLength(1)
+    expect(wrapper.get('main').attributes('aria-label')).toBe('Music library')
+  })
 
-  it("passes library and transport state separately to the library window", async () => {
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
-    const libraryWindow = wrapper.getComponent(LibraryWindow);
+  it('passes library and transport state separately to the library window', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    const libraryWindow = wrapper.getComponent(LibraryWindow)
 
-    expect(libraryWindow.props("tracks")).toHaveLength(1);
-    expect(libraryWindow.props("transport")).toMatchObject({
+    expect(libraryWindow.props('tracks')).toHaveLength(1)
+    expect(libraryWindow.props('transport')).toMatchObject({
       positionMs: 57_000,
-      status: "paused",
-    });
-  });
+      status: 'paused',
+    })
+  })
 
-  it("routes reordered playlist titles to the playback composable", async () => {
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('routes reordered playlist titles to the playback composable', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    wrapper
-      .getComponent(LibraryWindow)
-      .vm.$emit("reorderPlaylists", ["road-trip", "focus"]);
+    wrapper.getComponent(LibraryWindow).vm.$emit('reorderPlaylists', ['road-trip', 'focus'])
 
-    expect(playbackMocks.reorderPlaylists).toHaveBeenCalledWith([
-      "road-trip",
-      "focus",
-    ]);
-  });
+    expect(playbackMocks.reorderPlaylists).toHaveBeenCalledWith(['road-trip', 'focus'])
+  })
 
-  it("opens Import Music from the Library plus button", async () => {
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('opens Import Music from the Library plus button', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    await wrapper.get('button[aria-label="Import music"]').trigger("click");
+    await wrapper.get('button[aria-label="Import music"]').trigger('click')
 
-    expect(windowMocks.showImport).toHaveBeenCalledOnce();
-  });
+    expect(windowMocks.showImport).toHaveBeenCalledOnce()
+  })
 
-  it("routes a multi-source Import window submission to playback", async () => {
-    window.history.replaceState({}, "", "/?view=import");
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
-    const form = wrapper.get('form[aria-label="Import music from YouTube"]');
+  it('routes a multi-source Import window submission to playback', async () => {
+    window.history.replaceState({}, '', '/?view=import')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    const form = wrapper.get('form[aria-label="Import music from YouTube"]')
 
     await form
-      .get("textarea")
-      .setValue(
-        "https://youtu.be/wEsuJoBKAvA\nhttps://youtube.com/@artist/videos",
-      );
-    await form.trigger("submit");
+      .get('textarea')
+      .setValue('https://youtu.be/wEsuJoBKAvA\nhttps://youtube.com/@artist/videos')
+    await form.trigger('submit')
 
     expect(playbackMocks.importYouTubeUrls).toHaveBeenCalledWith([
-      "https://youtu.be/wEsuJoBKAvA",
-      "https://youtube.com/@artist/videos",
-    ]);
-  });
+      'https://youtu.be/wEsuJoBKAvA',
+      'https://youtube.com/@artist/videos',
+    ])
+  })
 
-  it("routes a double-clicked Library track to the playback composable", async () => {
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('routes a double-clicked Library track to the playback composable', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    await wrapper.get('[data-track-id="night-drive"]').trigger("dblclick");
+    await wrapper.get('[data-track-id="night-drive"]').trigger('dblclick')
 
-    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive", [
-      "night-drive",
-    ]);
-  });
+    expect(playbackMocks.playTrack).toHaveBeenCalledWith('night-drive', ['night-drive'])
+  })
 
-  it("routes queue playback and reorder actions to the playback composable", async () => {
-    window.history.replaceState({}, "", "/?view=queue");
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('routes queue playback and reorder actions to the playback composable', async () => {
+    window.history.replaceState({}, '', '/?view=queue')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    await wrapper.get('button[aria-label="Play Night Drive"]').trigger("click");
-    wrapper.getComponent(QueueWindow).vm.$emit("move", 0, 1);
+    await wrapper.get('button[aria-label="Play Night Drive"]').trigger('click')
+    wrapper.getComponent(QueueWindow).vm.$emit('move', 0, 1)
 
-    expect(wrapper.getComponent(QueueWindow).props("status")).toBe("paused");
-    expect(playbackMocks.playTrack).toHaveBeenCalledWith("night-drive", [
-      "night-drive",
-    ]);
-    expect(playbackMocks.moveQueueItem).toHaveBeenCalledWith(0, 1);
-  });
+    expect(wrapper.getComponent(QueueWindow).props('status')).toBe('paused')
+    expect(playbackMocks.playTrack).toHaveBeenCalledWith('night-drive', ['night-drive'])
+    expect(playbackMocks.moveQueueItem).toHaveBeenCalledWith(0, 1)
+  })
 
-  it("routes complete mini-player playback controls to the composable", async () => {
-    window.history.replaceState({}, "", "/?view=mini");
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
-    const miniWindow = wrapper.getComponent(MiniWindow);
+  it('routes complete mini-player playback controls to the composable', async () => {
+    window.history.replaceState({}, '', '/?view=mini')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    const miniWindow = wrapper.getComponent(MiniWindow)
 
-    expect(miniWindow.props("favoriteTrackIds")).toEqual(["night-drive"]);
+    expect(miniWindow.props('favoriteTrackIds')).toEqual(['night-drive'])
 
-    miniWindow.vm.$emit("toggleShuffle");
-    miniWindow.vm.$emit("cycleRepeatMode");
-    miniWindow.vm.$emit("toggleFavorite", "night-drive");
+    miniWindow.vm.$emit('toggleShuffle')
+    miniWindow.vm.$emit('cycleRepeatMode')
+    miniWindow.vm.$emit('toggleFavorite', 'night-drive')
 
-    expect(playbackMocks.toggleShuffle).toHaveBeenCalledOnce();
-    expect(playbackMocks.cycleRepeatMode).toHaveBeenCalledOnce();
-    expect(playbackMocks.toggleFavorite).toHaveBeenCalledWith("night-drive");
-  });
+    expect(playbackMocks.toggleShuffle).toHaveBeenCalledOnce()
+    expect(playbackMocks.cycleRepeatMode).toHaveBeenCalledOnce()
+    expect(playbackMocks.toggleFavorite).toHaveBeenCalledWith('night-drive')
+  })
 
-  it("routes library and queue removal actions to their separate playback commands", async () => {
-    const libraryWrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('routes library and queue removal actions to their separate playback commands', async () => {
+    const libraryWrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    libraryWrapper
-      .getComponent(LibraryWindow)
-      .vm.$emit("removeTracks", ["night-drive"]);
-    expect(playbackMocks.removeTracks).toHaveBeenCalledWith(["night-drive"]);
-    libraryWrapper.unmount();
+    libraryWrapper.getComponent(LibraryWindow).vm.$emit('removeTracks', ['night-drive'])
+    expect(playbackMocks.removeTracks).toHaveBeenCalledWith(['night-drive'])
+    libraryWrapper.unmount()
 
-    window.history.replaceState({}, "", "/?view=queue");
-    const queueWrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+    window.history.replaceState({}, '', '/?view=queue')
+    const queueWrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    queueWrapper.getComponent(QueueWindow).vm.$emit("remove", 0);
-    expect(playbackMocks.removeQueueItem).toHaveBeenCalledWith(0);
-    queueWrapper.unmount();
-  });
+    queueWrapper.getComponent(QueueWindow).vm.$emit('remove', 0)
+    expect(playbackMocks.removeQueueItem).toHaveBeenCalledWith(0)
+    queueWrapper.unmount()
+  })
 
-  it("synchronizes live playback while the window is mounted", async () => {
-    vi.useFakeTimers();
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('synchronizes live playback while the window is mounted', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(500)
 
-    expect(playbackMocks.sync).toHaveBeenCalledOnce();
-    wrapper.unmount();
-  });
+    expect(playbackMocks.sync).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
 
-  it("routes keyboard playback controls outside editable fields", async () => {
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+  it('routes keyboard playback controls outside editable fields', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "m" }));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
 
-    expect(playbackMocks.previous).toHaveBeenCalled();
-    expect(playbackMocks.next).toHaveBeenCalled();
-    expect(playbackMocks.toggleMute).toHaveBeenCalled();
-    expect(playbackMocks.toggle).toHaveBeenCalled();
-    wrapper.unmount();
-  });
+    expect(playbackMocks.previous).toHaveBeenCalled()
+    expect(playbackMocks.next).toHaveBeenCalled()
+    expect(playbackMocks.toggleMute).toHaveBeenCalled()
+    expect(playbackMocks.toggle).toHaveBeenCalled()
+    wrapper.unmount()
+  })
 
-  it("applies native menu playback updates and opens keyboard shortcuts", async () => {
-    let playbackUpdated: ((event: { payload: unknown }) => void) | undefined;
-    let showKeyboardShortcuts:
-      ((event: { payload: unknown }) => void) | undefined;
+  it('applies native menu playback updates and opens keyboard shortcuts', async () => {
+    let playbackUpdated: ((event: { payload: unknown }) => void) | undefined
+    let showKeyboardShortcuts: ((event: { payload: unknown }) => void) | undefined
     eventMocks.listen.mockImplementation(async (event, handler) => {
-      if (event === "playback-updated") {
-        playbackUpdated = handler as (event: { payload: unknown }) => void;
+      if (event === 'playback-updated') {
+        playbackUpdated = handler as (event: { payload: unknown }) => void
       }
-      if (event === "show-keyboard-shortcuts") {
-        showKeyboardShortcuts = handler as (event: {
-          payload: unknown;
-        }) => void;
+      if (event === 'show-keyboard-shortcuts') {
+        showKeyboardShortcuts = handler as (event: { payload: unknown }) => void
       }
-      return vi.fn();
-    });
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+      return vi.fn()
+    })
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
     playbackUpdated?.({
       payload: {
         currentItem: null,
         positionMs: 0,
         queue: [],
-        status: "playing",
+        status: 'playing',
         volumePercent: 50,
       },
-    });
-    showKeyboardShortcuts?.({ payload: null });
-    await nextTick();
+    })
+    showKeyboardShortcuts?.({ payload: null })
+    await nextTick()
 
-    expect(playbackMocks.applySnapshot).toHaveBeenCalled();
-    expect(wrapper.get('[role="dialog"]').text()).toContain(
-      "Keyboard Shortcuts",
-    );
-    await wrapper
-      .get('button[aria-label="Close keyboard shortcuts"]')
-      .trigger("click");
-    await nextTick();
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
+    expect(playbackMocks.applySnapshot).toHaveBeenCalled()
+    expect(wrapper.get('[role="dialog"]').text()).toContain('Keyboard Shortcuts')
+    await wrapper.get('button[aria-label="Close keyboard shortcuts"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
 
-  it("refreshes the library after a native metadata update", async () => {
-    let libraryUpdated: ((event: { payload: unknown }) => void) | undefined;
+  it('refreshes the library after a native metadata update', async () => {
+    let libraryUpdated: ((event: { payload: unknown }) => void) | undefined
     eventMocks.listen.mockImplementation(async (event, handler) => {
-      if (event === "library-updated") {
-        libraryUpdated = handler as (event: { payload: unknown }) => void;
+      if (event === 'library-updated') {
+        libraryUpdated = handler as (event: { payload: unknown }) => void
       }
-      return vi.fn();
-    });
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
-    playbackMocks.refresh.mockClear();
+      return vi.fn()
+    })
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    playbackMocks.refresh.mockClear()
 
-    expect(libraryUpdated).toBeDefined();
-    libraryUpdated?.({ payload: null });
-    await flushPromises();
+    expect(libraryUpdated).toBeDefined()
+    libraryUpdated?.({ payload: null })
+    await flushPromises()
 
-    expect(playbackMocks.refresh).toHaveBeenCalledOnce();
-    wrapper.unmount();
-  });
+    expect(playbackMocks.refresh).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
 
-  it("renders the settings window as one named main landmark", async () => {
-    window.history.replaceState({}, "", "/?view=settings");
+  it('renders the settings window as one named main landmark', async () => {
+    window.history.replaceState({}, '', '/?view=settings')
 
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
 
-    expect(wrapper.findAll("main")).toHaveLength(1);
-    expect(wrapper.get("main").attributes("aria-label")).toBe("Settings");
-  });
+    expect(wrapper.findAll('main')).toHaveLength(1)
+    expect(wrapper.get('main').attributes('aria-label')).toBe('Settings')
+  })
 
-  it("tracks native focus for the Artwork controls", async () => {
-    let focusListener: ((event: { payload: boolean }) => void) | undefined;
-    const unlisten = vi.fn();
+  it('tracks native focus for the Artwork controls', async () => {
+    let focusListener: ((event: { payload: boolean }) => void) | undefined
+    const unlisten = vi.fn()
     vi.mocked(getCurrentWindow).mockReturnValue({
       isFocused: vi.fn().mockResolvedValue(true),
-      onFocusChanged: vi.fn(
-        async (listener: (event: { payload: boolean }) => void) => {
-          focusListener = listener;
-          return unlisten;
-        },
-      ),
-    } as never);
-    window.history.replaceState({}, "", "/?view=artwork");
+      onFocusChanged: vi.fn(async (listener: (event: { payload: boolean }) => void) => {
+        focusListener = listener
+        return unlisten
+      }),
+    } as never)
+    window.history.replaceState({}, '', '/?view=artwork')
 
-    const wrapper = mount(App, { attachTo: document.body });
-    await flushPromises();
-    const controls = wrapper.get(".artwork-playback-controls");
-    expect(controls.attributes("data-window-focused")).toBe("true");
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    const controls = wrapper.get('.artwork-playback-controls')
+    expect(controls.attributes('data-window-focused')).toBe('true')
 
-    expect(focusListener).toBeDefined();
-    focusListener!({ payload: false });
-    await nextTick();
+    expect(focusListener).toBeDefined()
+    focusListener!({ payload: false })
+    await nextTick()
 
-    expect(controls.attributes("data-window-focused")).toBe("false");
+    expect(controls.attributes('data-window-focused')).toBe('false')
 
-    wrapper.unmount();
-    expect(unlisten).toHaveBeenCalledOnce();
-  });
-});
+    wrapper.unmount()
+    expect(unlisten).toHaveBeenCalledOnce()
+  })
+})

@@ -1,53 +1,41 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-vue-next";
+import { ChevronDown, ChevronUp, GripVertical, Trash2 } from 'lucide-vue-next'
 
-import type { MediaItem } from "@/api";
-import { Button } from "@/components/ui/button";
+import type { MediaItem } from '@/api'
+import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { formatDuration } from "@/lib/time";
+} from '@/components/ui/context-menu'
+import { formatDuration } from '@/lib/time'
 
 interface Props {
-  queue: MediaItem[];
-  currentItemId: string | undefined;
-  isUpdating: boolean;
+  queue: MediaItem[]
+  currentItemId: string | undefined
+  isUpdating: boolean
 }
 
-defineProps<Props>();
+defineProps<Props>()
 
 const emit = defineEmits<{
-  move: [from: number, to: number];
-  remove: [index: number];
-}>();
+  move: [from: number, to: number]
+  remove: [index: number]
+}>()
 </script>
 
 <template>
-  <section
-    class="border-t border-(--line) px-4 pt-3.25 pb-4.5"
-    aria-labelledby="queue-heading"
-  >
+  <section class="border-t border-(--line) px-4 pt-3.25 pb-4.5" aria-labelledby="queue-heading">
     <header class="flex items-end justify-between">
       <div>
-        <p
-          class="text-[0.57rem] font-[720] tracking-widest text-(--subtle-text) uppercase"
-        >
+        <p class="text-[0.57rem] font-[720] tracking-widest text-(--subtle-text) uppercase">
           Listening order
         </p>
-        <h2
-          id="queue-heading"
-          class="mt-0.75 text-[0.91rem] font-[670] tracking-tight"
-        >
-          Up next
-        </h2>
+        <h2 id="queue-heading" class="mt-0.75 text-[0.91rem] font-[670] tracking-tight">Up next</h2>
       </div>
-      <span class="text-[0.67rem] text-(--muted-text) tabular-nums"
-        >{{ queue.length }} items</span
-      >
+      <span class="text-[0.67rem] text-(--muted-text) tabular-nums">{{ queue.length }} items</span>
     </header>
 
     <ol class="grid list-none gap-0.75 pt-2.5">
@@ -63,7 +51,7 @@ const emit = defineEmits<{
               aria-hidden="true"
             >
               <GripVertical v-if="item.id !== currentItemId" />
-              <span v-else>{{ String(index + 1).padStart(2, "0") }}</span>
+              <span v-else>{{ String(index + 1).padStart(2, '0') }}</span>
             </span>
             <div class="min-w-0">
               <p
@@ -85,9 +73,7 @@ const emit = defineEmits<{
                 :aria-label="`Move ${item.title} up`"
                 size="icon-xs"
                 variant="ghost"
-                :disabled="
-                  isUpdating || item.id === currentItemId || index === 0
-                "
+                :disabled="isUpdating || item.id === currentItemId || index === 0"
                 @click="emit('move', index, index - 1)"
               >
                 <ChevronUp aria-hidden="true" />
@@ -96,11 +82,7 @@ const emit = defineEmits<{
                 :aria-label="`Move ${item.title} down`"
                 size="icon-xs"
                 variant="ghost"
-                :disabled="
-                  isUpdating ||
-                  item.id === currentItemId ||
-                  index === queue.length - 1
-                "
+                :disabled="isUpdating || item.id === currentItemId || index === queue.length - 1"
                 @click="emit('move', index, index + 1)"
               >
                 <ChevronDown aria-hidden="true" />
@@ -126,11 +108,7 @@ const emit = defineEmits<{
             Move up
           </ContextMenuItem>
           <ContextMenuItem
-            :disabled="
-              isUpdating ||
-              item.id === currentItemId ||
-              index === queue.length - 1
-            "
+            :disabled="isUpdating || item.id === currentItemId || index === queue.length - 1"
             @select="emit('move', index, index + 1)"
           >
             Move down

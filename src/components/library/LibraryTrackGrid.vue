@@ -1,50 +1,47 @@
 <script setup lang="ts">
-import { Disc3, Volume2 } from "lucide-vue-next";
+import { Disc3, Volume2 } from 'lucide-vue-next'
 
-import type { MediaItem } from "@/api";
-import YouTubeArtwork from "../YouTubeArtwork.vue";
-import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
-import LibraryVirtualGrid from "./LibraryVirtualGrid.vue";
-import type { TrackGroup, TrackSelectionModifiers } from "./types";
+import type { MediaItem } from '@/api'
+import YouTubeArtwork from '../YouTubeArtwork.vue'
+import LibraryTrackContextMenu from './LibraryTrackContextMenu.vue'
+import LibraryVirtualGrid from './LibraryVirtualGrid.vue'
+import type { TrackGroup, TrackSelectionModifiers } from './types'
 
 const props = defineProps<{
-  canRemoveFromPlaylist?: boolean;
-  isUpdating?: boolean;
-  groups: TrackGroup[];
-  playingItemId: string | undefined;
-  selectedTrackIds: string[];
-  favoriteTrackIds: string[];
-  gridItemSize: number;
-}>();
+  canRemoveFromPlaylist?: boolean
+  isUpdating?: boolean
+  groups: TrackGroup[]
+  playingItemId: string | undefined
+  selectedTrackIds: string[]
+  favoriteTrackIds: string[]
+  gridItemSize: number
+}>()
 
 const emit = defineEmits<{
-  addToQueue: [tracks: MediaItem[]];
-  dragTracks: [track: MediaItem, event: DragEvent];
-  dragTracksEnd: [];
-  editTrack: [track: MediaItem];
-  openAlbum: [track: MediaItem];
-  openArtist: [track: MediaItem];
-  openTrackContext: [track: MediaItem];
-  playNext: [tracks: MediaItem[]];
-  playTrack: [tracks: MediaItem[]];
-  removeTrack: [tracks: MediaItem[]];
-  removeFromPlaylist: [tracks: MediaItem[]];
-  selectTrack: [track: MediaItem, modifiers: TrackSelectionModifiers];
-  toggleFavorite: [ids: string[]];
-}>();
+  addToQueue: [tracks: MediaItem[]]
+  dragTracks: [track: MediaItem, event: DragEvent]
+  dragTracksEnd: []
+  editTrack: [track: MediaItem]
+  openAlbum: [track: MediaItem]
+  openArtist: [track: MediaItem]
+  openTrackContext: [track: MediaItem]
+  playNext: [tracks: MediaItem[]]
+  playTrack: [tracks: MediaItem[]]
+  removeTrack: [tracks: MediaItem[]]
+  removeFromPlaylist: [tracks: MediaItem[]]
+  selectTrack: [track: MediaItem, modifiers: TrackSelectionModifiers]
+  toggleFavorite: [ids: string[]]
+}>()
 
 function isSelected(trackId: string): boolean {
-  return props.selectedTrackIds.includes(trackId);
+  return props.selectedTrackIds.includes(trackId)
 }
 
-function selectTrack(
-  track: MediaItem,
-  event: MouseEvent | KeyboardEvent,
-): void {
-  emit("selectTrack", track, {
+function selectTrack(track: MediaItem, event: MouseEvent | KeyboardEvent): void {
+  emit('selectTrack', track, {
     additive: event.metaKey || event.ctrlKey,
     range: event.shiftKey,
-  });
+  })
 }
 </script>
 
@@ -64,9 +61,7 @@ function selectTrack(
         <LibraryTrackContextMenu
           :is-favorite="props.favoriteTrackIds.includes(track.id)"
           :selected-tracks="
-            props.groups
-              .flatMap((group) => group.items)
-              .filter((item) => isSelected(item.id))
+            props.groups.flatMap((group) => group.items).filter((item) => isSelected(item.id))
           "
           :track="track"
           :can-remove-from-playlist="props.canRemoveFromPlaylist"
@@ -106,17 +101,13 @@ function selectTrack(
                 :missing-icon="Disc3"
               />
             </div>
-            <h2
-              class="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-semibold text-(--text)"
-            >
+            <h2 class="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-semibold text-(--text)">
               <Volume2
                 v-if="track.id === props.playingItemId"
                 class="track-playing-indicator size-3.5 shrink-0"
                 aria-label="Currently playing"
               />
-              <span
-                class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-              >
+              <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                 {{ track.title }}
               </span>
             </h2>
@@ -136,12 +127,7 @@ function selectTrack(
 .cover-art {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(
-    138deg,
-    var(--artwork-a),
-    var(--artwork-b) 58%,
-    var(--artwork-c)
-  );
+  background: linear-gradient(138deg, var(--artwork-a), var(--artwork-b) 58%, var(--artwork-c));
 }
 
 .library-track-drag-source {

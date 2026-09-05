@@ -1,119 +1,114 @@
 <script setup lang="ts">
-import { ArrowDownToLine, LoaderCircle, Search } from "lucide-vue-next";
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { ArrowDownToLine, LoaderCircle, Search } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import {
   playbackApi,
   type ImportProgress,
   type MediaItem,
   type MetadataRefreshSnapshot,
-} from "@/api";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatDuration } from "@/lib/time";
+} from '@/api'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatDuration } from '@/lib/time'
 
 interface Props {
-  isImporting: boolean;
-  errorMessage?: string;
-  progress?: ImportProgress | null;
-  isCancelling?: boolean;
-  metadataRefreshes?: MetadataRefreshSnapshot;
-  isRetryingMetadata?: boolean;
+  isImporting: boolean
+  errorMessage?: string
+  progress?: ImportProgress | null
+  isCancelling?: boolean
+  metadataRefreshes?: MetadataRefreshSnapshot
+  isRetryingMetadata?: boolean
 }
 
-const props = defineProps<Props>();
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  importYoutubeUrls: [urls: string[]];
-  cancelImport: [runId: number];
-  retry: [];
-  retryMetadata: [];
-}>();
+  importYoutubeUrls: [urls: string[]]
+  cancelImport: [runId: number]
+  retry: []
+  retryMetadata: []
+}>()
 
-const youtubeUrls = ref("");
-const searchQuery = ref("");
-const searchResults = ref<MediaItem[]>([]);
-const searchError = ref("");
-const isSearching = ref(false);
-const hasSearched = ref(false);
-let searchGeneration = 0;
-let submittedUrls = "";
-let lastImportSources: string[] = [];
+const youtubeUrls = ref('')
+const searchQuery = ref('')
+const searchResults = ref<MediaItem[]>([])
+const searchError = ref('')
+const isSearching = ref(false)
+const hasSearched = ref(false)
+let searchGeneration = 0
+let submittedUrls = ''
+let lastImportSources: string[] = []
 const activeProgress = computed(
-  () =>
-    props.progress &&
-    !["completed", "failed", "cancelled"].includes(props.progress.phase),
-);
-const importBusy = computed(
-  () => props.isImporting || Boolean(activeProgress.value),
-);
+  () => props.progress && !['completed', 'failed', 'cancelled'].includes(props.progress.phase),
+)
+const importBusy = computed(() => props.isImporting || Boolean(activeProgress.value))
 const statusLabel = computed(() => {
-  if (props.isCancelling && activeProgress.value) return "Cancelling import";
-  const phase = props.progress?.phase;
+  if (props.isCancelling && activeProgress.value) return 'Cancelling import'
+  const phase = props.progress?.phase
   if (phase)
     return {
-      started: "Starting import",
-      resolving: "Discovering tracks",
-      merging: "Saving to library",
-      completed: "Import complete",
-      failed: "Import failed",
-      cancelled: "Import cancelled",
-    }[phase];
-  return props.isImporting ? "Starting import" : "Ready to import";
-});
-const logViewport = ref<HTMLElement | null>(null);
+      started: 'Starting import',
+      resolving: 'Discovering tracks',
+      merging: 'Saving to library',
+      completed: 'Import complete',
+      failed: 'Import failed',
+      cancelled: 'Import cancelled',
+    }[phase]
+  return props.isImporting ? 'Starting import' : 'Ready to import'
+})
+const logViewport = ref<HTMLElement | null>(null)
 
 watch(searchQuery, () => {
-  searchGeneration += 1;
-  isSearching.value = false;
-  hasSearched.value = false;
-  searchResults.value = [];
-  searchError.value = "";
-});
+  searchGeneration += 1
+  isSearching.value = false
+  hasSearched.value = false
+  searchResults.value = []
+  searchError.value = ''
+})
 onBeforeUnmount(() => {
-  searchGeneration += 1;
-});
+  searchGeneration += 1
+})
 
 async function searchYouTube(): Promise<void> {
-  const query = searchQuery.value.trim();
-  if (!query) return;
-  const generation = ++searchGeneration;
-  isSearching.value = true;
-  searchError.value = "";
-  searchResults.value = [];
+  const query = searchQuery.value.trim()
+  if (!query) return
+  const generation = ++searchGeneration
+  isSearching.value = true
+  searchError.value = ''
+  searchResults.value = []
   try {
-    const results = await playbackApi.searchYouTube(query);
-    if (generation !== searchGeneration) return;
-    searchResults.value = results.slice(0, 20);
-    hasSearched.value = true;
+    const results = await playbackApi.searchYouTube(query)
+    if (generation !== searchGeneration) return
+    searchResults.value = results.slice(0, 20)
+    hasSearched.value = true
   } catch (error) {
-    if (generation !== searchGeneration) return;
+    if (generation !== searchGeneration) return
     searchError.value =
-      typeof error === "object" && error !== null && "message" in error
+      typeof error === 'object' && error !== null && 'message' in error
         ? String(error.message)
-        : "Search failed. Check your connection and retry.";
+        : 'Search failed. Check your connection and retry.'
   } finally {
-    if (generation === searchGeneration) isSearching.value = false;
+    if (generation === searchGeneration) isSearching.value = false
   }
 }
 
 function importSearchResult(item: MediaItem): void {
-  if (props.isImporting || activeProgress.value) return;
-  submittedUrls = "";
+  if (props.isImporting || activeProgress.value) return
+  submittedUrls = ''
   lastImportSources = [
-    item.sourceUrl ||
-      `https://www.youtube.com/watch?v=${encodeURIComponent(item.id)}`,
-  ];
-  emit("importYoutubeUrls", lastImportSources);
+    item.sourceUrl || `https://www.youtube.com/watch?v=${encodeURIComponent(item.id)}`,
+  ]
+  emit('importYoutubeUrls', lastImportSources)
 }
 
 function retryImport(): void {
-  if (props.isImporting || activeProgress.value) return;
-  if (lastImportSources.length) emit("importYoutubeUrls", lastImportSources);
-  else emit("retry");
+  if (props.isImporting || activeProgress.value) return
+  if (lastImportSources.length) emit('importYoutubeUrls', lastImportSources)
+  else emit('retry')
 }
-const logs = ref<string[]>([]);
-let currentRunId: number | undefined;
+const logs = ref<string[]>([])
+let currentRunId: number | undefined
 const importSources = computed(() => [
   ...new Set(
     youtubeUrls.value
@@ -121,89 +116,73 @@ const importSources = computed(() => [
       .map((url) => url.trim())
       .filter(Boolean),
   ),
-]);
+])
 const progressPercent = computed(() => {
-  const total = props.progress?.totalSources ?? 0;
+  const total = props.progress?.totalSources ?? 0
   if (total === 0) {
-    return 0;
+    return 0
   }
 
   return Math.min(
     100,
-    Math.max(
-      0,
-      Math.round(((props.progress?.completedSources ?? 0) / total) * 100),
-    ),
-  );
-});
+    Math.max(0, Math.round(((props.progress?.completedSources ?? 0) / total) * 100)),
+  )
+})
 const progressValue = computed<number | undefined>(() => {
-  const progress = props.progress;
+  const progress = props.progress
   if (
     !progress ||
     (activeProgress.value &&
-      (progress.phase !== "resolving" ||
-        progress.completedSources === 0 ||
-        !progress.totalSources))
+      (progress.phase !== 'resolving' || progress.completedSources === 0 || !progress.totalSources))
   ) {
-    return undefined;
+    return undefined
   }
 
-  return progressPercent.value;
-});
+  return progressPercent.value
+})
 
 watch(
   () => props.progress,
   (progress) => {
     if (!progress) {
-      return;
+      return
     }
 
-    const newRun = currentRunId !== progress.runId;
-    const viewport = logViewport.value;
+    const newRun = currentRunId !== progress.runId
+    const viewport = logViewport.value
     const followLog =
-      newRun ||
-      !viewport ||
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24;
+      newRun || !viewport || viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24
     if (newRun) {
-      currentRunId = progress.runId;
-      logs.value = [];
+      currentRunId = progress.runId
+      logs.value = []
     }
 
-    if (
-      progress.phase === "completed" &&
-      submittedUrls &&
-      youtubeUrls.value === submittedUrls
-    ) {
-      youtubeUrls.value = "";
-      submittedUrls = "";
+    if (progress.phase === 'completed' && submittedUrls && youtubeUrls.value === submittedUrls) {
+      youtubeUrls.value = ''
+      submittedUrls = ''
     }
 
-    const entry = progress.message.trim();
+    const entry = progress.message.trim()
     if (entry && logs.value[logs.value.length - 1] !== entry) {
-      logs.value.push(entry);
-      logs.value = logs.value.slice(-300);
+      logs.value.push(entry)
+      logs.value = logs.value.slice(-300)
       if (followLog)
         void nextTick(() => {
-          if (logViewport.value)
-            logViewport.value.scrollTop = logViewport.value.scrollHeight;
-        });
+          if (logViewport.value) logViewport.value.scrollTop = logViewport.value.scrollHeight
+        })
     }
   },
   { immediate: true },
-);
+)
 
 function submitYouTubeUrls(): void {
-  if (
-    props.isImporting ||
-    activeProgress.value ||
-    importSources.value.length === 0
-  ) {
-    return;
+  if (props.isImporting || activeProgress.value || importSources.value.length === 0) {
+    return
   }
 
-  submittedUrls = youtubeUrls.value;
-  lastImportSources = importSources.value;
-  emit("importYoutubeUrls", importSources.value);
+  submittedUrls = youtubeUrls.value
+  lastImportSources = importSources.value
+  emit('importYoutubeUrls', importSources.value)
 }
 </script>
 
@@ -218,12 +197,8 @@ function submitYouTubeUrls(): void {
       aria-hidden="true"
     />
 
-    <section
-      class="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-7"
-    >
-      <header
-        class="flex items-center justify-between gap-4 border-b border-(--line) px-6 py-4"
-      >
+    <section class="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-7">
+      <header class="flex items-center justify-between gap-4 border-b border-(--line) px-6 py-4">
         <h1 class="window-title">Import Music</h1>
       </header>
 
@@ -247,17 +222,11 @@ function submitYouTubeUrls(): void {
             >Retry</Button
           >
 
-          <form
-            aria-label="Import music from YouTube"
-            @submit.prevent="submitYouTubeUrls"
-          >
+          <form aria-label="Import music from YouTube" @submit.prevent="submitYouTubeUrls">
             <label for="youtube-import-urls" class="block text-sm font-semibold"
               >YouTube URLs</label
             >
-            <p
-              id="youtube-import-help"
-              class="mt-1 text-xs leading-5 text-(--muted-text)"
-            >
+            <p id="youtube-import-help" class="mt-1 text-xs leading-5 text-(--muted-text)">
               Videos, playlists, albums, or channels. One link per line.
             </p>
             <textarea
@@ -276,16 +245,12 @@ function submitYouTubeUrls(): void {
                 <template v-if="importBusy">Import in progress</template>
                 <template v-else-if="importSources.length"
                   >{{ importSources.length }}
-                  {{ importSources.length === 1 ? "source" : "sources" }}
+                  {{ importSources.length === 1 ? 'source' : 'sources' }}
                   ready</template
                 >
                 <template v-else>Paste a link to get started</template>
               </p>
-              <Button
-                type="submit"
-                size="sm"
-                :disabled="importBusy || !importSources.length"
-              >
+              <Button type="submit" size="sm" :disabled="importBusy || !importSources.length">
                 <ArrowDownToLine aria-hidden="true" />
                 Import to library
               </Button>
@@ -296,9 +261,7 @@ function submitYouTubeUrls(): void {
             class="mt-5 border-t border-(--line) pt-4"
             aria-labelledby="youtube-search-heading"
           >
-            <h2 id="youtube-search-heading" class="text-sm font-semibold">
-              Search YouTube
-            </h2>
+            <h2 id="youtube-search-heading" class="text-sm font-semibold">Search YouTube</h2>
 
             <form
               aria-label="Search YouTube"
@@ -318,15 +281,11 @@ function submitYouTubeUrls(): void {
                 variant="outline"
                 :disabled="!searchQuery.trim() || isSearching"
                 ><Search class="size-3.5" aria-hidden="true" />{{
-                  isSearching ? "Searching…" : "Search"
+                  isSearching ? 'Searching…' : 'Search'
                 }}</Button
               >
             </form>
-            <p
-              v-if="isSearching"
-              role="status"
-              class="mt-3 text-sm text-(--muted-text)"
-            >
+            <p v-if="isSearching" role="status" class="mt-3 text-sm text-(--muted-text)">
               Searching YouTube…
             </p>
             <div v-if="searchError" class="window-alert-danger mt-3 p-3">
@@ -347,11 +306,7 @@ function submitYouTubeUrls(): void {
             >
               No results. Try a different song or artist.
             </p>
-            <p
-              v-else-if="hasSearched"
-              role="status"
-              class="mt-3 text-xs text-(--muted-text)"
-            >
+            <p v-else-if="hasSearched" role="status" class="mt-3 text-xs text-(--muted-text)">
               {{ searchResults.length }} results · Up to 20 shown
             </p>
             <ol
@@ -370,9 +325,8 @@ function submitYouTubeUrls(): void {
                     {{ item.title }}
                   </p>
                   <p class="break-words text-xs text-(--muted-text)">
-                    {{ item.artist
-                    }}<template v-if="item.album"> · {{ item.album }}</template>
-                    · {{ formatDuration(item.durationMs) }}
+                    {{ item.artist }}<template v-if="item.album"> · {{ item.album }}</template> ·
+                    {{ formatDuration(item.durationMs) }}
                   </p>
                 </div>
                 <Button
@@ -398,14 +352,9 @@ function submitYouTubeUrls(): void {
               {{ metadataRefreshes.completedTracks }} of
               {{ metadataRefreshes.totalTracks }} refreshed
             </p>
-            <template
-              v-if="
-                metadataRefreshes.jobs.some((job) => job.state === 'failed')
-              "
-            >
+            <template v-if="metadataRefreshes.jobs.some((job) => job.state === 'failed')">
               <p class="mt-2 text-sm">
-                Some tracks need another metadata refresh. Imported tracks
-                remain in your library.
+                Some tracks need another metadata refresh. Imported tracks remain in your library.
               </p>
               <Button
                 type="button"
@@ -414,9 +363,7 @@ function submitYouTubeUrls(): void {
                 class="mt-2"
                 :disabled="isRetryingMetadata"
                 @click="emit('retryMetadata')"
-                >{{
-                  isRetryingMetadata ? "Retrying…" : "Retry failed metadata"
-                }}</Button
+                >{{ isRetryingMetadata ? 'Retrying…' : 'Retry failed metadata' }}</Button
               >
             </template>
           </section>
@@ -440,17 +387,15 @@ function submitYouTubeUrls(): void {
               </h2>
               <p class="mt-1 text-xs text-(--muted-text)">
                 {{ progress?.importedTracks ?? 0 }}
-                {{ progress?.importedTracks === 1 ? "track" : "tracks" }} found
+                {{ progress?.importedTracks === 1 ? 'track' : 'tracks' }} found
                 <template v-if="progress?.totalSources">
                   · {{ progress.completedSources }} /
                   {{ progress.totalSources }}
-                  {{
-                    progress.totalSources === 1 ? "source" : "sources"
-                  }}</template
+                  {{ progress.totalSources === 1 ? 'source' : 'sources' }}</template
                 >
                 <template v-if="progress?.skippedMemberOnly">
                   · {{ progress.skippedMemberOnly }} members-only
-                  {{ progress.skippedMemberOnly === 1 ? "track" : "tracks" }}
+                  {{ progress.skippedMemberOnly === 1 ? 'track' : 'tracks' }}
                   skipped</template
                 >
               </p>
@@ -464,18 +409,12 @@ function submitYouTubeUrls(): void {
               class="shrink-0"
               :disabled="isCancelling"
               @click="emit('cancelImport', progress.runId)"
-              >{{ isCancelling ? "Cancelling…" : "Cancel import" }}</Button
+              >{{ isCancelling ? 'Cancelling…' : 'Cancel import' }}</Button
             >
           </div>
-          <p
-            v-if="progress?.phase === 'cancelled'"
-            role="status"
-            class="mt-2 text-sm"
-          >
+          <p v-if="progress?.phase === 'cancelled'" role="status" class="mt-2 text-sm">
             {{ progress.importedTracks }}
-            {{
-              progress.importedTracks === 1 ? "track remains" : "tracks remain"
-            }}
+            {{ progress.importedTracks === 1 ? 'track remains' : 'tracks remain' }}
             in your library.
           </p>
           <progress
@@ -499,12 +438,9 @@ function submitYouTubeUrls(): void {
               aria-label="Import activity"
               aria-live="polite"
             >
-              <span
-                v-for="(log, index) in logs"
-                :key="`${index}-${log}`"
-                class="block"
-                >{{ log }}</span
-              >
+              <span v-for="(log, index) in logs" :key="`${index}-${log}`" class="block">{{
+                log
+              }}</span>
             </output>
           </ScrollArea>
         </section>

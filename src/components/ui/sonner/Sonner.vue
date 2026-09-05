@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ToasterProps } from "vue-sonner";
+import type { ToasterProps } from 'vue-sonner'
 import {
   CircleCheckIcon,
   InfoIcon,
@@ -7,14 +7,14 @@ import {
   OctagonXIcon,
   TriangleAlertIcon,
   XIcon,
-} from "@lucide/vue";
-import { reactiveOmit } from "@vueuse/core";
-import { Toaster as Sonner } from "vue-sonner";
-import "vue-sonner/style.css";
-import { cn } from "@/lib/utils";
+} from '@lucide/vue'
+import { reactiveOmit } from '@vueuse/core'
+import { Toaster as Sonner } from 'vue-sonner'
+import 'vue-sonner/style.css'
+import { cn } from '@/lib/utils'
 
-const props = withDefaults(defineProps<ToasterProps>(), { theme: "dark" });
-const delegatedProps = reactiveOmit(props, "class", "toastOptions");
+const props = withDefaults(defineProps<ToasterProps>(), { theme: 'dark' })
+const delegatedProps = reactiveOmit(props, 'class', 'toastOptions')
 </script>
 
 <template>

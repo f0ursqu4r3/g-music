@@ -5,30 +5,30 @@ import {
   ScrollAreaScrollbar,
   ScrollAreaThumb,
   ScrollAreaViewport,
-} from "reka-ui";
-import { ref } from "vue";
-import type { ComponentPublicInstance, HTMLAttributes } from "vue";
+} from 'reka-ui'
+import { ref } from 'vue'
+import type { ComponentPublicInstance, HTMLAttributes } from 'vue'
 
-import { cn } from "@/lib/utils";
+import { cn } from '@/lib/utils'
 
-type ScrollOrientation = "vertical" | "horizontal" | "both";
-type ScrollAreaType = "auto" | "always" | "hover" | "scroll";
+type ScrollOrientation = 'vertical' | 'horizontal' | 'both'
+type ScrollAreaType = 'auto' | 'always' | 'hover' | 'scroll'
 
 const props = withDefaults(
   defineProps<{
-    class?: HTMLAttributes["class"];
-    orientation?: ScrollOrientation;
-    type?: ScrollAreaType;
-    viewportClass?: HTMLAttributes["class"];
-    viewportRef?: (element: HTMLElement | null) => void;
+    class?: HTMLAttributes['class']
+    orientation?: ScrollOrientation
+    type?: ScrollAreaType
+    viewportClass?: HTMLAttributes['class']
+    viewportRef?: (element: HTMLElement | null) => void
   }>(),
   {
-    orientation: "vertical",
-    type: "auto",
+    orientation: 'vertical',
+    type: 'auto',
   },
-);
+)
 
-const viewportElement = ref<HTMLElement | null>(null);
+const viewportElement = ref<HTMLElement | null>(null)
 
 function setRoot(element: Element | ComponentPublicInstance | null): void {
   const root =
@@ -36,14 +36,14 @@ function setRoot(element: Element | ComponentPublicInstance | null): void {
       ? element
       : element
         ? (element as ComponentPublicInstance).$el
-        : null;
+        : null
 
   const viewport =
     root instanceof HTMLElement
-      ? root.querySelector<HTMLElement>("[data-reka-scroll-area-viewport]")
-      : null;
-  viewportElement.value = viewport;
-  props.viewportRef?.(viewportElement.value);
+      ? root.querySelector<HTMLElement>('[data-reka-scroll-area-viewport]')
+      : null
+  viewportElement.value = viewport
+  props.viewportRef?.(viewportElement.value)
 }
 </script>
 

@@ -17,86 +17,84 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-} from "lucide-vue-next";
-import { computed } from "vue";
+} from 'lucide-vue-next'
+import { computed } from 'vue'
 
-import type { MediaItem, PlaybackTransport } from "@/api";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { formatDuration } from "@/lib/time";
-import YouTubeArtwork from "../YouTubeArtwork.vue";
+import type { MediaItem, PlaybackTransport } from '@/api'
+import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { formatDuration } from '@/lib/time'
+import YouTubeArtwork from '../YouTubeArtwork.vue'
 
 const props = defineProps<{
-  playback: PlaybackTransport;
-  currentItem: MediaItem | null;
-  isPlaying: boolean;
-  isStarting?: boolean;
-  isUpdating: boolean;
-  detailsOpen: boolean;
-  favoriteTrackIds?: string[];
-}>();
+  playback: PlaybackTransport
+  currentItem: MediaItem | null
+  isPlaying: boolean
+  isStarting?: boolean
+  isUpdating: boolean
+  detailsOpen: boolean
+  favoriteTrackIds?: string[]
+}>()
 
 const emit = defineEmits<{
-  toggle: [];
-  previous: [];
-  next: [];
-  seek: [positionMs: number];
-  setVolume: [percent: number];
-  toggleMute: [];
-  toggleShuffle: [];
-  cycleRepeatMode: [];
-  toggleDetails: [];
-  toggleFavorite: [id: string];
-}>();
+  toggle: []
+  previous: []
+  next: []
+  seek: [positionMs: number]
+  setVolume: [percent: number]
+  toggleMute: []
+  toggleShuffle: []
+  cycleRepeatMode: []
+  toggleDetails: []
+  toggleFavorite: [id: string]
+}>()
 
 const isFavorite = computed(() =>
-  props.currentItem
-    ? (props.favoriteTrackIds ?? []).includes(props.currentItem.id)
-    : false,
-);
+  props.currentItem ? (props.favoriteTrackIds ?? []).includes(props.currentItem.id) : false,
+)
 const volumeIcon = computed(() => {
   if (props.playback.volumePercent === 0) {
-    return VolumeX;
+    return VolumeX
   }
   if (props.playback.volumePercent <= 33) {
-    return Volume;
+    return Volume
   }
   if (props.playback.volumePercent <= 66) {
-    return Volume1;
+    return Volume1
   }
-  return Volume2;
-});
-const repeatMode = computed(() => props.playback.repeatMode ?? "off");
+  return Volume2
+})
+const repeatMode = computed(() => props.playback.repeatMode ?? 'off')
 const repeatIcon = computed(() => {
-  if (repeatMode.value === "one") {
-    return Repeat1;
+  if (repeatMode.value === 'one') {
+    return Repeat1
   }
-  if (repeatMode.value === "all") {
-    return Repeat2;
+  if (repeatMode.value === 'all') {
+    return Repeat2
   }
-  return Repeat;
-});
+  return Repeat
+})
 const repeatLabel = computed(() => {
-  if (repeatMode.value === "one") {
-    return "Disable repeat";
+  if (repeatMode.value === 'one') {
+    return 'Disable repeat'
   }
-  if (repeatMode.value === "all") {
-    return "Enable repeat one";
+  if (repeatMode.value === 'all') {
+    return 'Enable repeat one'
   }
-  return "Enable repeat all";
-});
+  return 'Enable repeat all'
+})
 
 function emitVolume(values: number[] | undefined): void {
-  const value = values?.[0];
-  if (typeof value === "number" && Number.isFinite(value)) {
-    emit("setVolume", value);
+  const value = values?.[0]
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    emit('setVolume', value)
   }
 }
 
 function emitSeek(values: number[]): void {
-  const value = values[0];
+  const value = values[0]
   if (Number.isFinite(value)) {
-    emit("seek", value);
+    emit('seek', value)
   }
 }
 </script>
@@ -122,12 +120,12 @@ function emitSeek(values: number[]): void {
           <p
             class="overflow-hidden text-[0.82rem] font-semibold text-ellipsis whitespace-nowrap text-(--text)"
           >
-            {{ props.currentItem?.title ?? "Nothing playing" }}
+            {{ props.currentItem?.title ?? 'Nothing playing' }}
           </p>
           <span
             class="mt-0.5 block overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-(--muted-text)"
           >
-            {{ props.currentItem?.artist ?? "Choose a track" }}
+            {{ props.currentItem?.artist ?? 'Choose a track' }}
           </span>
         </div>
       </div>
@@ -138,9 +136,7 @@ function emitSeek(values: number[]): void {
         data-playback-control="transport"
       >
         <Button
-          :aria-label="
-            props.playback.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'
-          "
+          :aria-label="props.playback.shuffleEnabled ? 'Disable shuffle' : 'Enable shuffle'"
           :aria-pressed="props.playback.shuffleEnabled ?? false"
           class="aria-pressed:text-accent"
           size="icon-sm"
@@ -160,13 +156,7 @@ function emitSeek(values: number[]): void {
           <SkipBack aria-hidden="true" />
         </Button>
         <Button
-          :aria-label="
-            props.isStarting
-              ? 'Starting playback'
-              : props.isPlaying
-                ? 'Pause'
-                : 'Play'
-          "
+          :aria-label="props.isStarting ? 'Starting playback' : props.isPlaying ? 'Pause' : 'Play'"
           :aria-busy="props.isStarting ? 'true' : undefined"
           class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) disabled:bg-(--text)/50 disabled:opacity-100"
           size="icon"
@@ -179,11 +169,7 @@ function emitSeek(values: number[]): void {
             data-playback-starting
             aria-hidden="true"
           />
-          <Pause
-            v-else-if="props.isPlaying"
-            aria-hidden="true"
-            fill="currentColor"
-          />
+          <Pause v-else-if="props.isPlaying" aria-hidden="true" fill="currentColor" />
           <Play v-else aria-hidden="true" fill="currentColor" />
         </Button>
         <Button
@@ -217,14 +203,9 @@ function emitSeek(values: number[]): void {
         data-playback-control="favorite"
         :title="isFavorite ? 'Remove from Favorites' : 'Add to Favorites'"
         :disabled="!props.currentItem || props.isUpdating"
-        @click="
-          props.currentItem && emit('toggleFavorite', props.currentItem.id)
-        "
+        @click="props.currentItem && emit('toggleFavorite', props.currentItem.id)"
       >
-        <Heart
-          :fill="isFavorite ? 'currentColor' : 'none'"
-          aria-hidden="true"
-        />
+        <Heart :fill="isFavorite ? 'currentColor' : 'none'" aria-hidden="true" />
       </Button>
 
       <div
@@ -252,9 +233,7 @@ function emitSeek(values: number[]): void {
         data-playback-control="volume"
       >
         <Button
-          :aria-label="
-            props.playback.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'
-          "
+          :aria-label="props.playback.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'"
           size="icon-sm"
           variant="ghost"
           :disabled="props.isUpdating"
@@ -274,11 +253,7 @@ function emitSeek(values: number[]): void {
       </div>
 
       <Button
-        :aria-label="
-          props.detailsOpen
-            ? 'Hide selection details'
-            : 'Show selection details'
-        "
+        :aria-label="props.detailsOpen ? 'Hide selection details' : 'Show selection details'"
         :aria-pressed="props.detailsOpen"
         size="icon-sm"
         variant="ghost"
@@ -296,11 +271,6 @@ function emitSeek(values: number[]): void {
 .cover-art {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(
-    138deg,
-    var(--artwork-a),
-    var(--artwork-b) 58%,
-    var(--artwork-c)
-  );
+  background: linear-gradient(138deg, var(--artwork-a), var(--artwork-b) 58%, var(--artwork-c));
 }
 </style>

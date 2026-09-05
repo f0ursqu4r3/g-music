@@ -1,74 +1,63 @@
 <script setup lang="ts">
-import { Mic2 } from "lucide-vue-next";
+import { Mic2 } from 'lucide-vue-next'
 
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { formatDuration } from "@/lib/time";
-import type {
-  ArtistGroup,
-  LibraryArtist,
-  LibraryDisplayMode,
-  LibrarySortOption,
-} from "./types";
-import LibraryVirtualGrid from "./LibraryVirtualGrid.vue";
-import YouTubeArtwork from "../YouTubeArtwork.vue";
+} from '@/components/ui/context-menu'
+import { formatDuration } from '@/lib/time'
+import type { ArtistGroup, LibraryArtist, LibraryDisplayMode, LibrarySortOption } from './types'
+import LibraryVirtualGrid from './LibraryVirtualGrid.vue'
+import YouTubeArtwork from '../YouTubeArtwork.vue'
 
-type ArtistSortColumn = "album-count" | "duration" | "title" | "track-count";
+type ArtistSortColumn = 'album-count' | 'duration' | 'title' | 'track-count'
 
 const props = defineProps<{
-  groups: ArtistGroup[];
-  displayMode: LibraryDisplayMode;
-  selectedArtistName: string | undefined;
-  gridItemSize: number;
-  sortBy: LibrarySortOption;
-}>();
+  groups: ArtistGroup[]
+  displayMode: LibraryDisplayMode
+  selectedArtistName: string | undefined
+  gridItemSize: number
+  sortBy: LibrarySortOption
+}>()
 
 const emit = defineEmits<{
-  editArtist: [artist: LibraryArtist];
-  playArtist: [artist: LibraryArtist];
-  selectArtist: [artist: LibraryArtist];
-  openArtist: [artist: LibraryArtist];
-  setSort: [option: LibrarySortOption];
-}>();
+  editArtist: [artist: LibraryArtist]
+  playArtist: [artist: LibraryArtist]
+  selectArtist: [artist: LibraryArtist]
+  openArtist: [artist: LibraryArtist]
+  setSort: [option: LibrarySortOption]
+}>()
 
-function sortDirection(
-  column: ArtistSortColumn,
-): "ascending" | "descending" | "none" {
+function sortDirection(column: ArtistSortColumn): 'ascending' | 'descending' | 'none' {
   if (!props.sortBy.startsWith(`${column}-`)) {
-    return "none";
+    return 'none'
   }
 
-  return props.sortBy.endsWith("-desc") ? "descending" : "ascending";
+  return props.sortBy.endsWith('-desc') ? 'descending' : 'ascending'
 }
 
 function sortIndicator(column: ArtistSortColumn): string {
-  const direction = sortDirection(column);
+  const direction = sortDirection(column)
 
-  return direction === "ascending"
-    ? "↑"
-    : direction === "descending"
-      ? "↓"
-      : "";
+  return direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : ''
 }
 
 function sortButtonLabel(column: ArtistSortColumn, label: string): string {
-  const direction = sortDirection(column);
-  const nextDirection = direction === "ascending" ? "descending" : "ascending";
+  const direction = sortDirection(column)
+  const nextDirection = direction === 'ascending' ? 'descending' : 'ascending'
 
-  return `Sort by ${label}, ${nextDirection}`;
+  return `Sort by ${label}, ${nextDirection}`
 }
 
 function toggleSort(column: ArtistSortColumn): void {
-  const direction = sortDirection(column);
-  const nextDirection = direction === "ascending" ? "desc" : "asc";
+  const direction = sortDirection(column)
+  const nextDirection = direction === 'ascending' ? 'desc' : 'asc'
 
-  emit("setSort", `${column}-${nextDirection}` as LibrarySortOption);
+  emit('setSort', `${column}-${nextDirection}` as LibrarySortOption)
 }
 </script>
 
@@ -109,7 +98,7 @@ function toggleSort(column: ArtistSortColumn): void {
               >
                 Artist
                 <span v-if="sortIndicator('title')" aria-hidden="true">
-                  {{ sortIndicator("title") }}
+                  {{ sortIndicator('title') }}
                 </span>
               </button>
             </th>
@@ -127,7 +116,7 @@ function toggleSort(column: ArtistSortColumn): void {
               >
                 Albums
                 <span v-if="sortIndicator('album-count')" aria-hidden="true">
-                  {{ sortIndicator("album-count") }}
+                  {{ sortIndicator('album-count') }}
                 </span>
               </button>
             </th>
@@ -145,7 +134,7 @@ function toggleSort(column: ArtistSortColumn): void {
               >
                 Tracks
                 <span v-if="sortIndicator('track-count')" aria-hidden="true">
-                  {{ sortIndicator("track-count") }}
+                  {{ sortIndicator('track-count') }}
                 </span>
               </button>
             </th>
@@ -163,17 +152,14 @@ function toggleSort(column: ArtistSortColumn): void {
               >
                 Duration
                 <span v-if="sortIndicator('duration')" aria-hidden="true">
-                  {{ sortIndicator("duration") }}
+                  {{ sortIndicator('duration') }}
                 </span>
               </button>
             </th>
           </tr>
         </thead>
         <tbody>
-          <template
-            v-for="group in props.groups"
-            :key="group.label || 'all-artists'"
-          >
+          <template v-for="group in props.groups" :key="group.label || 'all-artists'">
             <ContextMenu
               v-for="artist in group.items"
               :key="artist.name"
@@ -199,12 +185,8 @@ function toggleSort(column: ArtistSortColumn): void {
                       />
                     </div>
                   </td>
-                  <td
-                    class="overflow-hidden px-3 py-1.5 text-[0.82rem] font-medium text-(--text)"
-                  >
-                    <span
-                      class="block overflow-hidden text-ellipsis whitespace-nowrap"
-                    >
+                  <td class="overflow-hidden px-3 py-1.5 text-[0.82rem] font-medium text-(--text)">
+                    <span class="block overflow-hidden text-ellipsis whitespace-nowrap">
                       {{ artist.name }}
                     </span>
                   </td>
@@ -250,9 +232,7 @@ function toggleSort(column: ArtistSortColumn): void {
       :item-height-padding="40"
     >
       <template #item="{ item: artist }">
-        <ContextMenu
-          @update:open="(isOpen) => isOpen && emit('selectArtist', artist)"
-        >
+        <ContextMenu @update:open="(isOpen) => isOpen && emit('selectArtist', artist)">
           <ContextMenuTrigger as-child>
             <article
               class="artist-tile min-w-0 cursor-pointer rounded-lg p-2 outline-none hover:bg-[oklch(0.72_0.025_258/0.08)] focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
@@ -285,16 +265,10 @@ function toggleSort(column: ArtistSortColumn): void {
             </article>
           </ContextMenuTrigger>
           <ContextMenuContent data-artist-context-menu>
-            <ContextMenuItem @select="emit('playArtist', artist)">
-              Play artist
-            </ContextMenuItem>
-            <ContextMenuItem @select="emit('openArtist', artist)">
-              Open tracks
-            </ContextMenuItem>
+            <ContextMenuItem @select="emit('playArtist', artist)"> Play artist </ContextMenuItem>
+            <ContextMenuItem @select="emit('openArtist', artist)"> Open tracks </ContextMenuItem>
             <ContextMenuSeparator />
-            <ContextMenuItem @select="emit('editArtist', artist)">
-              Edit metadata
-            </ContextMenuItem>
+            <ContextMenuItem @select="emit('editArtist', artist)"> Edit metadata </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
       </template>
@@ -306,11 +280,6 @@ function toggleSort(column: ArtistSortColumn): void {
 .cover-art {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(
-    138deg,
-    var(--artwork-a),
-    var(--artwork-b) 58%,
-    var(--artwork-c)
-  );
+  background: linear-gradient(138deg, var(--artwork-a), var(--artwork-b) 58%, var(--artwork-c));
 }
 </style>

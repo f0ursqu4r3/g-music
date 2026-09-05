@@ -1,79 +1,62 @@
 <script setup lang="ts">
-import {
-  Clock3,
-  Heart,
-  ListFilter,
-  LoaderCircle,
-  Play,
-  Volume2,
-  X,
-} from "lucide-vue-next";
+import { Clock3, Heart, ListFilter, LoaderCircle, Play, Volume2, X } from 'lucide-vue-next'
 import {
   observeElementRect,
   type Rect,
   useVirtualizer,
   type Virtualizer,
-} from "@tanstack/vue-virtual";
-import {
-  type ComponentPublicInstance,
-  computed,
-  onBeforeUnmount,
-  ref,
-} from "vue";
+} from '@tanstack/vue-virtual'
+import { type ComponentPublicInstance, computed, onBeforeUnmount, ref } from 'vue'
 
-import type { MediaItem } from "@/api";
-import { formatDuration } from "@/lib/time";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import LibraryTrackContextMenu from "./LibraryTrackContextMenu.vue";
-import type {
-  LibrarySortOption,
-  TrackFilter,
-  TrackSelectionModifiers,
-} from "./types";
+import type { MediaItem } from '@/api'
+import { formatDuration } from '@/lib/time'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import LibraryTrackContextMenu from './LibraryTrackContextMenu.vue'
+import type { LibrarySortOption, TrackFilter, TrackSelectionModifiers } from './types'
 
-type TrackSortColumn = "album" | "artist" | "duration" | "title";
+type TrackSortColumn = 'album' | 'artist' | 'duration' | 'title'
 
 const props = defineProps<{
-  canRemoveFromPlaylist?: boolean;
-  isUpdating?: boolean;
-  tracks: MediaItem[];
-  playingItemId: string | undefined;
-  selectedTrackIds: string[];
-  favoriteTrackIds: string[];
-  sortBy: LibrarySortOption;
-  trackFilter: TrackFilter | null;
-}>();
+  canRemoveFromPlaylist?: boolean
+  isUpdating?: boolean
+  tracks: MediaItem[]
+  playingItemId: string | undefined
+  selectedTrackIds: string[]
+  favoriteTrackIds: string[]
+  sortBy: LibrarySortOption
+  trackFilter: TrackFilter | null
+}>()
 
 const emit = defineEmits<{
-  addToQueue: [tracks: MediaItem[]];
-  dragTracks: [track: MediaItem, event: DragEvent];
-  dragTracksEnd: [];
-  selectTrack: [track: MediaItem, modifiers: TrackSelectionModifiers];
-  playTrack: [tracks: MediaItem[]];
-  playNext: [tracks: MediaItem[]];
-  clearTrackFilter: [];
-  editTrack: [track: MediaItem];
-  openAlbum: [track: MediaItem];
-  openArtist: [track: MediaItem];
-  openTrackContext: [track: MediaItem];
-  removeTrack: [tracks: MediaItem[]];
-  removeFromPlaylist: [tracks: MediaItem[]];
-  setSort: [option: LibrarySortOption];
-  toggleFavorite: [ids: string[]];
-}>();
+  addToQueue: [tracks: MediaItem[]]
+  dragTracks: [track: MediaItem, event: DragEvent]
+  dragTracksEnd: []
+  selectTrack: [track: MediaItem, modifiers: TrackSelectionModifiers]
+  playTrack: [tracks: MediaItem[]]
+  playNext: [tracks: MediaItem[]]
+  clearTrackFilter: []
+  editTrack: [track: MediaItem]
+  openAlbum: [track: MediaItem]
+  openArtist: [track: MediaItem]
+  openTrackContext: [track: MediaItem]
+  removeTrack: [tracks: MediaItem[]]
+  removeFromPlaylist: [tracks: MediaItem[]]
+  setSort: [option: LibrarySortOption]
+  toggleFavorite: [ids: string[]]
+}>()
 
-const columnWidths = ref([6, 29, 25, 25, 9, 6]);
-const minimumColumnWidths = [5, 18, 12, 12, 7, 5] as const;
-const trackList = ref<HTMLElement | null>(null);
-const trackRowHeight = 36;
-let stopColumnResize: (() => void) | undefined;
+const columnWidths = ref([6, 29, 25, 25, 9, 6])
+const minimumColumnWidths = [5, 18, 12, 12, 7, 5] as const
+const trackList = ref<HTMLElement | null>(null)
+const trackRowHeight = 36
+let stopColumnResize: (() => void) | undefined
 
 function viewportHeight(): number {
-  return typeof window === "undefined" ? 600 : window.innerHeight || 600;
+  return typeof window === 'undefined' ? 600 : window.innerHeight || 600
 }
 
 function setTrackList(element: Element | ComponentPublicInstance | null): void {
-  trackList.value = element instanceof HTMLElement ? element : null;
+  trackList.value = element instanceof HTMLElement ? element : null
 }
 
 function observeTrackListRect(
@@ -81,12 +64,12 @@ function observeTrackListRect(
   callback: (rect: Rect) => void,
 ): (() => void) | undefined {
   return observeElementRect(instance, (rect) => {
-    callback(rect.height > 0 ? rect : { ...rect, height: viewportHeight() });
-  });
+    callback(rect.height > 0 ? rect : { ...rect, height: viewportHeight() })
+  })
 }
 
 const virtualizerOptions = computed(() => {
-  const scrollElement = trackList.value;
+  const scrollElement = trackList.value
 
   return {
     count: props.tracks.length,
@@ -98,72 +81,62 @@ const virtualizerOptions = computed(() => {
     },
     observeElementRect: observeTrackListRect,
     overscan: 8,
-  };
-});
-const trackVirtualizer = useVirtualizer(virtualizerOptions);
+  }
+})
+const trackVirtualizer = useVirtualizer(virtualizerOptions)
 const virtualTracks = computed(() =>
   trackVirtualizer.value.getVirtualItems().flatMap((virtualItem) => {
-    const track = props.tracks[virtualItem.index];
+    const track = props.tracks[virtualItem.index]
 
-    return track ? [{ track, virtualItem }] : [];
+    return track ? [{ track, virtualItem }] : []
   }),
-);
+)
 const trackGridTemplateColumns = computed(() =>
-  columnWidths.value.map((width) => `${width}%`).join(" "),
-);
-const virtualTrackHeight = computed(
-  () => `${trackVirtualizer.value.getTotalSize()}px`,
-);
+  columnWidths.value.map((width) => `${width}%`).join(' '),
+)
+const virtualTrackHeight = computed(() => `${trackVirtualizer.value.getTotalSize()}px`)
 
 function isFavorite(trackId: string): boolean {
-  return props.favoriteTrackIds.includes(trackId);
+  return props.favoriteTrackIds.includes(trackId)
 }
 
 function isSelected(trackId: string): boolean {
-  return props.selectedTrackIds.includes(trackId);
+  return props.selectedTrackIds.includes(trackId)
 }
 
-function selectionModifiers(
-  event: MouseEvent | KeyboardEvent,
-): TrackSelectionModifiers {
+function selectionModifiers(event: MouseEvent | KeyboardEvent): TrackSelectionModifiers {
   return {
     additive: event.metaKey || event.ctrlKey,
     range: event.shiftKey,
-  };
+  }
 }
 
-function sortDirection(
-  column: TrackSortColumn,
-): "ascending" | "descending" | "none" {
+function sortDirection(column: TrackSortColumn): 'ascending' | 'descending' | 'none' {
   if (!props.sortBy.startsWith(`${column}-`)) {
-    return "none";
+    return 'none'
   }
 
-  return props.sortBy.endsWith("-desc") ? "descending" : "ascending";
+  return props.sortBy.endsWith('-desc') ? 'descending' : 'ascending'
 }
 
 function sortIndicator(column: TrackSortColumn): string {
-  const direction = sortDirection(column);
+  const direction = sortDirection(column)
 
-  return direction === "ascending"
-    ? "↑"
-    : direction === "descending"
-      ? "↓"
-      : "";
+  return direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : ''
 }
 
 function sortButtonLabel(column: TrackSortColumn, label: string): string {
-  const direction = sortDirection(column);
-  const nextDirection = direction === "ascending" ? "descending" : "ascending";
+  const direction = sortDirection(column)
+  const nextDirection = direction === 'ascending' ? 'descending' : 'ascending'
 
-  return `Sort by ${label}, ${nextDirection}`;
+  return `Sort by ${label}, ${nextDirection}`
 }
 
 function toggleSort(column: TrackSortColumn): void {
-  const direction = sortDirection(column);
-  const nextDirection = direction === "ascending" ? "desc" : "asc";
+  const direction = sortDirection(column)
+  const nextDirection = direction === 'ascending' ? 'desc' : 'asc'
 
-  emit("setSort", `${column}-${nextDirection}` as LibrarySortOption);
+  emit('setSort', `${column}-${nextDirection}` as LibrarySortOption)
 }
 
 function resizeColumnBoundary(
@@ -171,75 +144,72 @@ function resizeColumnBoundary(
   requestedDelta: number,
   initialWidths = columnWidths.value,
 ): void {
-  const leftWidth = initialWidths[boundaryIndex];
-  const rightWidth = initialWidths[boundaryIndex + 1];
-  const minimumLeftWidth = minimumColumnWidths[boundaryIndex];
-  const minimumRightWidth = minimumColumnWidths[boundaryIndex + 1];
+  const leftWidth = initialWidths[boundaryIndex]
+  const rightWidth = initialWidths[boundaryIndex + 1]
+  const minimumLeftWidth = minimumColumnWidths[boundaryIndex]
+  const minimumRightWidth = minimumColumnWidths[boundaryIndex + 1]
   if (
     leftWidth === undefined ||
     rightWidth === undefined ||
     minimumLeftWidth === undefined ||
     minimumRightWidth === undefined
   ) {
-    return;
+    return
   }
 
   const delta = Math.min(
     Math.max(requestedDelta, minimumLeftWidth - leftWidth),
     rightWidth - minimumRightWidth,
-  );
-  const nextWidths = [...initialWidths];
-  nextWidths[boundaryIndex] = leftWidth + delta;
-  nextWidths[boundaryIndex + 1] = rightWidth - delta;
-  columnWidths.value = nextWidths;
+  )
+  const nextWidths = [...initialWidths]
+  nextWidths[boundaryIndex] = leftWidth + delta
+  nextWidths[boundaryIndex + 1] = rightWidth - delta
+  columnWidths.value = nextWidths
 }
 
 function startColumnResize(boundaryIndex: number, event: MouseEvent): void {
   if (event.button !== 0) {
-    return;
+    return
   }
 
-  event.preventDefault();
-  stopColumnResize?.();
-  const startX = event.clientX;
-  const initialWidths = [...columnWidths.value];
-  const table = (event.currentTarget as HTMLElement).closest("table");
+  event.preventDefault()
+  stopColumnResize?.()
+  const startX = event.clientX
+  const initialWidths = [...columnWidths.value]
+  const table = (event.currentTarget as HTMLElement).closest('table')
 
   const handleMouseMove = (moveEvent: MouseEvent): void => {
-    const tableWidth = table?.getBoundingClientRect().width ?? 0;
+    const tableWidth = table?.getBoundingClientRect().width ?? 0
     if (tableWidth <= 0) {
-      return;
+      return
     }
 
-    const delta = ((moveEvent.clientX - startX) / tableWidth) * 100;
-    resizeColumnBoundary(boundaryIndex, delta, initialWidths);
-  };
+    const delta = ((moveEvent.clientX - startX) / tableWidth) * 100
+    resizeColumnBoundary(boundaryIndex, delta, initialWidths)
+  }
   const handleMouseUp = (): void => {
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
-    stopColumnResize = undefined;
-  };
-
-  stopColumnResize = handleMouseUp;
-  window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mouseup", handleMouseUp);
-}
-
-function resizeColumnWithKeyboard(
-  boundaryIndex: number,
-  event: KeyboardEvent,
-): void {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-    return;
+    window.removeEventListener('mousemove', handleMouseMove)
+    window.removeEventListener('mouseup', handleMouseUp)
+    stopColumnResize = undefined
   }
 
-  event.preventDefault();
-  resizeColumnBoundary(boundaryIndex, event.key === "ArrowRight" ? 1 : -1);
+  stopColumnResize = handleMouseUp
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
+}
+
+function resizeColumnWithKeyboard(boundaryIndex: number, event: KeyboardEvent): void {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+    return
+  }
+
+  event.preventDefault()
+  resizeColumnBoundary(boundaryIndex, event.key === 'ArrowRight' ? 1 : -1)
 }
 
 onBeforeUnmount(() => {
-  stopColumnResize?.();
-});
+  stopColumnResize?.()
+})
 </script>
 
 <template>
@@ -260,19 +230,12 @@ onBeforeUnmount(() => {
         <X class="size-3.5" aria-hidden="true" />
       </button>
     </div>
-    <table
-      class="w-full shrink-0 table-fixed px-5 text-left"
-      data-library-track-header
-    >
+    <table class="w-full shrink-0 table-fixed px-5 text-left" data-library-track-header>
       <colgroup>
         <col
           v-for="(width, index) in columnWidths"
           :key="index"
-          :data-column="
-            ['action', 'title', 'artist', 'album', 'duration', 'favorite'][
-              index
-            ]
-          "
+          :data-column="['action', 'title', 'artist', 'album', 'duration', 'favorite'][index]"
           :style="{ width: `${width}%` }"
         />
       </colgroup>
@@ -294,7 +257,7 @@ onBeforeUnmount(() => {
             >
               Title
               <span v-if="sortIndicator('title')" aria-hidden="true">
-                {{ sortIndicator("title") }}
+                {{ sortIndicator('title') }}
               </span>
             </button>
             <button
@@ -321,7 +284,7 @@ onBeforeUnmount(() => {
             >
               Artist
               <span v-if="sortIndicator('artist')" aria-hidden="true">
-                {{ sortIndicator("artist") }}
+                {{ sortIndicator('artist') }}
               </span>
             </button>
             <button
@@ -348,7 +311,7 @@ onBeforeUnmount(() => {
             >
               Album
               <span v-if="sortIndicator('album')" aria-hidden="true">
-                {{ sortIndicator("album") }}
+                {{ sortIndicator('album') }}
               </span>
             </button>
             <button
@@ -376,7 +339,7 @@ onBeforeUnmount(() => {
               <span class="sr-only">Duration</span>
               <Clock3 aria-hidden="true" />
               <span v-if="sortIndicator('duration')" aria-hidden="true">
-                {{ sortIndicator("duration") }}
+                {{ sortIndicator('duration') }}
               </span>
             </button>
             <button
@@ -450,12 +413,8 @@ onBeforeUnmount(() => {
             @dblclick="emit('playTrack', [track])"
             @dragend="emit('dragTracksEnd')"
             @dragstart="emit('dragTracks', track, $event)"
-            @keydown.enter.prevent="
-              emit('selectTrack', track, selectionModifiers($event))
-            "
-            @keydown.space.prevent="
-              emit('selectTrack', track, selectionModifiers($event))
-            "
+            @keydown.enter.prevent="emit('selectTrack', track, selectionModifiers($event))"
+            @keydown.space.prevent="emit('selectTrack', track, selectionModifiers($event))"
           >
             <div
               class="relative grid place-items-center px-1.5 group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
@@ -482,12 +441,8 @@ onBeforeUnmount(() => {
               class="overflow-hidden px-3 text-[0.82rem] text-(--text) group-hover:bg-[oklch(0.72_0.025_258/0.08)] group-data-[selected=true]:bg-[oklch(0.72_0.03_268/0.13)]"
               role="gridcell"
             >
-              <span
-                class="flex h-full min-w-0 items-center gap-2.5 font-medium"
-              >
-                <span
-                  class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-                >
+              <span class="flex h-full min-w-0 items-center gap-2.5 font-medium">
+                <span class="track-title min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                   {{ track.title }}
                 </span>
                 <LoaderCircle
@@ -516,7 +471,7 @@ onBeforeUnmount(() => {
               <span
                 class="track-album flex h-full items-center overflow-hidden text-ellipsis whitespace-nowrap"
               >
-                {{ track.album || "—" }}
+                {{ track.album || '—' }}
               </span>
             </div>
             <div
@@ -536,10 +491,7 @@ onBeforeUnmount(() => {
                 type="button"
                 @click.stop="emit('toggleFavorite', [track.id])"
               >
-                <Heart
-                  aria-hidden="true"
-                  :fill="isFavorite(track.id) ? 'currentColor' : 'none'"
-                />
+                <Heart aria-hidden="true" :fill="isFavorite(track.id) ? 'currentColor' : 'none'" />
               </button>
             </div>
           </div>

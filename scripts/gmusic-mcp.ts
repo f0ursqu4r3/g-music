@@ -1,123 +1,107 @@
-import { createConnection } from "node:net";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { createConnection } from 'node:net'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { z } from 'zod'
 
-type JsonObject = Record<string, unknown>;
+type JsonObject = Record<string, unknown>
 
 interface AgentError {
-  code: string;
-  message: string;
+  code: string
+  message: string
 }
 
 interface AgentResponse {
-  id: number;
-  result?: JsonObject;
-  error?: AgentError;
+  id: number
+  result?: JsonObject
+  error?: AgentError
 }
 
 const socketPath =
   process.env.GMUSIC_AGENT_SOCKET ??
-  join(
-    homedir(),
-    "Library",
-    "Application Support",
-    "com.kyle.gmusic",
-    "agent.sock",
-  );
-let nextRequestId = 1;
+  join(homedir(), 'Library', 'Application Support', 'com.kyle.gmusic', 'agent.sock')
+let nextRequestId = 1
 
-function invokeAgent(
-  method: string,
-  params: JsonObject = {},
-): Promise<JsonObject> {
-  const id = nextRequestId++;
-  const request = `${JSON.stringify({ id, method, params })}\n`;
+function invokeAgent(method: string, params: JsonObject = {}): Promise<JsonObject> {
+  const id = nextRequestId++
+  const request = `${JSON.stringify({ id, method, params })}\n`
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection(socketPath);
-    let buffer = "";
+    const socket = createConnection(socketPath)
+    let buffer = ''
     const timeout = setTimeout(() => {
-      socket.destroy();
-      reject(new Error("gMusic did not respond within five seconds."));
-    }, 5_000);
+      socket.destroy()
+      reject(new Error('gMusic did not respond within five seconds.'))
+    }, 5_000)
 
     function complete(callback: () => void): void {
-      clearTimeout(timeout);
-      socket.destroy();
-      callback();
+      clearTimeout(timeout)
+      socket.destroy()
+      callback()
     }
 
-    socket.once("error", (error) => {
-      complete(() =>
-        reject(new Error(`Could not connect to gMusic: ${error.message}`)),
-      );
-    });
-    socket.on("data", (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
-      const newline = buffer.indexOf("\n");
+    socket.once('error', (error) => {
+      complete(() => reject(new Error(`Could not connect to gMusic: ${error.message}`)))
+    })
+    socket.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString('utf8')
+      const newline = buffer.indexOf('\n')
       if (newline < 0) {
-        return;
+        return
       }
-      const line = buffer.slice(0, newline);
-      let response: AgentResponse;
+      const line = buffer.slice(0, newline)
+      let response: AgentResponse
       try {
-        response = JSON.parse(line) as AgentResponse;
+        response = JSON.parse(line) as AgentResponse
       } catch {
-        complete(() =>
-          reject(new Error("gMusic returned an invalid control response.")),
-        );
-        return;
+        complete(() => reject(new Error('gMusic returned an invalid control response.')))
+        return
       }
       if (response.id !== id) {
-        complete(() =>
-          reject(new Error("gMusic returned a mismatched control response.")),
-        );
-        return;
+        complete(() => reject(new Error('gMusic returned a mismatched control response.')))
+        return
       }
-      const responseError = response.error;
+      const responseError = response.error
       if (responseError) {
-        complete(() => reject(new Error(responseError.message)));
-        return;
+        complete(() => reject(new Error(responseError.message)))
+        return
       }
-      complete(() => resolve(response.result ?? {}));
-    });
-    socket.once("connect", () => socket.write(request));
-  });
+      complete(() => resolve(response.result ?? {}))
+    })
+    socket.once('connect', () => socket.write(request))
+  })
 }
 
 function textResult(result: JsonObject) {
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-  };
+    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+  }
 }
 
 function toolError(error: unknown) {
   return {
     content: [
       {
-        type: "text" as const,
-        text:
-          error instanceof Error ? error.message : "The gMusic command failed.",
+        type: 'text' as const,
+        text: error instanceof Error ? error.message : 'The gMusic command failed.',
       },
     ],
     isError: true,
-  };
+  }
 }
 
 function requireConfirmation(confirmed: boolean): void {
   if (!confirmed) {
     throw new Error(
       "This changes the gMusic library. Get the user's explicit approval, then call again with confirmed=true.",
-    );
+    )
   }
 }
 
 function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function libraryPage(
@@ -126,10 +110,8 @@ function libraryPage(
   limit: number,
   query?: string,
 ): JsonObject {
-  const tracks = Array.isArray(library.tracks)
-    ? library.tracks.filter(isJsonObject)
-    : [];
-  const normalizedQuery = query?.trim().toLocaleLowerCase();
+  const tracks = Array.isArray(library.tracks) ? library.tracks.filter(isJsonObject) : []
+  const normalizedQuery = query?.trim().toLocaleLowerCase()
   const matchingTracks = normalizedQuery
     ? tracks.filter((track) =>
         [
@@ -139,11 +121,11 @@ function libraryPage(
           track.label,
           ...(Array.isArray(track.genres) ? track.genres : []),
         ]
-          .filter((value): value is string => typeof value === "string")
+          .filter((value): value is string => typeof value === 'string')
           .some((value) => value.toLocaleLowerCase().includes(normalizedQuery)),
       )
-    : tracks;
-  const start = Math.min(offset, matchingTracks.length);
+    : tracks
+  const start = Math.min(offset, matchingTracks.length)
 
   return {
     ...library,
@@ -155,20 +137,20 @@ function libraryPage(
       totalMatchingTracks: matchingTracks.length,
       totalTracks: tracks.length,
     },
-  };
+  }
 }
 
 const server = new McpServer({
-  name: "gmusic",
-  version: "0.1.0",
-});
+  name: 'gmusic',
+  version: '0.1.0',
+})
 
 server.registerTool(
-  "inspect_library",
+  'inspect_library',
   {
-    title: "Inspect gMusic library",
+    title: 'Inspect gMusic library',
     description:
-      "Read a bounded page of tracks, editable metadata, playlists, and play statistics from the running local gMusic application.",
+      'Read a bounded page of tracks, editable metadata, playlists, and play statistics from the running local gMusic application.',
     inputSchema: {
       limit: z.number().int().min(1).max(250).default(100),
       offset: z.number().int().nonnegative().default(0),
@@ -177,18 +159,18 @@ server.registerTool(
   },
   async ({ limit, offset, query }) => {
     try {
-      const library = await invokeAgent("library.inspect");
-      return textResult(libraryPage(library, offset, limit, query));
+      const library = await invokeAgent('library.inspect')
+      return textResult(libraryPage(library, offset, limit, query))
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 server.registerTool(
-  "update_track_metadata",
+  'update_track_metadata',
   {
-    title: "Update gMusic track metadata",
+    title: 'Update gMusic track metadata',
     description:
       "Update a known track's title, artist, album, label, and genres. This is a write operation and requires current explicit user approval.",
     inputSchema: {
@@ -203,9 +185,9 @@ server.registerTool(
   },
   async ({ confirmed, id, title, artist, album, label, genres }) => {
     try {
-      requireConfirmation(confirmed);
+      requireConfirmation(confirmed)
       return textResult(
-        await invokeAgent("track.update", {
+        await invokeAgent('track.update', {
           id,
           metadata: {
             title,
@@ -215,19 +197,19 @@ server.registerTool(
             genres,
           },
         }),
-      );
+      )
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 server.registerTool(
-  "update_library_track_metadata_batch",
+  'update_library_track_metadata_batch',
   {
-    title: "Batch update gMusic track metadata",
+    title: 'Batch update gMusic track metadata',
     description:
-      "Update the editable metadata for multiple known tracks in one library write. This is a write operation and requires current explicit user approval.",
+      'Update the editable metadata for multiple known tracks in one library write. This is a write operation and requires current explicit user approval.',
     inputSchema: {
       confirmed: z.boolean(),
       updates: z
@@ -246,35 +228,33 @@ server.registerTool(
   },
   async ({ confirmed, updates }) => {
     try {
-      requireConfirmation(confirmed);
+      requireConfirmation(confirmed)
       return textResult(
-        await invokeAgent("tracks.update", {
-          updates: updates.map(
-            ({ id, title, artist, album, label, genres }) => ({
-              id,
-              metadata: {
-                title,
-                artist,
-                album: album ?? null,
-                label: label ?? null,
-                genres,
-              },
-            }),
-          ),
+        await invokeAgent('tracks.update', {
+          updates: updates.map(({ id, title, artist, album, label, genres }) => ({
+            id,
+            metadata: {
+              title,
+              artist,
+              album: album ?? null,
+              label: label ?? null,
+              genres,
+            },
+          })),
         }),
-      );
+      )
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 server.registerTool(
-  "remove_library_tracks",
+  'remove_library_tracks',
   {
-    title: "Remove gMusic library tracks",
+    title: 'Remove gMusic library tracks',
     description:
-      "Remove known tracks from the library and every playlist. This is a destructive write operation and requires current explicit user approval.",
+      'Remove known tracks from the library and every playlist. This is a destructive write operation and requires current explicit user approval.',
     inputSchema: {
       confirmed: z.boolean(),
       ids: z.array(z.string().min(1)).min(1),
@@ -282,20 +262,20 @@ server.registerTool(
   },
   async ({ confirmed, ids }) => {
     try {
-      requireConfirmation(confirmed);
-      return textResult(await invokeAgent("track.remove", { ids }));
+      requireConfirmation(confirmed)
+      return textResult(await invokeAgent('track.remove', { ids }))
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 server.registerTool(
-  "upsert_playlist",
+  'upsert_playlist',
   {
-    title: "Create or replace a gMusic playlist",
+    title: 'Create or replace a gMusic playlist',
     description:
-      "Create a playlist or replace its ordered list of stable track IDs. This is a write operation and requires current explicit user approval.",
+      'Create a playlist or replace its ordered list of stable track IDs. This is a write operation and requires current explicit user approval.',
     inputSchema: {
       confirmed: z.boolean(),
       id: z.string().min(1),
@@ -305,24 +285,24 @@ server.registerTool(
   },
   async ({ confirmed, id, name, trackIds }) => {
     try {
-      requireConfirmation(confirmed);
+      requireConfirmation(confirmed)
       return textResult(
-        await invokeAgent("playlist.upsert", {
+        await invokeAgent('playlist.upsert', {
           playlist: { id, name, trackIds },
         }),
-      );
+      )
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 server.registerTool(
-  "delete_playlist",
+  'delete_playlist',
   {
-    title: "Delete a gMusic playlist",
+    title: 'Delete a gMusic playlist',
     description:
-      "Delete one playlist by stable playlist ID. This is a destructive write operation and requires current explicit user approval.",
+      'Delete one playlist by stable playlist ID. This is a destructive write operation and requires current explicit user approval.',
     inputSchema: {
       confirmed: z.boolean(),
       id: z.string().min(1),
@@ -330,20 +310,20 @@ server.registerTool(
   },
   async ({ confirmed, id }) => {
     try {
-      requireConfirmation(confirmed);
-      return textResult(await invokeAgent("playlist.delete", { id }));
+      requireConfirmation(confirmed)
+      return textResult(await invokeAgent('playlist.delete', { id }))
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 server.registerTool(
-  "move_library_track",
+  'move_library_track',
   {
-    title: "Reorder gMusic library",
+    title: 'Reorder gMusic library',
     description:
-      "Move one track in the durable library order. This is a write operation and requires current explicit user approval.",
+      'Move one track in the durable library order. This is a write operation and requires current explicit user approval.',
     inputSchema: {
       confirmed: z.boolean(),
       from: z.number().int().nonnegative(),
@@ -352,21 +332,19 @@ server.registerTool(
   },
   async ({ confirmed, from, to }) => {
     try {
-      requireConfirmation(confirmed);
-      return textResult(await invokeAgent("library.move", { from, to }));
+      requireConfirmation(confirmed)
+      return textResult(await invokeAgent('library.move', { from, to }))
     } catch (error) {
-      return toolError(error);
+      return toolError(error)
     }
   },
-);
+)
 
 async function main(): Promise<void> {
-  await server.connect(new StdioServerTransport());
+  await server.connect(new StdioServerTransport())
 }
 
 void main().catch((error: unknown) => {
-  console.error(
-    error instanceof Error ? error.message : "Could not start gMusic MCP.",
-  );
-  process.exitCode = 1;
-});
+  console.error(error instanceof Error ? error.message : 'Could not start gMusic MCP.')
+  process.exitCode = 1
+})

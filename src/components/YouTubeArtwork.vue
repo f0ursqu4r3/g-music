@@ -1,43 +1,43 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from "vue";
+import { computed, ref, watch, type Component } from 'vue'
 
-import { artworkApi } from "@/api";
+import { artworkApi } from '@/api'
 
 const props = defineProps<{
-  videoId: string | null | undefined;
-  missingIcon?: Component | null;
-}>();
+  videoId: string | null | undefined
+  missingIcon?: Component | null
+}>()
 
-const source = ref<string | null>(null);
-let requestId = 0;
+const source = ref<string | null>(null)
+let requestId = 0
 const youtubeVideoId = computed(() => {
-  const videoId = props.videoId?.trim() ?? "";
-  return /^[A-Za-z0-9_-]{11}$/.test(videoId) ? videoId : null;
-});
+  const videoId = props.videoId?.trim() ?? ''
+  return /^[A-Za-z0-9_-]{11}$/.test(videoId) ? videoId : null
+})
 watch(
   youtubeVideoId,
   async (videoId) => {
-    const currentRequest = ++requestId;
-    source.value = null;
+    const currentRequest = ++requestId
+    source.value = null
     if (!videoId) {
-      return;
+      return
     }
     try {
-      const resolved = await artworkApi.resolveYouTube(videoId);
+      const resolved = await artworkApi.resolveYouTube(videoId)
       if (currentRequest === requestId) {
-        source.value = resolved;
+        source.value = resolved
       }
     } catch {
       if (currentRequest === requestId) {
-        source.value = null;
+        source.value = null
       }
     }
   },
   { immediate: true },
-);
+)
 
 function clearBrokenImage(): void {
-  source.value = null;
+  source.value = null
 }
 </script>
 
@@ -80,12 +80,7 @@ function clearBrokenImage(): void {
       color-mix(in oklch, var(--artwork-a), transparent 16%),
       transparent 42%
     ),
-    linear-gradient(
-      145deg,
-      var(--artwork-a),
-      var(--artwork-b) 54%,
-      var(--artwork-c)
-    );
+    linear-gradient(145deg, var(--artwork-a), var(--artwork-b) 54%, var(--artwork-c));
 }
 
 .youtube-artwork > img {

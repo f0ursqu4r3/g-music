@@ -1,59 +1,44 @@
 <script setup lang="ts">
-import { reactiveOmit } from "@vueuse/core";
-import {
-  SliderRange,
-  SliderRoot,
-  SliderThumb,
-  SliderTrack,
-  useForwardProps,
-} from "reka-ui";
-import type { SliderRootEmits, SliderRootProps } from "reka-ui";
-import { computed, ref, useAttrs, watch } from "vue";
-import type { HTMLAttributes } from "vue";
+import { reactiveOmit } from '@vueuse/core'
+import { SliderRange, SliderRoot, SliderThumb, SliderTrack, useForwardProps } from 'reka-ui'
+import type { SliderRootEmits, SliderRootProps } from 'reka-ui'
+import { computed, ref, useAttrs, watch } from 'vue'
+import type { HTMLAttributes } from 'vue'
 
-import { cn } from "@/lib/utils";
+import { cn } from '@/lib/utils'
 
-const props = defineProps<
-  SliderRootProps & { class?: HTMLAttributes["class"] }
->();
-const emits = defineEmits<SliderRootEmits>();
-const delegatedProps = reactiveOmit(
-  props,
-  "class",
-  "defaultValue",
-  "modelValue",
-);
-const forwardedProps = useForwardProps(delegatedProps);
-const attrs = useAttrs();
-const isInteracting = ref(false);
-const internalModelValue = ref([
-  ...(props.modelValue ?? props.defaultValue ?? [0]),
-]);
+const props = defineProps<SliderRootProps & { class?: HTMLAttributes['class'] }>()
+const emits = defineEmits<SliderRootEmits>()
+const delegatedProps = reactiveOmit(props, 'class', 'defaultValue', 'modelValue')
+const forwardedProps = useForwardProps(delegatedProps)
+const attrs = useAttrs()
+const isInteracting = ref(false)
+const internalModelValue = ref([...(props.modelValue ?? props.defaultValue ?? [0])])
 const thumbLabel = computed(() => {
-  const label = attrs["aria-label"];
-  return typeof label === "string" ? label : undefined;
-});
+  const label = attrs['aria-label']
+  return typeof label === 'string' ? label : undefined
+})
 
 watch(
   () => props.modelValue,
   (modelValue) => {
     if (!isInteracting.value && modelValue) {
-      internalModelValue.value = [...modelValue];
+      internalModelValue.value = [...modelValue]
     }
   },
-);
+)
 
 function updateModelValue(modelValue: number[] | undefined): void {
   if (!modelValue) {
-    return;
+    return
   }
 
-  internalModelValue.value = [...modelValue];
-  emits("update:modelValue", modelValue);
+  internalModelValue.value = [...modelValue]
+  emits('update:modelValue', modelValue)
 }
 
 function stopInteraction(): void {
-  isInteracting.value = false;
+  isInteracting.value = false
 }
 </script>
 

@@ -1,26 +1,26 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from 'vitest'
 
-import type { PlaybackSnapshot } from "@/api";
+import type { PlaybackSnapshot } from '@/api'
 
-import { usePlayback } from "../usePlayback";
+import { usePlayback } from '../usePlayback'
 
 const paused: PlaybackSnapshot = {
-  status: "paused",
+  status: 'paused',
   currentItem: null,
   positionMs: 0,
   volumePercent: 70,
   queue: [],
-};
+}
 
-const playing: PlaybackSnapshot = { ...paused, status: "playing" };
+const playing: PlaybackSnapshot = { ...paused, status: 'playing' }
 
-describe("usePlayback", () => {
-  it("applies authoritative shuffle and repeat mode snapshots", async () => {
+describe('usePlayback', () => {
+  it('applies authoritative shuffle and repeat mode snapshots', async () => {
     const shuffled = {
       ...paused,
-      repeatMode: "all" as const,
+      repeatMode: 'all' as const,
       shuffleEnabled: true,
-    };
+    }
     const client = {
       inspect: vi.fn().mockResolvedValue(paused),
       play: vi.fn(),
@@ -34,19 +34,19 @@ describe("usePlayback", () => {
       importYouTubeUrls: vi.fn(),
       toggleShuffle: vi.fn().mockResolvedValue(shuffled),
       cycleRepeatMode: vi.fn().mockResolvedValue(shuffled),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    await playback.toggleShuffle();
-    await playback.cycleRepeatMode();
+    await playback.refresh()
+    await playback.toggleShuffle()
+    await playback.cycleRepeatMode()
 
-    expect(client.toggleShuffle).toHaveBeenCalledOnce();
-    expect(client.cycleRepeatMode).toHaveBeenCalledOnce();
-    expect(playback.snapshot.value).toEqual(shuffled);
-  });
+    expect(client.toggleShuffle).toHaveBeenCalledOnce()
+    expect(client.cycleRepeatMode).toHaveBeenCalledOnce()
+    expect(playback.snapshot.value).toEqual(shuffled)
+  })
 
-  it("loads a snapshot then uses play for a paused track", async () => {
+  it('loads a snapshot then uses play for a paused track', async () => {
     const client = {
       inspect: vi.fn().mockResolvedValue(paused),
       play: vi.fn().mockResolvedValue(playing),
@@ -58,22 +58,22 @@ describe("usePlayback", () => {
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
       importYouTubeUrls: vi.fn().mockResolvedValue(playing),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    await playback.toggle();
+    await playback.refresh()
+    await playback.toggle()
 
-    expect(client.inspect).toHaveBeenCalledOnce();
-    expect(client.play).toHaveBeenCalledOnce();
-    expect(playback.snapshot.value).toEqual(playing);
-  });
+    expect(client.inspect).toHaveBeenCalledOnce()
+    expect(client.play).toHaveBeenCalledOnce()
+    expect(playback.snapshot.value).toEqual(playing)
+  })
 
-  it("marks a pending play command as starting", async () => {
-    let resolvePlay: ((snapshot: PlaybackSnapshot) => void) | undefined;
+  it('marks a pending play command as starting', async () => {
+    let resolvePlay: ((snapshot: PlaybackSnapshot) => void) | undefined
     const pendingPlay = new Promise<PlaybackSnapshot>((resolve) => {
-      resolvePlay = resolve;
-    });
+      resolvePlay = resolve
+    })
     const client = {
       inspect: vi.fn().mockResolvedValue(paused),
       play: vi.fn().mockReturnValue(pendingPlay),
@@ -85,20 +85,20 @@ describe("usePlayback", () => {
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
       importYouTubeUrls: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    const starting = playback.toggle();
+    await playback.refresh()
+    const starting = playback.toggle()
 
-    expect(playback.isStarting.value).toBe(true);
-    resolvePlay?.(playing);
-    await starting;
-    expect(playback.isStarting.value).toBe(false);
-  });
+    expect(playback.isStarting.value).toBe(true)
+    resolvePlay?.(playing)
+    await starting
+    expect(playback.isStarting.value).toBe(false)
+  })
 
-  it("synchronizes advancing playback without entering the updating state", async () => {
-    const advanced = { ...playing, positionMs: 2_000 };
+  it('synchronizes advancing playback without entering the updating state', async () => {
+    const advanced = { ...playing, positionMs: 2_000 }
     const client = {
       inspect: vi.fn().mockResolvedValue(advanced),
       play: vi.fn(),
@@ -110,38 +110,38 @@ describe("usePlayback", () => {
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
       importYouTubeUrls: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    const synchronization = playback.sync();
+    const synchronization = playback.sync()
 
-    expect(playback.isUpdating.value).toBe(false);
-    await synchronization;
-    expect(playback.snapshot.value?.positionMs).toBe(2_000);
-  });
+    expect(playback.isUpdating.value).toBe(false)
+    await synchronization
+    expect(playback.snapshot.value?.positionMs).toBe(2_000)
+  })
 
-  it("keeps library data stable while synchronizing transport state", async () => {
+  it('keeps library data stable while synchronizing transport state', async () => {
     const library = {
       tracks: [
         {
-          artist: "YouTube Creators",
+          artist: 'YouTube Creators',
           durationMs: 207_000,
-          id: "BaW_jenozKc",
-          title: "Creator Studio Session",
+          id: 'BaW_jenozKc',
+          title: 'Creator Studio Session',
         },
       ],
-    };
+    }
     const initialTransport = {
       currentItem: library.tracks[0],
       positionMs: 0,
-      status: "playing" as const,
+      status: 'playing' as const,
       volumePercent: 70,
-    };
+    }
     const initialSnapshot: PlaybackSnapshot = {
       ...initialTransport,
       queue: [library.tracks[0]!],
-    };
-    const advancedTransport = { ...initialTransport, positionMs: 2_000 };
+    }
+    const advancedTransport = { ...initialTransport, positionMs: 2_000 }
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue(initialSnapshot),
@@ -155,35 +155,35 @@ describe("usePlayback", () => {
       previous: vi.fn(),
       seek: vi.fn(),
       setVolume: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    const loadedLibrary = playback.library.value;
-    await playback.sync();
+    await playback.refresh()
+    const loadedLibrary = playback.library.value
+    await playback.sync()
 
-    expect(playback.library.value).toBe(loadedLibrary);
-    expect(playback.transport.value?.positionMs).toBe(2_000);
-    expect(playback.snapshot.value?.queue).toEqual(initialSnapshot.queue);
-    expect(client.inspect).toHaveBeenCalledOnce();
-    expect(client.inspectLibrary).toHaveBeenCalledOnce();
-    expect(client.inspectTransport).toHaveBeenCalledOnce();
-  });
+    expect(playback.library.value).toBe(loadedLibrary)
+    expect(playback.transport.value?.positionMs).toBe(2_000)
+    expect(playback.snapshot.value?.queue).toEqual(initialSnapshot.queue)
+    expect(client.inspect).toHaveBeenCalledOnce()
+    expect(client.inspectLibrary).toHaveBeenCalledOnce()
+    expect(client.inspectTransport).toHaveBeenCalledOnce()
+  })
 
-  it("loads the full queue before transport-only synchronization", async () => {
+  it('loads the full queue before transport-only synchronization', async () => {
     const queuedTrack = {
-      artist: "YouTube Creators",
+      artist: 'YouTube Creators',
       durationMs: 207_000,
-      id: "BaW_jenozKc",
-      title: "Creator Studio Session",
-    };
+      id: 'BaW_jenozKc',
+      title: 'Creator Studio Session',
+    }
     const snapshot: PlaybackSnapshot = {
       currentItem: queuedTrack,
       positionMs: 1_000,
       queue: [queuedTrack],
-      status: "playing",
+      status: 'playing',
       volumePercent: 70,
-    };
+    }
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue(snapshot),
@@ -203,21 +203,21 @@ describe("usePlayback", () => {
       previous: vi.fn(),
       seek: vi.fn(),
       setVolume: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    await playback.sync();
+    await playback.refresh()
+    await playback.sync()
 
     expect(playback.snapshot.value).toEqual({
       ...snapshot,
       positionMs: 2_000,
-    });
-    expect(client.inspect).toHaveBeenCalledOnce();
-    expect(client.inspectTransport).toHaveBeenCalledOnce();
-  });
+    })
+    expect(client.inspect).toHaveBeenCalledOnce()
+    expect(client.inspectTransport).toHaveBeenCalledOnce()
+  })
 
-  it("starts import work without blocking playback commands", async () => {
+  it('starts import work without blocking playback commands', async () => {
     const client = {
       inspect: vi.fn(),
       play: vi.fn(),
@@ -229,43 +229,43 @@ describe("usePlayback", () => {
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
       importYouTubeUrls: vi.fn().mockResolvedValue(undefined),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
     const urls = [
-      "https://www.youtube.com/playlist?list=PL-example",
-      "https://www.youtube.com/@artist/videos",
-    ];
+      'https://www.youtube.com/playlist?list=PL-example',
+      'https://www.youtube.com/@artist/videos',
+    ]
 
-    await playback.importYouTubeUrls(urls);
+    await playback.importYouTubeUrls(urls)
 
-    expect(client.importYouTubeUrls).toHaveBeenCalledWith(urls);
-    expect(playback.isUpdating.value).toBe(false);
-    expect(playback.isImporting.value).toBe(true);
+    expect(client.importYouTubeUrls).toHaveBeenCalledWith(urls)
+    expect(playback.isUpdating.value).toBe(false)
+    expect(playback.isImporting.value).toBe(true)
 
     playback.updateImportProgress({
       completedSources: 2,
       importedTracks: 7,
-      message: "Imported 7 track(s) into the library.",
-      phase: "completed",
+      message: 'Imported 7 track(s) into the library.',
+      phase: 'completed',
       runId: 3,
       skippedMemberOnly: 0,
       totalSources: 2,
-    });
+    })
 
-    expect(playback.isImporting.value).toBe(false);
-    expect(playback.importProgress.value?.importedTracks).toBe(7);
-  });
+    expect(playback.isImporting.value).toBe(false)
+    expect(playback.importProgress.value?.importedTracks).toBe(7)
+  })
 
-  it("plays a selected library track", async () => {
+  it('plays a selected library track', async () => {
     const selected = {
       ...playing,
       currentItem: {
-        artist: "YouTube Creators",
+        artist: 'YouTube Creators',
         durationMs: 207_000,
-        id: "BaW_jenozKc",
-        title: "Creator Studio Session",
+        id: 'BaW_jenozKc',
+        title: 'Creator Studio Session',
       },
-    };
+    }
     const client = {
       inspect: vi.fn(),
       play: vi.fn(),
@@ -277,24 +277,24 @@ describe("usePlayback", () => {
       moveQueueItem: vi.fn(),
       playTrack: vi.fn().mockResolvedValue(selected),
       importYouTubeUrls: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.playTrack("BaW_jenozKc");
+    await playback.playTrack('BaW_jenozKc')
 
-    expect(client.playTrack).toHaveBeenCalledWith("BaW_jenozKc");
-    expect(playback.snapshot.value).toEqual(selected);
-  });
+    expect(client.playTrack).toHaveBeenCalledWith('BaW_jenozKc')
+    expect(playback.snapshot.value).toEqual(selected)
+  })
 
-  it("removes a durable library track and an upcoming queue item", async () => {
-    const library = { playlists: [], tracks: [] };
+  it('removes a durable library track and an upcoming queue item', async () => {
+    const library = { playlists: [], tracks: [] }
     const item = {
-      artist: "YouTube Creators",
+      artist: 'YouTube Creators',
       durationMs: 207_000,
-      id: "BaW_jenozKc",
-      title: "Creator Studio Session",
-    };
-    const queueWithoutSecondItem = { ...paused, queue: [item] };
+      id: 'BaW_jenozKc',
+      title: 'Creator Studio Session',
+    }
+    const queueWithoutSecondItem = { ...paused, queue: [item] }
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue(paused),
@@ -308,39 +308,39 @@ describe("usePlayback", () => {
       removeTracks: vi.fn().mockResolvedValue(library),
       seek: vi.fn(),
       setVolume: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.removeTracks(["BaW_jenozKc"]);
-    await playback.removeQueueItem(1);
+    await playback.removeTracks(['BaW_jenozKc'])
+    await playback.removeQueueItem(1)
 
-    expect(client.removeTracks).toHaveBeenCalledWith(["BaW_jenozKc"]);
-    expect(client.removeQueueItem).toHaveBeenCalledWith(1);
-    expect(playback.library.value).toEqual(library);
-    expect(playback.snapshot.value).toEqual(queueWithoutSecondItem);
-  });
+    expect(client.removeTracks).toHaveBeenCalledWith(['BaW_jenozKc'])
+    expect(client.removeQueueItem).toHaveBeenCalledWith(1)
+    expect(playback.library.value).toEqual(library)
+    expect(playback.snapshot.value).toEqual(queueWithoutSecondItem)
+  })
 
-  it("replaces the library after saving edited metadata without changing transport", async () => {
+  it('replaces the library after saving edited metadata without changing transport', async () => {
     const library = {
       tracks: [
         {
-          album: "API Sessions",
-          artist: "Google for Developers",
+          album: 'API Sessions',
+          artist: 'Google for Developers',
           durationMs: 238_000,
-          id: "M7lc1UVf-VE",
-          title: "YouTube Developers Live",
+          id: 'M7lc1UVf-VE',
+          title: 'YouTube Developers Live',
         },
       ],
-    };
+    }
     const updatedLibrary = {
-      tracks: [{ ...library.tracks[0], title: "Renamed session" }],
-    };
+      tracks: [{ ...library.tracks[0], title: 'Renamed session' }],
+    }
     const transport = {
       currentItem: library.tracks[0],
       positionMs: 4_000,
-      status: "playing" as const,
+      status: 'playing' as const,
       volumePercent: 70,
-    };
+    }
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue({ ...transport, queue: [] }),
@@ -355,38 +355,38 @@ describe("usePlayback", () => {
       seek: vi.fn(),
       setVolume: vi.fn(),
       updateTracksMetadata: vi.fn().mockResolvedValue(updatedLibrary),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
+    await playback.refresh()
     await playback.updateTracksMetadata([
       {
-        id: "M7lc1UVf-VE",
+        id: 'M7lc1UVf-VE',
         metadata: {
-          album: "API Sessions",
-          artist: "Google for Developers",
+          album: 'API Sessions',
+          artist: 'Google for Developers',
           genres: [],
           label: null,
-          title: "Renamed session",
+          title: 'Renamed session',
         },
       },
-    ]);
+    ])
 
-    expect(client.updateTracksMetadata).toHaveBeenCalledOnce();
-    expect(playback.library.value).toEqual(updatedLibrary);
-    expect(playback.transport.value).toEqual(transport);
-  });
+    expect(client.updateTracksMetadata).toHaveBeenCalledOnce()
+    expect(playback.library.value).toEqual(updatedLibrary)
+    expect(playback.transport.value).toEqual(transport)
+  })
 
-  it("replaces the library after reordering user playlists", async () => {
+  it('replaces the library after reordering user playlists', async () => {
     const library = {
       playlists: [
-        { id: "favorites", name: "Favorites", trackIds: [] },
-        { id: "most-played", name: "Most Played", trackIds: [] },
-        { id: "focus", name: "Focus", trackIds: [] },
-        { id: "road-trip", name: "Road Trip", trackIds: [] },
+        { id: 'favorites', name: 'Favorites', trackIds: [] },
+        { id: 'most-played', name: 'Most Played', trackIds: [] },
+        { id: 'focus', name: 'Focus', trackIds: [] },
+        { id: 'road-trip', name: 'Road Trip', trackIds: [] },
       ],
       tracks: [],
-    };
+    }
     const reorderedLibrary = {
       ...library,
       playlists: [
@@ -395,7 +395,7 @@ describe("usePlayback", () => {
         library.playlists[3]!,
         library.playlists[2]!,
       ],
-    };
+    }
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn(),
@@ -408,21 +408,18 @@ describe("usePlayback", () => {
       reorderPlaylists: vi.fn().mockResolvedValue(reorderedLibrary),
       seek: vi.fn(),
       setVolume: vi.fn(),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.reorderPlaylists(["road-trip", "focus"]);
+    await playback.reorderPlaylists(['road-trip', 'focus'])
 
-    expect(client.reorderPlaylists).toHaveBeenCalledWith([
-      "road-trip",
-      "focus",
-    ]);
-    expect(playback.library.value).toEqual(reorderedLibrary);
-  });
+    expect(client.reorderPlaylists).toHaveBeenCalledWith(['road-trip', 'focus'])
+    expect(playback.library.value).toEqual(reorderedLibrary)
+  })
 
-  it("mutes and restores the prior non-zero volume", async () => {
-    const muted = { ...paused, volumePercent: 0 };
-    const restored = { ...paused, volumePercent: 70 };
+  it('mutes and restores the prior non-zero volume', async () => {
+    const muted = { ...paused, volumePercent: 0 }
+    const restored = { ...paused, volumePercent: 70 }
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue(paused),
@@ -433,27 +430,24 @@ describe("usePlayback", () => {
       playTrack: vi.fn(),
       previous: vi.fn(),
       seek: vi.fn(),
-      setVolume: vi
-        .fn()
-        .mockResolvedValueOnce(muted)
-        .mockResolvedValueOnce(restored),
-    };
-    const playback = usePlayback(client);
+      setVolume: vi.fn().mockResolvedValueOnce(muted).mockResolvedValueOnce(restored),
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    await playback.toggleMute();
-    await playback.toggleMute();
+    await playback.refresh()
+    await playback.toggleMute()
+    await playback.toggleMute()
 
-    expect(client.setVolume).toHaveBeenNthCalledWith(1, 0);
-    expect(client.setVolume).toHaveBeenNthCalledWith(2, 70);
-    expect(playback.snapshot.value?.volumePercent).toBe(70);
-  });
+    expect(client.setVolume).toHaveBeenNthCalledWith(1, 0)
+    expect(client.setVolume).toHaveBeenNthCalledWith(2, 70)
+    expect(playback.snapshot.value?.volumePercent).toBe(70)
+  })
 
-  it("sends the latest volume reached during a drag", async () => {
-    let resolveInitialVolume: ((value: PlaybackSnapshot) => void) | undefined;
+  it('sends the latest volume reached during a drag', async () => {
+    let resolveInitialVolume: ((value: PlaybackSnapshot) => void) | undefined
     const initialVolume = new Promise<PlaybackSnapshot>((resolve) => {
-      resolveInitialVolume = resolve;
-    });
+      resolveInitialVolume = resolve
+    })
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue(paused),
@@ -468,37 +462,37 @@ describe("usePlayback", () => {
         .fn()
         .mockReturnValueOnce(initialVolume)
         .mockResolvedValueOnce({ ...paused, volumePercent: 50 }),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    const firstUpdate = playback.setVolume(20);
-    const latestUpdate = playback.setVolume(50);
-    resolveInitialVolume?.({ ...paused, volumePercent: 20 });
-    await Promise.all([firstUpdate, latestUpdate]);
+    await playback.refresh()
+    const firstUpdate = playback.setVolume(20)
+    const latestUpdate = playback.setVolume(50)
+    resolveInitialVolume?.({ ...paused, volumePercent: 20 })
+    await Promise.all([firstUpdate, latestUpdate])
 
-    expect(client.setVolume).toHaveBeenNthCalledWith(1, 20);
-    expect(client.setVolume).toHaveBeenNthCalledWith(2, 50);
-    expect(playback.isUpdating.value).toBe(false);
-    expect(playback.snapshot.value?.volumePercent).toBe(50);
-  });
+    expect(client.setVolume).toHaveBeenNthCalledWith(1, 20)
+    expect(client.setVolume).toHaveBeenNthCalledWith(2, 50)
+    expect(playback.isUpdating.value).toBe(false)
+    expect(playback.snapshot.value?.volumePercent).toBe(50)
+  })
 
-  it("updates volume locally without replacing the library during a drag", async () => {
+  it('updates volume locally without replacing the library during a drag', async () => {
     const initial = {
       ...paused,
       queue: [
         {
-          artist: "YouTube Creators",
+          artist: 'YouTube Creators',
           durationMs: 207_000,
-          id: "BaW_jenozKc",
-          title: "Creator Studio Session",
+          id: 'BaW_jenozKc',
+          title: 'Creator Studio Session',
         },
       ],
-    };
-    let resolveVolume: ((snapshot: PlaybackSnapshot) => void) | undefined;
+    }
+    let resolveVolume: ((snapshot: PlaybackSnapshot) => void) | undefined
     const pendingVolume = new Promise<PlaybackSnapshot>((resolve) => {
-      resolveVolume = resolve;
-    });
+      resolveVolume = resolve
+    })
     const client = {
       importYouTubeUrls: vi.fn(),
       inspect: vi.fn().mockResolvedValue(initial),
@@ -510,27 +504,27 @@ describe("usePlayback", () => {
       previous: vi.fn(),
       seek: vi.fn(),
       setVolume: vi.fn().mockReturnValue(pendingVolume),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.refresh();
-    const loadedLibrary = playback.library.value;
-    const update = playback.setVolume(45);
+    await playback.refresh()
+    const loadedLibrary = playback.library.value
+    const update = playback.setVolume(45)
 
-    expect(playback.snapshot.value?.volumePercent).toBe(45);
-    expect(playback.library.value).toBe(loadedLibrary);
+    expect(playback.snapshot.value?.volumePercent).toBe(45)
+    expect(playback.library.value).toBe(loadedLibrary)
 
     resolveVolume?.({
       ...initial,
       volumePercent: 45,
       queue: [...initial.queue],
-    });
-    await update;
+    })
+    await update
 
-    expect(playback.library.value).toBe(loadedLibrary);
-  });
+    expect(playback.library.value).toBe(loadedLibrary)
+  })
 
-  it("preserves a structured Tauri command error message", async () => {
+  it('preserves a structured Tauri command error message', async () => {
     const client = {
       inspect: vi.fn(),
       play: vi.fn(),
@@ -542,18 +536,16 @@ describe("usePlayback", () => {
       moveQueueItem: vi.fn(),
       playTrack: vi.fn(),
       importYouTubeUrls: vi.fn().mockRejectedValue({
-        code: "youtube_metadata_failed",
-        message: "could not resolve YouTube metadata",
+        code: 'youtube_metadata_failed',
+        message: 'could not resolve YouTube metadata',
       }),
-    };
-    const playback = usePlayback(client);
+    }
+    const playback = usePlayback(client)
 
-    await playback.importYouTubeUrls(["https://youtu.be/wEsuJoBKAvA"]);
+    await playback.importYouTubeUrls(['https://youtu.be/wEsuJoBKAvA'])
 
-    expect(playback.errorMessage.value).toBe(
-      "could not resolve YouTube metadata",
-    );
-  });
+    expect(playback.errorMessage.value).toBe('could not resolve YouTube metadata')
+  })
 
   // --- Bulk-action regression: all IDs in a batch must reach the client ---
 
@@ -570,78 +562,61 @@ describe("usePlayback", () => {
       playTrack: vi.fn().mockResolvedValue(paused),
       importYouTubeUrls: vi.fn(),
       ...overrides,
-    };
+    }
   }
 
-  it("calls client.playNext for every id in a batch, preserving order", async () => {
-    const playNextMock = vi.fn().mockResolvedValue(paused);
-    const playback = usePlayback(bulkClient({ playNext: playNextMock }));
+  it('calls client.playNext for every id in a batch, preserving order', async () => {
+    const playNextMock = vi.fn().mockResolvedValue(paused)
+    const playback = usePlayback(bulkClient({ playNext: playNextMock }))
 
-    await playback.playNext(["track-1", "track-2", "track-3"]);
+    await playback.playNext(['track-1', 'track-2', 'track-3'])
 
-    expect(playNextMock).toHaveBeenCalledTimes(3);
-    expect(playNextMock.mock.calls.map((c) => c[0])).toEqual([
-      "track-1",
-      "track-2",
-      "track-3",
-    ]);
-  });
+    expect(playNextMock).toHaveBeenCalledTimes(3)
+    expect(playNextMock.mock.calls.map((c) => c[0])).toEqual(['track-1', 'track-2', 'track-3'])
+  })
 
-  it("calls client.addToQueue for every id in a batch, preserving order", async () => {
-    const addToQueueMock = vi.fn().mockResolvedValue(paused);
-    const playback = usePlayback(bulkClient({ addToQueue: addToQueueMock }));
+  it('calls client.addToQueue for every id in a batch, preserving order', async () => {
+    const addToQueueMock = vi.fn().mockResolvedValue(paused)
+    const playback = usePlayback(bulkClient({ addToQueue: addToQueueMock }))
 
-    await playback.addToQueue(["track-a", "track-b"]);
+    await playback.addToQueue(['track-a', 'track-b'])
 
-    expect(addToQueueMock).toHaveBeenCalledTimes(2);
-    expect(addToQueueMock.mock.calls.map((c) => c[0])).toEqual([
-      "track-a",
-      "track-b",
-    ]);
-  });
+    expect(addToQueueMock).toHaveBeenCalledTimes(2)
+    expect(addToQueueMock.mock.calls.map((c) => c[0])).toEqual(['track-a', 'track-b'])
+  })
 
-  it("calls client.toggleFavorite for every id in a batch", async () => {
-    const toggleFavoriteMock = vi
-      .fn()
-      .mockResolvedValue({ playlists: [], tracks: [] });
-    const playback = usePlayback(
-      bulkClient({ toggleFavorite: toggleFavoriteMock }),
-    );
+  it('calls client.toggleFavorite for every id in a batch', async () => {
+    const toggleFavoriteMock = vi.fn().mockResolvedValue({ playlists: [], tracks: [] })
+    const playback = usePlayback(bulkClient({ toggleFavorite: toggleFavoriteMock }))
 
-    await playback.toggleFavorite(["fav-1", "fav-2", "fav-3"]);
+    await playback.toggleFavorite(['fav-1', 'fav-2', 'fav-3'])
 
-    expect(toggleFavoriteMock).toHaveBeenCalledTimes(3);
-    expect(toggleFavoriteMock.mock.calls.map((c) => c[0])).toEqual([
-      "fav-1",
-      "fav-2",
-      "fav-3",
-    ]);
-  });
+    expect(toggleFavoriteMock).toHaveBeenCalledTimes(3)
+    expect(toggleFavoriteMock.mock.calls.map((c) => c[0])).toEqual(['fav-1', 'fav-2', 'fav-3'])
+  })
 
-  it("preserves single-id call site for playNext (backward compat)", async () => {
-    const playNextMock = vi.fn().mockResolvedValue(paused);
-    const playback = usePlayback(bulkClient({ playNext: playNextMock }));
+  it('preserves single-id call site for playNext (backward compat)', async () => {
+    const playNextMock = vi.fn().mockResolvedValue(paused)
+    const playback = usePlayback(bulkClient({ playNext: playNextMock }))
 
-    await playback.playNext("solo-track");
+    await playback.playNext('solo-track')
 
-    expect(playNextMock).toHaveBeenCalledOnce();
-    expect(playNextMock).toHaveBeenCalledWith("solo-track");
-  });
+    expect(playNextMock).toHaveBeenCalledOnce()
+    expect(playNextMock).toHaveBeenCalledWith('solo-track')
+  })
 
-  it("propagates the error message when a bulk toggleFavorite call fails and releases isUpdating", async () => {
+  it('propagates the error message when a bulk toggleFavorite call fails and releases isUpdating', async () => {
     const toggleFavoriteMock = vi
       .fn()
       .mockResolvedValueOnce({ playlists: [], tracks: [] })
-      .mockRejectedValueOnce(new Error("server busy"));
-    const playback = usePlayback(
-      bulkClient({ toggleFavorite: toggleFavoriteMock }),
-    );
+      .mockRejectedValueOnce(new Error('server busy'))
+    const playback = usePlayback(bulkClient({ toggleFavorite: toggleFavoriteMock }))
 
-    await playback.toggleFavorite(["ok-1", "fail-2"]);
+    await playback.toggleFavorite(['ok-1', 'fail-2'])
 
-    expect(playback.errorMessage.value).toBe("server busy");
-    expect(playback.isUpdating.value).toBe(false);
+    expect(playback.errorMessage.value).toBe('server busy')
+    expect(playback.isUpdating.value).toBe(false)
     // First id succeeded before failure stopped the batch.
-    expect(toggleFavoriteMock).toHaveBeenCalledTimes(2);
-  });
-});
+    expect(toggleFavoriteMock).toHaveBeenCalledTimes(2)
+  })
+})

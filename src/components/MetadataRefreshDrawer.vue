@@ -1,74 +1,64 @@
 <script setup lang="ts">
-import {
-  Check,
-  ChevronRight,
-  CircleAlert,
-  CircleMinus,
-  LoaderCircle,
-  X,
-} from "lucide-vue-next";
-import { computed } from "vue";
+import { Check, ChevronRight, CircleAlert, CircleMinus, LoaderCircle, X } from 'lucide-vue-next'
+import { computed } from 'vue'
 
-import type { MetadataRefreshSnapshot } from "@/api";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import type { MetadataRefreshSnapshot } from '@/api'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface Props {
-  refreshes: MetadataRefreshSnapshot;
-  isRetrying?: boolean;
-  errorMessage?: string;
+  refreshes: MetadataRefreshSnapshot
+  isRetrying?: boolean
+  errorMessage?: string
 }
 
-const props = defineProps<Props>();
-const emit = defineEmits<{ retry: []; close: [] }>();
+const props = defineProps<Props>()
+const emit = defineEmits<{ retry: []; close: [] }>()
 const failedCount = computed(
-  () => props.refreshes.jobs.filter((job) => job.state === "failed").length,
-);
+  () => props.refreshes.jobs.filter((job) => job.state === 'failed').length,
+)
 const skippedCount = computed(
-  () => props.refreshes.jobs.filter((job) => job.state === "skipped").length,
-);
+  () => props.refreshes.jobs.filter((job) => job.state === 'skipped').length,
+)
 const finishedCount = computed(() =>
   Math.min(props.refreshes.totalTracks, props.refreshes.completedTracks),
-);
+)
 const refreshedCount = computed(() =>
   Math.max(0, finishedCount.value - failedCount.value - skippedCount.value),
-);
+)
 const remainingCount = computed(() =>
   Math.max(0, props.refreshes.totalTracks - finishedCount.value),
-);
+)
 const groups = computed(() =>
   [
-    { state: "refreshing", title: "Refreshing now" },
-    { state: "failed", title: "Needs attention" },
-    { state: "queued", title: "Up next" },
-    { state: "completed", title: "Refreshed" },
-    { state: "skipped", title: "Skipped" },
+    { state: 'refreshing', title: 'Refreshing now' },
+    { state: 'failed', title: 'Needs attention' },
+    { state: 'queued', title: 'Up next' },
+    { state: 'completed', title: 'Refreshed' },
+    { state: 'skipped', title: 'Skipped' },
   ]
     .map((group) => ({
       ...group,
       jobs: props.refreshes.jobs.filter((job) => job.state === group.state),
     }))
     .filter((group) => group.jobs.length),
-);
+)
 
 function stateLabel(state: string): string {
   const labels: Record<string, string> = {
-    completed: "Refreshed",
-    failed: "Failed",
-    queued: "Queued",
-    refreshing: "Refreshing",
-    skipped: "Skipped",
-  };
+    completed: 'Refreshed',
+    failed: 'Failed',
+    queued: 'Queued',
+    refreshing: 'Refreshing',
+    skipped: 'Skipped',
+  }
 
-  return labels[state] ?? state;
+  return labels[state] ?? state
 }
 </script>
 
 <template>
-  <aside
-    class="flex h-full min-h-0 flex-col bg-(--popover)"
-    aria-label="Metadata refreshes"
-  >
+  <aside class="flex h-full min-h-0 flex-col bg-(--popover)" aria-label="Metadata refreshes">
     <header class="border-b border-(--line) px-4 py-3">
       <div class="flex items-center justify-between gap-2">
         <h2 class="text-sm font-semibold">Metadata refresh</h2>
@@ -87,12 +77,12 @@ function stateLabel(state: string): string {
           remainingCount
             ? `${remainingCount} tracks remaining`
             : failedCount
-              ? "Finished with errors"
+              ? 'Finished with errors'
               : skippedCount
-                ? "Finished with skipped tracks"
+                ? 'Finished with skipped tracks'
                 : refreshes.totalTracks
-                  ? "All metadata refreshed"
-                  : "No refresh in progress"
+                  ? 'All metadata refreshed'
+                  : 'No refresh in progress'
         }}
       </p>
       <progress
@@ -104,14 +94,9 @@ function stateLabel(state: string): string {
         class="mt-3 block h-1 w-full overflow-hidden rounded-full"
       />
       <p data-refresh-summary class="mt-2 text-xs text-(--muted-text)">
-        {{ refreshedCount }} refreshed<span
-          v-if="failedCount"
-          class="text-(--warning)"
-        >
+        {{ refreshedCount }} refreshed<span v-if="failedCount" class="text-(--warning)">
           · {{ failedCount }} failed</span
-        ><span v-if="skippedCount" class="text-(--muted-text)">
-          · {{ skippedCount }} skipped</span
-        >
+        ><span v-if="skippedCount" class="text-(--muted-text)"> · {{ skippedCount }} skipped</span>
         <span> · {{ refreshes.totalTracks }} total</span>
       </p>
       <Button
@@ -123,13 +108,9 @@ function stateLabel(state: string): string {
         class="mt-3"
         :disabled="isRetrying"
         @click="emit('retry')"
-        >{{ isRetrying ? "Retrying…" : "Retry failed metadata" }}</Button
+        >{{ isRetrying ? 'Retrying…' : 'Retry failed metadata' }}</Button
       >
-      <p
-        v-if="errorMessage"
-        role="alert"
-        class="window-alert-danger mt-2 break-words p-2 text-xs"
-      >
+      <p v-if="errorMessage" role="alert" class="window-alert-danger mt-2 break-words p-2 text-xs">
         {{ errorMessage }}
       </p>
     </header>
@@ -150,8 +131,7 @@ function stateLabel(state: string): string {
               class="size-3 transition-transform group-open:rotate-90 motion-reduce:transition-none"
               aria-hidden="true"
             />
-            {{ group.title
-            }}<span class="ml-auto tabular-nums">{{ group.jobs.length }}</span>
+            {{ group.title }}<span class="ml-auto tabular-nums">{{ group.jobs.length }}</span>
           </summary>
           <ol class="mt-1">
             <li
@@ -194,11 +174,7 @@ function stateLabel(state: string): string {
                   <p
                     v-if="job.state === 'failed' || job.state === 'skipped'"
                     class="mt-1 break-words text-xs leading-5"
-                    :class="
-                      job.state === 'failed'
-                        ? 'text-(--warning)'
-                        : 'text-(--muted-text)'
-                    "
+                    :class="job.state === 'failed' ? 'text-(--warning)' : 'text-(--muted-text)'"
                   >
                     {{ job.message }}
                   </p>
