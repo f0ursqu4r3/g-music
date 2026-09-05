@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>G Music</title>
+  <desc>An ivory G with a play-shaped cutout on a violet rounded square.</desc>
+  <defs>
+    <!-- Fixed sRGB exports of the app's violet color family for native renderers. -->
+    <linearGradient id="tile" x1="180" y1="80" x2="824" y2="944" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9775E8" />
+      <stop offset="0.52" stop-color="#7754CC" />
+      <stop offset="1" stop-color="#503592" />
+    </linearGradient>
+    <linearGradient id="edge" x1="512" y1="80" x2="512" y2="944" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAE2FF" stop-opacity="0.48" />
+      <stop offset="0.48" stop-color="#EAE2FF" stop-opacity="0.08" />
+      <stop offset="1" stop-color="#241742" stop-opacity="0.32" />
+    </linearGradient>
+    <linearGradient id="mark" x1="400" y1="248" x2="650" y2="778" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FAF7FF" />
+      <stop offset="1" stop-color="#E9E1FA" />
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#20122F" flood-opacity="0.24" />
+    </filter>
+    <path id="g" fill-rule="evenodd" d="M700 324 A266 266 0 1 0 778 512 V480 Q778 464 762 464 H502 V572 H667 A166 166 0 1 1 629 395 Z M548 487 V549 L610 518 Z" />
+  </defs>
+  <rect x="80" y="80" width="864" height="864" rx="194" fill="url(#tile)" filter="url(#shadow)" />
+  <rect x="82" y="82" width="860" height="860" rx="192" stroke="url(#edge)" stroke-width="4" />
+  <use href="#g" transform="translate(0 7)" fill="#322053" opacity="0.16" />
+  <use href="#g" fill="url(#mark)" />
+</svg>

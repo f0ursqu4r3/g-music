@@ -39,6 +39,14 @@ Use the semantic variables in `src/styles.css`.
 Do not introduce raw color values in window components when a semantic variable
 fits. Themes redefine the color primitives and keep their semantic roles stable.
 
+## App icon
+
+The application mark is an ivory G with a play-shaped cutout on a violet tile.
+Its source is `public/app-icon.svg`. Use `bun run icons` to regenerate native
+assets. The SVG uses fixed sRGB equivalents for native renderer compatibility.
+Keep the transparent outer margin, rounded tile, and bold silhouette. Do not
+add small labels, extra music symbols, or theme-specific variants.
+
 ## Window composition
 
 Use the shared utilities in `src/styles.css` for all standard windows.

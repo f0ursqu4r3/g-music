@@ -144,6 +144,22 @@ and `disable_drag_drop_handler()` when Rust recreates the Library window. The
 native handler intercepts DOM drag events on macOS. Restart the native app after
 changing this setting; frontend hot reload does not recreate its WebView.
 
+## App icon
+
+`public/app-icon.svg` is the editable icon source and browser favicon. The violet
+tile uses an ivory G with a play-shaped cutout. Keep its transparent outer margin
+so the icon has the correct visual size in the macOS Dock.
+
+Regenerate the desktop PNG, macOS ICNS, and Windows ICO assets after editing it:
+
+```sh
+bun run icons
+```
+
+The generator uses the installed Tauri CLI and does not retain mobile assets.
+The bundle icon paths are configured in `src-tauri/tauri.conf.json`. Rebuild the
+native app to apply icon changes; frontend hot reload does not update Dock icons.
+
 ## Verification
 
 ```sh

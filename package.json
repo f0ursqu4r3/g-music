@@ -9,6 +9,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "oxlint .",
+    "icons": "bun run scripts/generate-icons.ts",
     "mcp": "bun run scripts/gmusic-mcp.ts",
     "preview": "vite preview",
     "test": "vitest run",
