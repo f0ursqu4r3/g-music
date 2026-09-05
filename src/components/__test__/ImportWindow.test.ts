@@ -17,6 +17,92 @@ const result: MediaItem = {
 
 describe("ImportWindow", () => {
   beforeEach(() => vi.mocked(playbackApi.searchYouTube).mockReset());
+  it("puts link entry first and keeps activity outside the form scroll area", () => {
+    const wrapper = mount(ImportWindow, {
+      props: {
+        isImporting: false,
+        progress: {
+          completedSources: 0,
+          importedTracks: 456,
+          message: "Discovering tracks.",
+          phase: "resolving",
+          runId: 10,
+          skippedMemberOnly: 0,
+          totalSources: 1,
+        },
+      },
+    });
+    expect(wrapper.findAll("form")[0].attributes("aria-label")).toBe(
+      "Import music from YouTube",
+    );
+    const activity = wrapper.get('[aria-label="Import progress"]');
+    expect(
+      activity.element.closest('[data-slot="scroll-area-viewport"]'),
+    ).toBeNull();
+    expect(activity.text()).toContain("456 tracks found");
+    expect(wrapper.get("[data-import-status]").text()).toBe(
+      "Discovering tracks",
+    );
+    expect(wrapper.get("progress").attributes("aria-label")).toBe(
+      "Import progress",
+    );
+    expect(wrapper.get("progress").attributes("value")).toBeUndefined();
+    expect(wrapper.get("textarea").attributes("rows")).toBe("3");
+  });
+
+  it("does not show an empty terminal before the first import", () => {
+    const wrapper = mount(ImportWindow, { props: { isImporting: false } });
+    expect(wrapper.find('[role="log"]').exists()).toBe(false);
+    expect(wrapper.find("progress").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Imports run in the background");
+  });
+
+  it.each(["started", "merging"] as const)(
+    "shows indeterminate %s activity instead of a stalled zero bar",
+    (phase) => {
+      const wrapper = mount(ImportWindow, {
+        props: {
+          isImporting: true,
+          progress: {
+            completedSources: 0,
+            importedTracks: 12,
+            message: "Working",
+            phase,
+            runId: 2,
+            skippedMemberOnly: 0,
+            totalSources: 1,
+          },
+        },
+      });
+      expect(wrapper.get("progress").attributes("value")).toBeUndefined();
+    },
+  );
+
+  it("clears the previous run's log when reopening on a later phase", async () => {
+    const progress = {
+      completedSources: 1,
+      importedTracks: 1,
+      message: "Old run",
+      phase: "completed" as const,
+      runId: 1,
+      skippedMemberOnly: 0,
+      totalSources: 1,
+    };
+    const wrapper = mount(ImportWindow, {
+      props: { isImporting: false, progress },
+    });
+    await wrapper.setProps({
+      progress: {
+        ...progress,
+        runId: 2,
+        phase: "resolving",
+        message: "New run",
+      },
+    });
+    expect(wrapper.get('[role="log"]').text()).toBe("New run");
+    expect(wrapper.get("[data-import-log]").classes()).toContain("h-24");
+  });
+
   it("does not clear a failed URL draft when a separate search import completes", async () => {
     vi.mocked(playbackApi.searchYouTube).mockResolvedValue([result]);
     const wrapper = mount(ImportWindow, { props: { isImporting: false } });
@@ -160,7 +246,7 @@ describe("ImportWindow", () => {
         message: "Import cancelled",
       },
     });
-    expect(wrapper.text()).toContain("3 track(s) remain in your library");
+    expect(wrapper.text()).toContain("3 tracks remain in your library");
     expect(wrapper.find('button[aria-label="Cancel import"]').exists()).toBe(
       false,
     );
@@ -245,7 +331,7 @@ describe("ImportWindow", () => {
     expect(wrapper.findAll("[data-slot='scroll-area-viewport']")).toHaveLength(
       2,
     );
-    expect(wrapper.text()).toContain("3 members-only track(s) skipped");
+    expect(wrapper.text()).toContain("3 members-only tracks skipped");
     expect(wrapper.get("textarea").attributes("disabled")).toBeDefined();
   });
 
@@ -266,6 +352,6 @@ describe("ImportWindow", () => {
     });
 
     expect(wrapper.get("progress").attributes("value")).toBeUndefined();
-    expect(wrapper.text()).toContain("12 track(s) found");
+    expect(wrapper.text()).toContain("12 tracks found");
   });
 });

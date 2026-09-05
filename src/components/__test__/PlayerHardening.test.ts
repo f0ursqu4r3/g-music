@@ -28,6 +28,49 @@ afterEach(() => {
 });
 
 describe("authoritative player controls", () => {
+  it.each(["library", "artwork", "mini"])(
+    "dims the %s play button surface without compositing opacity over its spinner",
+    async (view) => {
+      const wrapper =
+        view === "library"
+          ? mount(LibraryPlaybackFooter, {
+              props: {
+                playback: snapshot,
+                currentItem: tracks[0]!,
+                isPlaying: false,
+                isUpdating: false,
+                isStarting: true,
+                detailsOpen: false,
+              },
+            })
+          : mount(view === "artwork" ? ArtworkWindow : MiniPlayer, {
+              props: {
+                snapshot,
+                isUpdating: false,
+                isStarting: true,
+              },
+            });
+      cleanup.push(() => wrapper.unmount());
+      const button = wrapper.get('[aria-label="Starting playback"]');
+      expect(button.attributes("disabled")).toBeDefined();
+      expect(button.attributes("aria-busy")).toBe("true");
+      expect(button.classes()).toContain("disabled:opacity-100");
+      expect(button.classes()).not.toContain("disabled:opacity-50");
+      expect(button.classes()).toContain("disabled:bg-(--text)/50");
+      expect(button.get("[data-playback-starting]").classes()).toContain(
+        "animate-spin",
+      );
+      await button.trigger("click");
+      expect(wrapper.emitted("toggle")).toBeUndefined();
+      await wrapper.setProps({ isStarting: false });
+      const readyButton = wrapper.get('[aria-label="Play"]');
+      expect(readyButton.attributes("disabled")).toBeUndefined();
+      expect(readyButton.find("[data-playback-starting]").exists()).toBe(false);
+      await readyButton.trigger("click");
+      expect(wrapper.emitted("toggle")).toHaveLength(1);
+    },
+  );
+
   it("renders footer favorites from current-track state and sends the selected ID", async () => {
     const selected = ref<MediaItem | null>(tracks[0]!);
     const favorites = ref(["first"]);

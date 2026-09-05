@@ -52,7 +52,7 @@ const currentItem = computed(() => props.snapshot.currentItem);
 const durationMs = computed(() => currentItem.value?.durationMs ?? 0);
 const isPlaying = computed(() => props.snapshot.status === "playing");
 const trackTitle = computed(
-  () => currentItem.value?.title ?? "Nothing selected",
+  () => currentItem.value?.title ?? "Nothing playing",
 );
 const trackArtist = computed(
   () => currentItem.value?.artist ?? "Choose a track to begin",
@@ -183,7 +183,7 @@ function emitVolume(values: number[] | undefined): void {
               isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'
             "
             :aria-busy="isStarting ? 'true' : undefined"
-            class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) [&_svg]:size-4"
+            class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) disabled:bg-(--text)/50 disabled:opacity-100 [&_svg]:size-4"
             size="icon"
             :disabled="
               isUpdating ||

@@ -329,6 +329,12 @@ struct MetadataRefreshState {
     total_tracks: usize,
 }
 
+enum MetadataRefreshOutcome {
+    Refreshed,
+    Unchanged,
+    Skipped,
+}
+
 impl MetadataRefreshState {
     fn enqueue(&mut self, tracks: Vec<DirtyTrack>) -> bool {
         for track in tracks {
@@ -363,7 +369,11 @@ impl MetadataRefreshState {
         Some(job.clone())
     }
 
-    fn finish(&mut self, track_id: &str, result: Result<bool, YouTubePlaybackError>) {
+    fn finish(
+        &mut self,
+        track_id: &str,
+        result: Result<MetadataRefreshOutcome, YouTubePlaybackError>,
+    ) {
         let Some(job) = self
             .jobs
             .iter_mut()
@@ -374,13 +384,17 @@ impl MetadataRefreshState {
         self.queued_ids.remove(track_id);
         self.completed_tracks += 1;
         match result {
-            Ok(true) => {
+            Ok(MetadataRefreshOutcome::Refreshed) => {
                 job.message = "Full metadata saved to the library.".into();
                 job.state = "completed";
             }
-            Ok(false) => {
+            Ok(MetadataRefreshOutcome::Unchanged) => {
                 job.message = "Metadata was already refreshed.".into();
                 job.state = "completed";
+            }
+            Ok(MetadataRefreshOutcome::Skipped) => {
+                job.message = "Subscriber-only content is unavailable to this YouTube session. Hidden from the library and play queue.".into();
+                job.state = "skipped";
             }
             Err(error) => {
                 job.message = error.to_string();
@@ -696,10 +710,6 @@ fn run_metadata_refresh_worker(
     playback: Arc<Mutex<YouTubePlaybackProvider>>,
     metadata_refreshes: Arc<Mutex<MetadataRefreshState>>,
 ) {
-    let cookie_path = auth::session_cookie_path(&app)
-        .ok()
-        .filter(|path| auth::session_exists(path));
-
     loop {
         if crate::process::is_stopping() {
             if let Ok(mut refreshes) = metadata_refreshes.lock() {
@@ -733,15 +743,21 @@ fn run_metadata_refresh_worker(
         if let Ok(refreshes) = metadata_refreshes.lock() {
             emit_metadata_refresh_progress(&app, &refreshes);
         }
-        let source_url = playback
+        let source = playback
             .lock()
             .map_err(|_| {
                 YouTubePlaybackError::Library("the playback service is unavailable".into())
             })
-            .map(|playback| playback.dirty_track_source(&job.track_id));
-        let result = match source_url {
+            .map(|playback| {
+                (
+                    playback.dirty_track_source(&job.track_id),
+                    playback.metadata_session(),
+                    playback.is_subscriber_only_unavailable(&job.track_id),
+                )
+            });
+        let result = match source {
             Err(error) => Err(error),
-            Ok(Some(source_url)) => {
+            Ok((Some(source_url), (cookie_path, generation), _)) => {
                 resolve_youtube_imports(&[source_url], cookie_path.as_deref(), |_, _, _, _, _| {})
                     .and_then(|resolved| {
                         playback
@@ -752,18 +768,32 @@ fn run_metadata_refresh_worker(
                                 )
                             })
                             .and_then(|mut playback| {
-                                if playback.dirty_track_source(&job.track_id).is_none() {
-                                    return Ok(false);
+                                if playback.session_generation() != generation {
+                                    return Err(YouTubePlaybackError::Metadata(
+                                        "YouTube session changed during metadata refresh.".into(),
+                                    ));
                                 }
+                                if playback.is_subscriber_only_unavailable(&job.track_id) {
+                                    return Ok(MetadataRefreshOutcome::Skipped);
+                                }
+                                if playback.dirty_track_source(&job.track_id).is_none() {
+                                    return Ok(MetadataRefreshOutcome::Unchanged);
+                                }
+                                let skipped = resolved.skipped_member_only_track(&job.track_id);
                                 let snapshot = playback.commit_youtube_import(resolved)?;
                                 drop(playback);
                                 let _ = app.emit("library-updated", ());
                                 emit_playback_updated(&app, &snapshot);
-                                Ok(true)
+                                Ok(if skipped {
+                                    MetadataRefreshOutcome::Skipped
+                                } else {
+                                    MetadataRefreshOutcome::Refreshed
+                                })
                             })
                     })
             }
-            Ok(None) => Ok(false),
+            Ok((None, _, true)) => Ok(MetadataRefreshOutcome::Skipped),
+            Ok((None, _, false)) => Ok(MetadataRefreshOutcome::Unchanged),
         };
         if let Ok(mut refreshes) = metadata_refreshes.lock() {
             refreshes.finish(&job.track_id, result);
@@ -832,8 +862,6 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                 message: "Provide 1 to 100 YouTube sources.".into(),
             });
         }
-        let cookie_path = auth::session_cookie_path(app).map_err(CommandError::from)?;
-        let cookie_path = auth::session_exists(&cookie_path).then_some(cookie_path);
         let run_id = state.next_import_id.fetch_add(1, Ordering::Relaxed);
         let cancelled = Arc::new(AtomicBool::new(false));
         {
@@ -877,6 +905,12 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                     || -> Result<(), YouTubePlaybackError> {
                         for url in urls {
                             for discovery in [true, false] {
+                                let (cookie_path, generation) = playback
+                                    .lock()
+                                    .map_err(|_| {
+                                        YouTubePlaybackError::Library("service unavailable".into())
+                                    })?
+                                    .metadata_session();
                                 let imported = crate::playback::import_cancellable(
                                     std::slice::from_ref(&url),
                                     cookie_path.as_deref(),
@@ -915,6 +949,11 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                                 })?;
                                 if cancelled.load(Ordering::Acquire) {
                                     return Err(YouTubePlaybackError::Cancelled);
+                                }
+                                if provider.session_generation() != generation {
+                                    return Err(YouTubePlaybackError::Metadata(
+                                        "YouTube session changed during import.".into(),
+                                    ));
                                 }
                                 let snapshot = provider.commit_youtube_import(imported)?;
                                 drop(provider);
@@ -1561,6 +1600,22 @@ mod tests {
         fn register_callsite(&self, _: &'static Metadata<'static>) -> Interest {
             Interest::always()
         }
+    }
+
+    #[test]
+    fn subscriber_only_refreshes_finish_as_skipped_without_retryable_failures() {
+        let mut refreshes = super::MetadataRefreshState::default();
+        refreshes.enqueue(vec![crate::playback::DirtyTrack {
+            id: "M7lc1UVf-VE".into(),
+            title: "For Supporters".into(),
+        }]);
+        refreshes.take_next().unwrap();
+        refreshes.finish("M7lc1UVf-VE", Ok(super::MetadataRefreshOutcome::Skipped));
+        assert_eq!(refreshes.snapshot().completed_tracks, 1);
+        assert_eq!(refreshes.jobs[0].state, "skipped");
+        assert!(refreshes.jobs[0].message.contains("Subscriber-only"));
+        assert!(refreshes.queued_ids.is_empty());
+        assert!(refreshes.jobs.iter().all(|job| job.state != "failed"));
     }
 
     #[test]

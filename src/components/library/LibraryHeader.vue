@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { Ellipsis, Grid2X2, List, Loader, Play, Search } from "lucide-vue-next";
+import {
+  ChevronRight,
+  CircleAlert,
+  Ellipsis,
+  Grid2X2,
+  List,
+  Loader,
+  Play,
+  Search,
+} from "lucide-vue-next";
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  PopoverRoot,
+  PopoverTrigger,
+  PopoverPortal,
+  PopoverContent,
 } from "reka-ui";
+import { ref } from "vue";
 
 import { Slider } from "@/components/ui/slider";
 import type {
@@ -15,7 +29,7 @@ import type {
   LibrarySortOption,
 } from "./types";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     collectionTitle: string;
     collectionSummary: string;
@@ -30,10 +44,16 @@ withDefaults(
     sortBy: LibrarySortOption;
     groupBy: LibraryGroupOption;
     metadataRefreshRemaining: number;
+    metadataRefreshFailed?: number;
+    metadataRefreshSkipped?: number;
     hasActiveMetadataRefresh: boolean;
     metadataRefreshDrawerOpen: boolean;
   }>(),
-  { errorMessage: undefined },
+  {
+    errorMessage: undefined,
+    metadataRefreshFailed: 0,
+    metadataRefreshSkipped: 0,
+  },
 );
 
 const emit = defineEmits<{
@@ -42,10 +62,22 @@ const emit = defineEmits<{
   setSort: [option: LibrarySortOption];
   setGroup: [option: LibraryGroupOption];
   setGridItemSize: [size: number];
-  toggleMetadataRefresh: [];
+  toggleMetadataRefresh: [open: boolean];
   playPlaylist: [];
   toggleSearch: [];
 }>();
+
+const summaryElement = ref<HTMLElement>();
+function restoreRefreshFocus(event: Event): void {
+  if (
+    !props.hasActiveMetadataRefresh &&
+    !props.metadataRefreshFailed &&
+    !props.metadataRefreshSkipped
+  ) {
+    event.preventDefault();
+    summaryElement.value?.focus();
+  }
+}
 
 const sortOptions: ReadonlyArray<readonly [LibrarySortOption, string]> = [
   ["title-asc", "Title"],
@@ -92,27 +124,85 @@ function emitGridItemSize(values: number[]): void {
         </button>
       </div>
       <div
-        class="mt-1 flex items-center gap-2 text-[0.77rem] text-(--muted-text)"
+        class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.77rem] text-(--muted-text)"
       >
-        <span data-library-summary>{{ collectionSummary }}</span>
-        <template v-if="metadataRefreshRemaining > 0">
-          ·
-          <button
-            :aria-expanded="metadataRefreshDrawerOpen"
-            :aria-label="`${metadataRefreshRemaining} metadata refreshes remaining`"
-            class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-(--text)"
-            data-metadata-refresh-remaining
-            type="button"
-            @click="emit('toggleMetadataRefresh')"
-          >
-            <Loader
-              class="size-3"
-              :class="{ 'animate-spin': hasActiveMetadataRefresh }"
-              aria-hidden="true"
-            />
-            {{ metadataRefreshRemaining }}
-          </button>
-        </template>
+        <span ref="summaryElement" data-library-summary tabindex="-1">{{
+          collectionSummary
+        }}</span>
+        <PopoverRoot
+          v-if="
+            hasActiveMetadataRefresh ||
+            metadataRefreshFailed ||
+            metadataRefreshSkipped ||
+            metadataRefreshDrawerOpen
+          "
+          :open="metadataRefreshDrawerOpen"
+          :modal="false"
+          @update:open="emit('toggleMetadataRefresh', $event)"
+        >
+          <PopoverTrigger as-child>
+            <button
+              :aria-label="
+                hasActiveMetadataRefresh
+                  ? `${metadataRefreshRemaining} metadata refreshes remaining${metadataRefreshFailed ? `, ${metadataRefreshFailed} failed` : ''}${metadataRefreshSkipped ? `, ${metadataRefreshSkipped} skipped` : ''}`
+                  : metadataRefreshFailed
+                    ? `${metadataRefreshFailed} metadata refreshes failed${metadataRefreshSkipped ? `, ${metadataRefreshSkipped} skipped` : ''}`
+                    : metadataRefreshSkipped
+                      ? `Metadata refresh complete, ${metadataRefreshSkipped} skipped`
+                      : 'Metadata refresh complete'
+              "
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-(--line) bg-(--glass-control) px-2 py-1 text-xs text-(--muted-text) tabular-nums outline-none hover:text-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              data-metadata-refresh-remaining
+              type="button"
+            >
+              <Loader
+                v-if="hasActiveMetadataRefresh"
+                class="size-3 shrink-0 animate-spin text-accent motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <CircleAlert
+                v-else-if="metadataRefreshFailed"
+                class="size-3 shrink-0 text-(--warning)"
+                aria-hidden="true"
+              />
+              <span v-if="hasActiveMetadataRefresh"
+                >Refreshing metadata · {{ metadataRefreshRemaining }} left</span
+              >
+              <span
+                v-else-if="!metadataRefreshFailed && !metadataRefreshSkipped"
+                >Metadata refreshed</span
+              >
+              <span v-if="metadataRefreshFailed" class="text-(--warning)"
+                >{{ hasActiveMetadataRefresh ? "· " : ""
+                }}{{ metadataRefreshFailed }} failed</span
+              >
+              <span v-if="metadataRefreshSkipped"
+                >{{
+                  hasActiveMetadataRefresh || metadataRefreshFailed ? "· " : ""
+                }}{{ metadataRefreshSkipped }} skipped</span
+              >
+              <ChevronRight
+                class="size-3 shrink-0"
+                :class="{ 'rotate-90': metadataRefreshDrawerOpen }"
+                aria-hidden="true"
+              />
+            </button>
+          </PopoverTrigger>
+          <PopoverPortal>
+            <PopoverContent
+              data-metadata-refresh-popover
+              aria-label="Metadata refresh"
+              side="bottom"
+              align="start"
+              :side-offset="8"
+              :collision-padding="12"
+              class="z-50 h-[min(480px,var(--reka-popover-content-available-height))] w-96 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-(--line-strong) bg-(--popover) text-(--text) shadow-xl outline-none"
+              @close-auto-focus="restoreRefreshFocus"
+            >
+              <slot name="metadata-refresh" />
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
       </div>
     </div>
 

@@ -1,4 +1,9 @@
-import { DOMWrapper, enableAutoUnmount, mount } from "@vue/test-utils";
+import {
+  DOMWrapper,
+  enableAutoUnmount,
+  flushPromises,
+  mount,
+} from "@vue/test-utils";
 const body = () => new DOMWrapper(document.body);
 import { afterEach, describe, expect, it, vi } from "vitest";
 enableAutoUnmount(afterEach);
@@ -943,7 +948,7 @@ describe("LibraryWindow", () => {
     const summary = wrapper.get("[data-library-summary]");
     const remaining = body().get("[data-metadata-refresh-remaining]");
     expect(summary.text()).toContain("2 songs");
-    expect(remaining.text()).toBe("5");
+    expect(remaining.text()).toBe("Refreshing metadata · 5 left");
     expect(summary.element.nextElementSibling).toBe(remaining.element);
 
     const completedWrapper = mount(LibraryWindow, {
@@ -961,6 +966,111 @@ describe("LibraryWindow", () => {
     expect(
       completedWrapper.find("[data-metadata-refresh-remaining]").exists(),
     ).toBe(false);
+  });
+
+  it("keeps skipped metadata details accessible after refresh finishes", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot,
+        metadataRefreshes: {
+          completedTracks: 1,
+          totalTracks: 1,
+          jobs: [
+            {
+              trackId: "one",
+              title: "For Supporters",
+              state: "skipped",
+              message:
+                "Subscriber-only content is unavailable to this YouTube session. Hidden from the library and play queue.",
+            },
+          ],
+        },
+      },
+    });
+    const trigger = wrapper.get("[data-metadata-refresh-remaining]");
+    expect(trigger.text()).toContain("1 skipped");
+    expect(trigger.text()).not.toContain("Metadata refreshed");
+    expect(trigger.attributes("aria-label")).toContain("1 skipped");
+    await trigger.trigger("click");
+    await flushPromises();
+    expect(body().get('[data-refresh-group="skipped"]').text()).toContain(
+      "Subscriber-only",
+    );
+    expect(body().find('[aria-label="Retry failed metadata"]').exists()).toBe(
+      false,
+    );
+    await body().get('[aria-label="Close metadata refresh"]').trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(trigger.element);
+    expect(wrapper.find("[data-metadata-refresh-remaining]").exists()).toBe(
+      true,
+    );
+  });
+
+  it("opens refresh details in a popover and restores focus after closing", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: {
+        isUpdating: false,
+        snapshot,
+        metadataRefreshes: {
+          completedTracks: 0,
+          totalTracks: 1,
+          jobs: [
+            {
+              trackId: "one",
+              title: "Current refresh",
+              state: "refreshing",
+              message: "Fetching",
+            },
+          ],
+        },
+      },
+    });
+    const trigger = wrapper.get("[data-metadata-refresh-remaining]");
+    await trigger.trigger("click");
+    await flushPromises();
+    expect(trigger.attributes("aria-haspopup")).toBe("dialog");
+    expect(
+      body().get("[data-metadata-refresh-popover]").attributes("role"),
+    ).toBe("dialog");
+    expect(wrapper.find('[aria-label="Metadata refreshes"]').exists()).toBe(
+      false,
+    );
+    await body().get('[aria-label="Close metadata refresh"]').trigger("click");
+    await flushPromises();
+    expect(body().find('[aria-label="Metadata refreshes"]').exists()).toBe(
+      false,
+    );
+    expect(document.activeElement).toBe(trigger.element);
+    await wrapper.setProps({
+      metadataRefreshes: {
+        completedTracks: 1,
+        totalTracks: 1,
+        jobs: [
+          {
+            trackId: "one",
+            title: "Current refresh",
+            state: "failed",
+            message: "Try again later",
+          },
+        ],
+      },
+    });
+    expect(wrapper.get("[data-metadata-refresh-remaining]").text()).toContain(
+      "1 failed",
+    );
+    await wrapper.get("[data-metadata-refresh-remaining]").trigger("click");
+    await flushPromises();
+    await body().get('[aria-label="Retry failed metadata"]').trigger("click");
+    expect(wrapper.emitted("retryMetadataRefreshes")).toHaveLength(1);
+    await body()
+      .get('[aria-label="Close metadata refresh"]')
+      .trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(body().find("[data-metadata-refresh-popover]").exists()).toBe(false);
   });
 
   it("truncates track metadata within a fixed-layout table", () => {

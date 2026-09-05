@@ -39,6 +39,11 @@ Use the semantic variables in `src/styles.css`.
 Do not introduce raw color values in window components when a semantic variable
 fits. Themes redefine the color primitives and keep their semantic roles stable.
 
+Popover and context-menu surfaces derive an opaque, raised tint from the active
+window's `--glass-window` color. Keep `--menu-surface` linked to `--popover` so
+portaled overlays follow theme changes together. Keep overlay chroma restrained
+and use theme text for neutral menu highlights, not a fixed blue fill.
+
 ## App icon
 
 The application mark is an ivory G with a play-shaped cutout on a violet tile.
@@ -69,6 +74,18 @@ Use the shared utilities in `src/styles.css` for all standard windows.
 Artwork is an immersive exception. It uses `window-shell` but keeps the artwork
 as its surface. The mini player is compact and uses the shared panel treatment
 rather than a full window surface.
+
+Import uses one continuous window surface with compact link entry before search.
+Reserve the native title-bar area above the heading. Keep import activity and
+Cancel in a fixed footer outside the form scroll area. Use a bounded log viewport
+and show the current phase rather than a second generic status badge. Do not show
+an empty terminal before the first import.
+
+Metadata refresh details open in a non-modal popover anchored to the status
+button beside the library summary. Keep the library geometry unchanged. Use an
+opaque popover surface and a bounded scroll area, with active work first and
+completed jobs collapsed. Keep failures visible with a retry action. Closing the
+popover must not stop background work.
 
 ## Type and spacing
 

@@ -95,7 +95,7 @@ export interface ImportProgress {
 }
 
 export type MetadataRefreshState =
-  "queued" | "refreshing" | "completed" | "failed";
+  "queued" | "refreshing" | "completed" | "failed" | "skipped";
 
 export interface MetadataRefreshJob {
   message: string;

@@ -22,6 +22,14 @@ const globalComponentSelectors = [
 ];
 
 describe("component style locality", () => {
+  it("derives opaque popover and menu surfaces from the window theme", () => {
+    const styles = readFileSync(join(process.cwd(), "src/styles.css"), "utf8");
+    expect(styles).toMatch(
+      /--popover:\s*oklch\(\s*from var\(--glass-window\) calc\(l \+ 0\.12\) calc\(c \* 0\.5\) h \/ 1\s*\)/,
+    );
+    expect(styles).toContain("--menu-surface: var(--popover)");
+  });
+
   it("keeps component selectors out of the global stylesheet", () => {
     const globalStyles = readFileSync(
       join(process.cwd(), "src/styles.css"),

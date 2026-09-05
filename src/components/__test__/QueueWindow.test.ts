@@ -32,6 +32,75 @@ const queue: MediaItem[] = [
 ];
 
 describe("QueueWindow", () => {
+  it("reserves content-sized duration space before row actions for long tracks", () => {
+    const wrapper = mount(QueueWindow, {
+      props: {
+        currentItemId: undefined,
+        isStarting: false,
+        isUpdating: false,
+        positionMs: 0,
+        status: "paused",
+        queue: [{ ...queue[0]!, durationMs: 7_200_000 }],
+      },
+    });
+    const row = wrapper.get("[data-queue-item]");
+    expect(row.classes()).toContain(
+      "grid-cols-[2.25rem_minmax(0,1fr)_max-content_2.25rem]",
+    );
+    const duration = row.get("[data-queue-duration]");
+    expect(duration.text()).toBe("2:00:00");
+    expect(duration.classes()).toContain("whitespace-nowrap");
+    expect(duration.classes()).toContain("pr-2");
+    expect(duration.classes()).toContain("text-right");
+    wrapper.unmount();
+  });
+
+  it("keeps upcoming row actions hidden independently of disabled styling while advancing", async () => {
+    const wrapper = mount(QueueWindow, {
+      props: {
+        currentItemId: "track-1",
+        isStarting: false,
+        isUpdating: false,
+        positionMs: 0,
+        status: "playing",
+        queue: [...queue, { ...queue[0]!, id: "track-3", title: "Sugar" }],
+      },
+    });
+    await wrapper.get('[aria-label="Next track"]').trigger("click");
+    expect(wrapper.emitted("next")).toEqual([[]]);
+    for (const state of [
+      { currentItemId: "track-1", isStarting: true, isUpdating: false },
+      { currentItemId: "track-2", isStarting: true, isUpdating: false },
+      { currentItemId: "track-2", isStarting: false, isUpdating: true },
+      { currentItemId: "track-2", isStarting: false, isUpdating: false },
+    ]) {
+      await wrapper.setProps(state);
+      const current = wrapper.get('[data-current="true"] button');
+      expect(
+        current.element.parentElement?.classList.contains("opacity-0"),
+      ).toBe(false);
+      for (const button of wrapper.findAll('[data-current="false"] button')) {
+        const shell = button.element.parentElement!;
+        expect(shell.classList.contains("opacity-0")).toBe(true);
+        expect(shell.classList.contains("group-hover:opacity-100")).toBe(true);
+        expect(shell.classList.contains("group-focus-within:opacity-100")).toBe(
+          true,
+        );
+        expect(shell.hasAttribute("disabled")).toBe(false);
+        expect(button.attributes("disabled") !== undefined).toBe(
+          state.isStarting || state.isUpdating,
+        );
+      }
+    }
+    await wrapper.get('[aria-label="Play Sugar"]').trigger("click");
+    expect(wrapper.emitted("playTrack")).toEqual([["track-3"]]);
+    await wrapper
+      .get('[aria-label="Remove Sugar from queue"]')
+      .trigger("click");
+    expect(wrapper.emitted("remove")).toEqual([[2]]);
+    wrapper.unmount();
+  });
+
   it("renders a virtual Motion queue and routes transport and playback", async () => {
     const wrapper = mount(QueueWindow, {
       props: {

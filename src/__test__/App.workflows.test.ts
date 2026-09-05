@@ -425,7 +425,7 @@ describe("App product workflows through real components and IPC", () => {
     await app.get('button[aria-label="Cancel import"]').trigger("click");
     await flushPromises();
     expect(invoke).toHaveBeenCalledWith("cancel_youtube_import", { runId: 84 });
-    expect(app.text()).toContain("2 track(s) remain in your library");
+    expect(app.text()).toContain("2 tracks remain in your library");
     expect(app.find('button[aria-label="Cancel import"]').exists()).toBe(false);
   });
 

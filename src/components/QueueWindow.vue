@@ -365,7 +365,7 @@ watch(
                 <p
                   v-if="actionError"
                   role="alert"
-                  class="window-alert-danger mt-3 rounded-md p-3 text-sm break-words"
+                  class="window-alert-danger mt-3 rounded-md p-3 text-sm wrap-break-word"
                 >
                   {{ actionError }}
                 </p>
@@ -381,8 +381,9 @@ watch(
                 <Button
                   type="submit"
                   :disabled="!playlistName.trim() || actionPending"
-                  >{{ actionPending ? "Saving…" : "Save playlist" }}</Button
                 >
+                  {{ actionPending ? "Saving…" : "Save playlist" }}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -416,7 +417,7 @@ watch(
               <p
                 v-if="actionError"
                 role="alert"
-                class="window-alert-danger mt-3 rounded-md p-3 text-sm break-words"
+                class="window-alert-danger mt-3 rounded-md p-3 text-sm wrap-break-word"
               >
                 {{ actionError }}
               </p>
@@ -505,18 +506,21 @@ watch(
                   :data-current="item.id === currentItemId"
                   :data-queue-index="virtualItem.index"
                   :data-queue-item-id="item.id"
-                  class="queue-row group grid h-13 w-full cursor-grab grid-cols-[2.25rem_minmax(0,1fr)_2rem_2.25rem] items-center border-b border-(--line) outline-none active:cursor-grabbing hover:bg-[oklch(0.72_0.025_258/0.08)] data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
+                  class="queue-row group grid h-13 w-full cursor-grab grid-cols-[2.25rem_minmax(0,1fr)_max-content_2.25rem] items-center border-b border-(--line) outline-none active:cursor-grabbing hover:bg-[oklch(0.72_0.025_258/0.08)] data-[current=true]:bg-[oklch(0.72_0.03_268/0.13)]"
                   data-queue-item
                   role="listitem"
                 >
-                  <div class="grid place-items-center">
+                  <div
+                    class="grid place-items-center"
+                    :class="
+                      item.id !== currentItemId
+                        ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                        : undefined
+                    "
+                  >
                     <Button
                       :aria-label="`Play ${item.title}`"
-                      :class="
-                        item.id === currentItemId
-                          ? 'text-accent'
-                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100'
-                      "
+                      :class="{ 'text-accent': item.id === currentItemId }"
                       size="icon-xs"
                       variant="ghost"
                       :disabled="isUpdating || isStarting"
@@ -542,17 +546,17 @@ watch(
                     </p>
                   </div>
                   <span
-                    class="text-center text-[0.72rem] text-(--muted-text) tabular-nums"
+                    class="pr-2 text-right text-[0.72rem] whitespace-nowrap text-(--muted-text) tabular-nums"
+                    data-queue-duration
                   >
                     {{ formatDuration(item.durationMs) }}
                   </span>
                   <div
-                    class="flex items-center justify-end gap-0.5 pr-2 text-(--subtle-text)"
+                    class="flex items-center justify-end gap-0.5 pr-2 text-(--subtle-text) opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                   >
                     <Button
                       v-if="item.id !== currentItemId"
                       :aria-label="`Remove ${item.title} from queue`"
-                      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                       size="icon-xs"
                       variant="ghost"
                       :disabled="isUpdating || isStarting"

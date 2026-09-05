@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ArrowDownToLine, TerminalSquare } from "lucide-vue-next";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { ArrowDownToLine, LoaderCircle, Search } from "lucide-vue-next";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 
 import {
   playbackApi,
@@ -44,6 +44,24 @@ const activeProgress = computed(
     props.progress &&
     !["completed", "failed", "cancelled"].includes(props.progress.phase),
 );
+const importBusy = computed(
+  () => props.isImporting || Boolean(activeProgress.value),
+);
+const statusLabel = computed(() => {
+  if (props.isCancelling && activeProgress.value) return "Cancelling import";
+  const phase = props.progress?.phase;
+  if (phase)
+    return {
+      started: "Starting import",
+      resolving: "Discovering tracks",
+      merging: "Saving to library",
+      completed: "Import complete",
+      failed: "Import failed",
+      cancelled: "Import cancelled",
+    }[phase];
+  return props.isImporting ? "Starting import" : "Ready to import";
+});
+const logViewport = ref<HTMLElement | null>(null);
 
 watch(searchQuery, () => {
   searchGeneration += 1;
@@ -94,7 +112,7 @@ function retryImport(): void {
   if (lastImportSources.length) emit("importYoutubeUrls", lastImportSources);
   else emit("retry");
 }
-const logs = ref<string[]>(["Ready. Add one YouTube URL per line."]);
+const logs = ref<string[]>([]);
 let currentRunId: number | undefined;
 const importSources = computed(() => [
   ...new Set(
@@ -110,11 +128,23 @@ const progressPercent = computed(() => {
     return 0;
   }
 
-  return Math.round(((props.progress?.completedSources ?? 0) / total) * 100);
+  return Math.min(
+    100,
+    Math.max(
+      0,
+      Math.round(((props.progress?.completedSources ?? 0) / total) * 100),
+    ),
+  );
 });
 const progressValue = computed<number | undefined>(() => {
   const progress = props.progress;
-  if (progress?.phase === "resolving" && progress.completedSources === 0) {
+  if (
+    !progress ||
+    (activeProgress.value &&
+      (progress.phase !== "resolving" ||
+        progress.completedSources === 0 ||
+        !progress.totalSources))
+  ) {
     return undefined;
   }
 
@@ -128,7 +158,13 @@ watch(
       return;
     }
 
-    if (progress.phase === "started" && currentRunId !== progress.runId) {
+    const newRun = currentRunId !== progress.runId;
+    const viewport = logViewport.value;
+    const followLog =
+      newRun ||
+      !viewport ||
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24;
+    if (newRun) {
       currentRunId = progress.runId;
       logs.value = [];
     }
@@ -145,6 +181,12 @@ watch(
     const entry = progress.message.trim();
     if (entry && logs.value[logs.value.length - 1] !== entry) {
       logs.value.push(entry);
+      logs.value = logs.value.slice(-300);
+      if (followLog)
+        void nextTick(() => {
+          if (logViewport.value)
+            logViewport.value.scrollTop = logViewport.value.scrollHeight;
+        });
     }
   },
   { immediate: true },
@@ -176,21 +218,17 @@ function submitYouTubeUrls(): void {
       aria-hidden="true"
     />
 
-    <section class="grid min-h-0 min-w-0 grid-rows-[88px_minmax(0,1fr)]">
-      <header class="window-header">
-        <div>
-          <h1 class="window-title">Import Music</h1>
-          <p class="mt-1 window-copy">
-            Add videos, playlists, albums, channels, or artist pages.
-          </p>
-        </div>
-        <span class="window-status">
-          {{ isImporting ? "Import running" : "Library import" }}
-        </span>
+    <section
+      class="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-7"
+    >
+      <header
+        class="flex items-center justify-between gap-4 border-b border-(--line) px-6 py-4"
+      >
+        <h1 class="window-title">Import Music</h1>
       </header>
 
       <ScrollArea class="min-h-0 size-full" type="scroll">
-        <div class="px-5 py-5">
+        <div class="px-6 py-5">
           <p
             v-if="errorMessage"
             class="window-alert-danger mb-4 break-words px-3 py-2 text-sm"
@@ -209,17 +247,59 @@ function submitYouTubeUrls(): void {
             >Retry</Button
           >
 
+          <form
+            aria-label="Import music from YouTube"
+            @submit.prevent="submitYouTubeUrls"
+          >
+            <label for="youtube-import-urls" class="block text-sm font-semibold"
+              >YouTube URLs</label
+            >
+            <p
+              id="youtube-import-help"
+              class="mt-1 text-xs leading-5 text-(--muted-text)"
+            >
+              Videos, playlists, albums, or channels. One link per line.
+            </p>
+            <textarea
+              id="youtube-import-urls"
+              v-model="youtubeUrls"
+              aria-label="YouTube URLs"
+              aria-describedby="youtube-import-help"
+              rows="3"
+              class="mt-3 block w-full resize-none rounded-lg border border-(--line-strong) bg-(--glass-control) px-3 py-2.5 font-mono text-xs leading-5 text-(--text) outline-none transition-colors placeholder:text-(--subtle-text) focus:border-(--focus-ring)"
+              placeholder="Paste one URL per line&#10;https://youtube.com/watch?v=…"
+              :disabled="importBusy"
+              spellcheck="false"
+            />
+            <div class="mt-3 flex items-center justify-between gap-4">
+              <p class="text-xs text-(--muted-text)">
+                <template v-if="importBusy">Import in progress</template>
+                <template v-else-if="importSources.length"
+                  >{{ importSources.length }}
+                  {{ importSources.length === 1 ? "source" : "sources" }}
+                  ready</template
+                >
+                <template v-else>Paste a link to get started</template>
+              </p>
+              <Button
+                type="submit"
+                size="sm"
+                :disabled="importBusy || !importSources.length"
+              >
+                <ArrowDownToLine aria-hidden="true" />
+                Import to library
+              </Button>
+            </div>
+          </form>
+
           <section
-            class="window-panel mb-4 p-5"
+            class="mt-5 border-t border-(--line) pt-4"
             aria-labelledby="youtube-search-heading"
           >
-            <h2 id="youtube-search-heading" class="text-base font-semibold">
-              Discover on YouTube
+            <h2 id="youtube-search-heading" class="text-sm font-semibold">
+              Search YouTube
             </h2>
-            <p class="mt-1 text-sm text-(--muted-text)">
-              Search by song, artist, or album. Import adds music to your
-              library.
-            </p>
+
             <form
               aria-label="Search YouTube"
               class="mt-3 flex gap-2"
@@ -230,12 +310,16 @@ function submitYouTubeUrls(): void {
                 aria-label="Search YouTube"
                 type="search"
                 placeholder="Song, artist, or album"
-                class="min-w-0 flex-1 rounded-lg border border-(--line-strong) bg-(--glass-control) px-3 py-2 text-sm outline-none focus:border-(--focus-ring)"
+                class="h-9 min-w-0 flex-1 rounded-lg border border-(--line-strong) bg-(--glass-control) px-3 text-sm outline-none focus:border-(--focus-ring)"
               />
               <Button
                 type="submit"
+                size="sm"
+                variant="outline"
                 :disabled="!searchQuery.trim() || isSearching"
-                >{{ isSearching ? "Searching…" : "Search" }}</Button
+                ><Search class="size-3.5" aria-hidden="true" />{{
+                  isSearching ? "Searching…" : "Search"
+                }}</Button
               >
             </form>
             <p
@@ -272,7 +356,7 @@ function submitYouTubeUrls(): void {
             </p>
             <ol
               v-if="searchResults.length"
-              class="mt-2 max-h-80 overflow-y-auto divide-y divide-(--line)"
+              class="mt-2 divide-y divide-(--line)"
               aria-label="YouTube search results"
             >
               <li
@@ -295,6 +379,7 @@ function submitYouTubeUrls(): void {
                   type="button"
                   variant="outline"
                   :aria-label="`Import ${item.title}`"
+                  size="sm"
                   :disabled="isImporting || Boolean(activeProgress)"
                   @click="importSearchResult(item)"
                   >Import</Button
@@ -306,7 +391,7 @@ function submitYouTubeUrls(): void {
           <section
             v-if="metadataRefreshes?.totalTracks"
             aria-label="Metadata refresh"
-            class="window-panel mb-4 p-4"
+            class="mt-5 border-t border-(--line) pt-4"
           >
             <h2 class="text-sm font-semibold">Metadata refresh</h2>
             <p class="mt-1 text-xs text-(--muted-text)">
@@ -335,136 +420,117 @@ function submitYouTubeUrls(): void {
               >
             </template>
           </section>
-
-          <form
-            class="grid gap-4"
-            aria-label="Import music from YouTube"
-            @submit.prevent="submitYouTubeUrls"
-          >
-            <section class="window-panel p-5">
-              <div class="flex items-start gap-4">
-                <span
-                  class="grid size-10 shrink-0 place-items-center rounded-xl bg-(--accent-soft) text-accent [&>svg]:size-5"
-                  aria-hidden="true"
-                >
-                  <ArrowDownToLine />
-                </span>
-                <div>
-                  <h2 class="text-base font-semibold">Import from YouTube</h2>
-                  <p class="mt-1 text-[0.78rem] leading-5 text-(--muted-text)">
-                    Paste one link per line. Imports run in the background and
-                    do not interrupt playback.
-                  </p>
-                </div>
-              </div>
-
-              <label
-                class="mt-5 block text-[0.7rem] font-semibold tracking-[0.04em] text-(--muted-text) uppercase"
-                for="youtube-import-urls"
-              >
-                YouTube URLs
-              </label>
-              <textarea
-                id="youtube-import-urls"
-                v-model="youtubeUrls"
-                aria-label="YouTube URLs"
-                class="mt-2 min-h-40 w-full resize-y rounded-lg border border-(--line-strong) bg-(--glass-control) px-3.5 py-3 font-mono text-[0.76rem] leading-5 text-(--text) outline-none transition-colors placeholder:text-(--subtle-text) focus:border-(--focus-ring)"
-                placeholder="Paste one URL per line&#10;https://youtube.com/watch?v=…&#10;https://youtube.com/playlist?list=…&#10;https://youtube.com/@artist/videos"
-                :disabled="isImporting || Boolean(activeProgress)"
-                spellcheck="false"
-              />
-
-              <div class="mt-3 flex items-center justify-between gap-4">
-                <p class="text-[0.72rem] text-(--muted-text)">
-                  {{ importSources.length }}
-                  {{ importSources.length === 1 ? "source" : "sources" }} ready
-                </p>
-                <Button
-                  type="submit"
-                  :disabled="
-                    isImporting ||
-                    Boolean(activeProgress) ||
-                    importSources.length === 0
-                  "
-                >
-                  <ArrowDownToLine aria-hidden="true" />
-                  {{ isImporting ? "Importing…" : "Import to library" }}
-                </Button>
-              </div>
-            </section>
-
-            <section
-              class="window-panel-muted p-4"
-              aria-label="Import progress"
-            >
-              <div class="flex items-center justify-between gap-4">
-                <div class="flex items-center gap-2 text-[0.76rem] font-medium">
-                  <TerminalSquare
-                    class="size-4 text-accent"
-                    aria-hidden="true"
-                  />
-                  Import terminal
-                </div>
-                <span class="text-[0.7rem] text-(--muted-text)">
-                  {{ progress?.completedSources ?? 0 }} /
-                  {{ progress?.totalSources ?? 0 }} sources
-                </span>
-              </div>
-              <p class="mt-2 text-[0.7rem] text-(--muted-text)">
-                {{ progress?.importedTracks ?? 0 }} track(s) found
-                <template v-if="progress?.skippedMemberOnly">
-                  · {{ progress.skippedMemberOnly }} members-only track(s)
-                  skipped
-                </template>
-              </p>
-              <p
-                v-if="progress?.phase === 'cancelled'"
-                role="status"
-                class="mt-2 text-sm"
-              >
-                Import cancelled. {{ progress.importedTracks }} track(s) remain
-                in your library.
-              </p>
-              <Button
-                v-if="activeProgress && progress"
-                type="button"
-                variant="outline"
-                aria-label="Cancel import"
-                class="mt-3"
-                :disabled="isCancelling"
-                @click="emit('cancelImport', progress.runId)"
-                >{{ isCancelling ? "Cancelling…" : "Cancel import" }}</Button
-              >
-              <progress
-                class="mt-3 h-1.5 w-full overflow-hidden rounded-full accent-accent"
-                :value="progressValue"
-                max="100"
-              >
-                {{ progressPercent }}%
-              </progress>
-              <ScrollArea class="window-panel-muted mt-3 max-h-36 min-h-24">
-                <output
-                  class="block min-h-24 break-words p-3 font-mono text-[0.69rem] leading-5 text-(--muted-text)"
-                  role="log"
-                  aria-live="polite"
-                >
-                  <span
-                    v-for="(log, index) in logs"
-                    :key="`${index}-${log}`"
-                    class="block"
-                    >&gt; {{ log }}</span
-                  >
-                </output>
-              </ScrollArea>
-            </section>
-          </form>
         </div>
       </ScrollArea>
+      <footer class="border-t border-(--line) px-6 py-4">
+        <section v-if="progress || isImporting" aria-label="Import progress">
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <h2
+                data-import-status
+                role="status"
+                class="flex items-center gap-2 text-sm font-semibold"
+              >
+                <LoaderCircle
+                  v-if="importBusy"
+                  class="size-3.5 shrink-0 animate-spin text-accent motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+                {{ statusLabel }}
+              </h2>
+              <p class="mt-1 text-xs text-(--muted-text)">
+                {{ progress?.importedTracks ?? 0 }}
+                {{ progress?.importedTracks === 1 ? "track" : "tracks" }} found
+                <template v-if="progress?.totalSources">
+                  · {{ progress.completedSources }} /
+                  {{ progress.totalSources }}
+                  {{
+                    progress.totalSources === 1 ? "source" : "sources"
+                  }}</template
+                >
+                <template v-if="progress?.skippedMemberOnly">
+                  · {{ progress.skippedMemberOnly }} members-only
+                  {{ progress.skippedMemberOnly === 1 ? "track" : "tracks" }}
+                  skipped</template
+                >
+              </p>
+            </div>
+            <Button
+              v-if="activeProgress && progress"
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Cancel import"
+              class="shrink-0"
+              :disabled="isCancelling"
+              @click="emit('cancelImport', progress.runId)"
+              >{{ isCancelling ? "Cancelling…" : "Cancel import" }}</Button
+            >
+          </div>
+          <p
+            v-if="progress?.phase === 'cancelled'"
+            role="status"
+            class="mt-2 text-sm"
+          >
+            {{ progress.importedTracks }}
+            {{
+              progress.importedTracks === 1 ? "track remains" : "tracks remain"
+            }}
+            in your library.
+          </p>
+          <progress
+            v-if="importBusy || progress?.phase === 'completed'"
+            aria-label="Import progress"
+            class="mt-3 block h-1 w-full overflow-hidden rounded-full accent-accent"
+            :value="progressValue"
+            max="100"
+          >
+            {{ progressPercent }}%
+          </progress>
+          <ScrollArea
+            v-if="logs.length"
+            data-import-log
+            class="mt-3 h-24 rounded-md bg-(--glass-control) [@media(max-height:480px)]:h-12"
+            :viewport-ref="(element) => (logViewport = element)"
+          >
+            <output
+              class="block break-words px-3 py-2 font-mono text-[0.69rem] leading-5 text-(--muted-text) select-text"
+              role="log"
+              aria-label="Import activity"
+              aria-live="polite"
+            >
+              <span
+                v-for="(log, index) in logs"
+                :key="`${index}-${log}`"
+                class="block"
+                >{{ log }}</span
+              >
+            </output>
+          </ScrollArea>
+        </section>
+        <p v-else class="text-xs leading-5 text-(--muted-text)">
+          Imports run in the background without interrupting playback.
+        </p>
+      </footer>
     </section>
   </main>
 </template>
 
 <style scoped>
+progress {
+  appearance: none;
+  border: 0;
+  background: var(--surface-muted);
+}
+
+progress:indeterminate {
+  background: var(--accent-soft);
+}
+
+progress:indeterminate::-webkit-progress-bar {
+  background: var(--accent-soft);
+}
+
 progress::-webkit-progress-bar {
   background: var(--surface-muted);
 }

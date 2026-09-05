@@ -105,6 +105,10 @@ pub(crate) struct QueueEntry {
 }
 
 impl QueueEntry {
+    fn is_available(&self) -> bool {
+        self.item.availability.as_deref() != Some("subscriber_only_unavailable")
+    }
+
     fn editable_metadata(&self) -> EditableTrackMetadata {
         EditableTrackMetadata {
             title: self.item.title.clone(),
@@ -146,6 +150,14 @@ impl ResolvedYouTubeImport {
 
     pub(crate) fn skipped_member_only_count(&self) -> usize {
         self.skipped_member_only
+    }
+
+    pub(crate) fn skipped_member_only_track(&self, id: &str) -> bool {
+        self.skipped_member_only_ids.contains(id)
+            && !self
+                .entries
+                .iter()
+                .any(|entry| entry.item.id == id && !entry.item.metadata_dirty)
     }
 
     pub(crate) fn timed_out_source_count(&self) -> usize {
@@ -387,8 +399,24 @@ impl YouTubePlaybackProvider {
     ) -> Result<PlaybackSnapshot, YouTubePlaybackError> {
         let previous_queue_size = self.entries.len();
         let imported_count = imported.track_count();
-        // Provider availability never authorizes deleting an existing library entry.
-        let _ = imported.skipped_member_only_ids;
+        // Access denial hides a track; it never deletes saved user data.
+        if self
+            .snapshot
+            .current_item
+            .as_ref()
+            .is_some_and(|item| imported.skipped_member_only_track(&item.id))
+        {
+            self.player.stop_checked()?;
+            self.snapshot.current_item = None;
+            self.snapshot.position_ms = 0;
+            self.snapshot.status = PlaybackStatus::Paused;
+        }
+        for entry in std::sync::Arc::make_mut(&mut self.entries) {
+            if imported.skipped_member_only_track(&entry.item.id) {
+                entry.item.availability = Some("subscriber_only_unavailable".into());
+                entry.item.metadata_dirty = false;
+            }
+        }
         merge_queue_entries(
             std::sync::Arc::make_mut(&mut self.entries),
             imported.entries,
@@ -441,10 +469,24 @@ impl YouTubePlaybackProvider {
         }
     }
 
+    pub(crate) fn session_generation(&self) -> u64 {
+        self.session_generation
+    }
+
+    pub(crate) fn metadata_session(&self) -> (Option<PathBuf>, u64) {
+        (self.session_cookie_path.clone(), self.session_generation)
+    }
+
+    pub(crate) fn is_subscriber_only_unavailable(&self, id: &str) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.item.id == id && !entry.is_available())
+    }
+
     pub(crate) fn dirty_tracks(&self) -> Vec<DirtyTrack> {
         self.entries
             .iter()
-            .filter(|entry| entry.item.metadata_dirty)
+            .filter(|entry| entry.item.metadata_dirty && entry.is_available())
             .map(|entry| DirtyTrack {
                 id: entry.item.id.clone(),
                 title: entry.item.title.clone(),
@@ -455,7 +497,7 @@ impl YouTubePlaybackProvider {
     pub(crate) fn dirty_track_source(&self, id: &str) -> Option<String> {
         self.entries
             .iter()
-            .find(|entry| entry.item.id == id && entry.item.metadata_dirty)
+            .find(|entry| entry.item.id == id && entry.item.metadata_dirty && entry.is_available())
             .map(|entry| entry.source_url.clone())
     }
 
@@ -466,6 +508,7 @@ impl YouTubePlaybackProvider {
             tracks: self
                 .entries
                 .iter()
+                .filter(|entry| entry.is_available())
                 .map(|entry| entry.item.clone())
                 .collect(),
         }
@@ -812,7 +855,7 @@ impl YouTubePlaybackProvider {
                 .snapshot
                 .current_item
                 .as_ref()
-                .is_some_and(|item| !self.entries.iter().any(|entry| entry.item.id == item.id));
+                .is_some_and(|item| self.library_item(&item.id).is_err());
         if stale {
             if let Err(error) = prepared.halt_after_error() {
                 self.recover_transport(prepared);
@@ -826,7 +869,7 @@ impl YouTubePlaybackProvider {
         prepared.entries = self.entries.clone();
         prepared.playlists = self.playlists.clone();
         for (id, played_at_ms) in &plays {
-            if prepared.entries.iter().any(|entry| entry.item.id == *id) {
+            if prepared.library_item(id).is_ok() {
                 prepared.record_playback_start_inner(id, *played_at_ms)?;
             }
         }
@@ -1054,7 +1097,14 @@ impl YouTubePlaybackProvider {
         from: usize,
         to: usize,
     ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
-        let len = self.entries.len();
+        let visible_positions = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.is_available())
+            .map(|(position, _)| position)
+            .collect::<Vec<_>>();
+        let len = visible_positions.len();
         if from >= len {
             return Err(YouTubePlaybackError::QueueIndexOutOfBounds { index: from });
         }
@@ -1063,8 +1113,8 @@ impl YouTubePlaybackProvider {
         }
         if from != to {
             let entries = std::sync::Arc::make_mut(&mut self.entries);
-            let entry = entries.remove(from);
-            entries.insert(to, entry);
+            let entry = entries.remove(visible_positions[from]);
+            entries.insert(visible_positions[to], entry);
             self.persist_library()?;
             tracing::info!(from, to, "library item moved");
         }
@@ -1326,7 +1376,7 @@ impl YouTubePlaybackProvider {
     fn library_item(&self, id: &str) -> Result<MediaItem, YouTubePlaybackError> {
         self.entries
             .iter()
-            .find(|entry| entry.item.id == id)
+            .find(|entry| entry.item.id == id && entry.is_available())
             .map(|entry| entry.item.clone())
             .ok_or_else(|| YouTubePlaybackError::TrackNotFound { id: id.into() })
     }
@@ -1377,6 +1427,17 @@ impl YouTubePlaybackProvider {
                 .filter(|playlist| !is_default_playlist(&playlist.id))
                 .cloned(),
         );
+        let available_ids = self
+            .entries
+            .iter()
+            .filter(|entry| entry.is_available())
+            .map(|entry| entry.item.id.as_str())
+            .collect::<HashSet<_>>();
+        for playlist in &mut playlists {
+            playlist
+                .track_ids
+                .retain(|id| available_ids.contains(id.as_str()));
+        }
         playlists
     }
 
@@ -1385,8 +1446,7 @@ impl YouTubePlaybackProvider {
             .snapshot
             .queue
             .iter()
-            .filter_map(|item| self.entries.iter().find(|entry| entry.item.id == item.id))
-            .map(|entry| entry.item.clone())
+            .filter_map(|item| self.library_item(&item.id).ok())
             .collect();
         if let Some(current_id) = self
             .snapshot
@@ -1490,8 +1550,7 @@ impl YouTubePlaybackProvider {
         self.snapshot.queue = state
             .queue_ids
             .iter()
-            .filter_map(|id| self.entries.iter().find(|entry| entry.item.id == *id))
-            .map(|entry| entry.item.clone())
+            .filter_map(|id| self.library_item(id).ok())
             .collect();
         self.snapshot.current_item = state.current_item_id.and_then(|id| {
             self.snapshot
@@ -2014,7 +2073,7 @@ fn resolve_youtube_imports_with(
         elapsed_ms = started.elapsed().as_millis(),
         "YouTube batch metadata resolved"
     );
-    if imported.is_empty() {
+    if imported.is_empty() && skipped_member_only_ids.is_empty() {
         return Err(YouTubePlaybackError::Metadata(
             "no playable tracks found".into(),
         ));
@@ -2238,17 +2297,30 @@ fn parse_streamed_metadata(output: &str) -> Result<Vec<QueueEntry>, YouTubePlayb
     Ok(entries)
 }
 
+fn is_member_only_error(line: &str) -> bool {
+    let Some((_, message)) = line
+        .strip_prefix("ERROR: [youtube] ")
+        .and_then(|line| line.split_once(": "))
+    else {
+        return false;
+    };
+    let message = message.to_ascii_lowercase();
+    message.starts_with("this video is available to this channel's members")
+        || message.starts_with("join this channel to get access to members-only content")
+        || message.starts_with("this is subscriber-only content")
+}
+
 fn member_only_error_count(stderr: &str) -> usize {
     stderr
         .lines()
-        .filter(|line| line.contains("members-only content") || line.contains("members on level"))
+        .filter(|line| is_member_only_error(line))
         .count()
 }
 
 fn member_only_video_ids(stderr: &str) -> HashSet<String> {
     stderr
         .lines()
-        .filter(|line| line.contains("members-only content") || line.contains("members on level"))
+        .filter(|line| is_member_only_error(line))
         .filter_map(|line| line.split("ERROR: [youtube] ").nth(1))
         .filter_map(|line| line.split(':').next())
         .filter(|id| is_youtube_video_id(id))
@@ -2273,7 +2345,8 @@ fn finish_metadata_resolution(
     timed_out: bool,
 ) -> Result<MetadataResolution, YouTubePlaybackError> {
     let skipped_member_only = member_only_error_count(stderr);
-    if entries.is_empty() {
+    let skipped_member_only_ids = member_only_video_ids(stderr);
+    if entries.is_empty() && (skipped_member_only_ids.is_empty() || timed_out) {
         if timed_out {
             return Err(YouTubePlaybackError::Metadata(format!(
                 "metadata resolution stopped after {} seconds without a playable track",
@@ -2288,7 +2361,7 @@ fn finish_metadata_resolution(
     Ok(MetadataResolution {
         entries,
         skipped_member_only,
-        skipped_member_only_ids: member_only_video_ids(stderr),
+        skipped_member_only_ids,
         timed_out,
     })
 }
@@ -2874,12 +2947,12 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        LIBRARY_VERSION, MpvPlayer, StoredLibrary, YouTubePlaybackProvider,
-        discovery_metadata_arguments, finish_metadata_resolution, member_only_error_count,
-        member_only_video_ids, merge_queue_entries, metadata_arguments, metadata_error_message,
-        mpv_arguments, parse_import_metadata, parse_import_metadata_with_dirty_state,
-        parse_streamed_metadata, resolve_metadata, spawn_parent_exit_watchdog,
-        validate_youtube_url,
+        HashSet, LIBRARY_VERSION, MpvPlayer, ResolvedYouTubeImport, StoredLibrary,
+        YouTubePlaybackProvider, discovery_metadata_arguments, finish_metadata_resolution,
+        load_library, member_only_error_count, member_only_video_ids, merge_queue_entries,
+        metadata_arguments, metadata_error_message, mpv_arguments, now_epoch_ms,
+        parse_import_metadata, parse_import_metadata_with_dirty_state, parse_streamed_metadata,
+        resolve_metadata, spawn_parent_exit_watchdog, validate_youtube_url,
     };
     use crate::playback::{
         EditableTrackMetadata, PlaybackSnapshot, PlaybackStatus, Playlist, RepeatMode,
@@ -3715,6 +3788,225 @@ mod tests {
             metadata_error_message(stderr, 0),
             "no playable tracks found; skipped 2 members-only tracks"
         );
+    }
+
+    #[test]
+    fn subscriber_only_process_results_keep_accessible_tracks_on_nonzero_exit() {
+        let stderr = "ERROR: [youtube] M7lc1UVf-VE: Join this channel to get access to members-only content like this video, and other exclusive perks.";
+        for stdout in [
+            "",
+            r#"{"id":"BaW_jenozKc","title":"For Supporters","availability":"subscriber_only"}"#,
+        ] {
+            let result = super::resolve_metadata_command(
+                Command::new("/bin/sh").args([
+                    "-c",
+                    "printf '%s' \"$1\"; printf '%s\\n' \"$2\" >&2; exit 1",
+                    "fixture",
+                    stdout,
+                    stderr,
+                ]),
+                false,
+                |_| {},
+                None,
+            )
+            .unwrap();
+            assert_eq!(result.entries.len(), usize::from(!stdout.is_empty()));
+            assert_eq!(
+                result.skipped_member_only_ids,
+                ["M7lc1UVf-VE".into()].into_iter().collect()
+            );
+        }
+    }
+
+    #[test]
+    fn subscriber_only_filter_leaves_other_playback_running_and_rejects_stale_loads() {
+        let entries = parse_import_metadata(r#"{"entries":[{"id":"M7lc1UVf-VE","title":"Hidden"},{"id":"BaW_jenozKc","title":"Playing"}]}"#).unwrap();
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider
+            .replace_queue(&["M7lc1UVf-VE".into(), "BaW_jenozKc".into()])
+            .unwrap();
+        provider.snapshot.shuffle_enabled = true;
+        provider.reconcile_shuffle_order();
+        provider.snapshot.current_item = Some(provider.snapshot.queue[1].clone());
+        provider.snapshot.status = PlaybackStatus::Playing;
+        let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        provider.player.test_commands = Some(commands.clone());
+        let mut prepared = provider.prepare_transport();
+        prepared.snapshot.current_item = Some(prepared.snapshot.queue[0].clone());
+        prepared.pending_plays.push(("M7lc1UVf-VE".into(), 42));
+        provider
+            .commit_youtube_import(ResolvedYouTubeImport {
+                entries: Vec::new(),
+                skipped_member_only: 1,
+                skipped_member_only_ids: ["M7lc1UVf-VE".into()].into_iter().collect(),
+                timed_out_sources: 0,
+            })
+            .unwrap();
+        assert_eq!(provider.cached_snapshot().status, PlaybackStatus::Playing);
+        assert_eq!(
+            provider.cached_snapshot().current_item.unwrap().id,
+            "BaW_jenozKc"
+        );
+        assert_eq!(provider.cached_snapshot().playback_order, ["BaW_jenozKc"]);
+        assert!(commands.lock().unwrap().is_empty());
+        let snapshot = provider.commit_transport(prepared).unwrap();
+        assert_eq!(snapshot.status, PlaybackStatus::Paused);
+        assert!(snapshot.current_item.is_none());
+        assert_eq!(snapshot.queue.len(), 1);
+        assert_eq!(provider.entries[0].item.play_count, 0);
+    }
+
+    #[test]
+    fn subscriber_only_filter_rolls_back_when_saving_fails() {
+        let dir = std::env::temp_dir().join(format!(
+            "gmusic-subscriber-rollback-{}",
+            now_epoch_ms().unwrap()
+        ));
+        let path = dir.join("library.sqlite3");
+        let entries = parse_import_metadata(r#"{"id":"M7lc1UVf-VE","title":"Retained"}"#).unwrap();
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, Some(path.clone()));
+        provider.persist_library().unwrap();
+        let before = provider.library_snapshot();
+        let database = rusqlite::Connection::open(&path).unwrap();
+        database.execute_batch("CREATE TRIGGER fail_filter BEFORE UPDATE ON tracks BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;").unwrap();
+        assert!(
+            provider
+                .commit_youtube_import(ResolvedYouTubeImport {
+                    entries: Vec::new(),
+                    skipped_member_only: 1,
+                    skipped_member_only_ids: ["M7lc1UVf-VE".into()].into_iter().collect(),
+                    timed_out_sources: 0,
+                })
+                .is_err()
+        );
+        assert_eq!(provider.library_snapshot(), before);
+        assert_eq!(
+            YouTubePlaybackProvider::from_library_path(path)
+                .unwrap()
+                .library_snapshot(),
+            before
+        );
+        drop(database);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn subscriber_only_hidden_tracks_do_not_shift_visible_reorder_indices() {
+        let entries = parse_import_metadata(r#"{"entries":[{"id":"M7lc1UVf-VE","title":"Hidden"},{"id":"BaW_jenozKc","title":"First"},{"id":"abcdefghijk","title":"Second"}]}"#).unwrap();
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider
+            .commit_youtube_import(ResolvedYouTubeImport {
+                entries: Vec::new(),
+                skipped_member_only: 1,
+                skipped_member_only_ids: ["M7lc1UVf-VE".into()].into_iter().collect(),
+                timed_out_sources: 0,
+            })
+            .unwrap();
+        let library = provider.move_library_item(0, 1).unwrap();
+        assert_eq!(
+            library
+                .tracks
+                .iter()
+                .map(|track| track.title.as_str())
+                .collect::<Vec<_>>(),
+            ["Second", "First"]
+        );
+        assert!(provider.move_library_item(0, 2).is_err());
+        assert_eq!(provider.entries.len(), 3);
+    }
+
+    #[test]
+    fn subscriber_only_resolution_is_a_skip_not_a_generic_failure() {
+        for message in [
+            "This video is available to this channel's members on level: Supporters",
+            "Join this channel to get access to members-only content like this video, and other exclusive perks.",
+            "This is subscriber-only content",
+        ] {
+            let stderr = format!("ERROR: [youtube] M7lc1UVf-VE: {message}");
+            let resolution = finish_metadata_resolution(Vec::new(), &stderr, false)
+                .expect("confirmed subscriber-only denial is a skipped result");
+            assert!(resolution.entries.is_empty());
+            assert_eq!(resolution.skipped_member_only, 1);
+            assert!(resolution.skipped_member_only_ids.contains("M7lc1UVf-VE"));
+        }
+        for stderr in [
+            "ERROR: [youtube] M7lc1UVf-VE: Connection timed out",
+            "ERROR: [youtube] M7lc1UVf-VE: Sign in to confirm you're not a bot",
+            "WARNING: members-only downloads may require cookies",
+            "ERROR: [youtube] invalid: This is subscriber-only content",
+        ] {
+            assert!(finish_metadata_resolution(Vec::new(), stderr, false).is_err());
+        }
+    }
+
+    #[test]
+    fn subscriber_only_filter_preserves_saved_data_and_restores_accessible_reimports() {
+        let dir = std::env::temp_dir().join(format!(
+            "gmusic-subscriber-filter-{}",
+            now_epoch_ms().unwrap()
+        ));
+        let path = dir.join("library.sqlite3");
+        let entries = parse_import_metadata_with_dirty_state(
+            r#"{"entries":[{"id":"M7lc1UVf-VE","title":"For Supporters"},{"id":"BaW_jenozKc","title":"Public - For Supporters"}]}"#,
+            true,
+        ).unwrap();
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, Some(path.clone()));
+        provider
+            .replace_queue(&["M7lc1UVf-VE".into(), "BaW_jenozKc".into()])
+            .unwrap();
+        provider.toggle_favorite("M7lc1UVf-VE").unwrap();
+        provider.record_playback_start("M7lc1UVf-VE", 42).unwrap();
+        let saved_state = provider.saved_playback_state();
+        provider
+            .commit_youtube_import(ResolvedYouTubeImport {
+                entries: Vec::new(),
+                skipped_member_only: 1,
+                skipped_member_only_ids: ["M7lc1UVf-VE".into()].into_iter().collect(),
+                timed_out_sources: 0,
+            })
+            .unwrap();
+        assert_eq!(provider.library_snapshot().tracks.len(), 1);
+        assert_eq!(provider.cached_snapshot().queue[0].id, "BaW_jenozKc");
+        assert_eq!(provider.cached_snapshot().queue.len(), 1);
+        assert!(provider.library_item("M7lc1UVf-VE").is_err());
+        assert!(provider.dirty_track_source("M7lc1UVf-VE").is_none());
+        assert!(
+            provider.library_snapshot().playlists[0]
+                .track_ids
+                .is_empty()
+        );
+        let stored = load_library(&path).unwrap();
+        assert_eq!(stored.entries.len(), 2);
+        assert_eq!(stored.entries[0].item.play_history_ms, [42]);
+        assert_eq!(stored.playlists[0].track_ids, ["M7lc1UVf-VE"]);
+        let mut restored = YouTubePlaybackProvider::from_library_path(path).unwrap();
+        restored.restore_playback_state(saved_state);
+        assert_eq!(restored.library_snapshot().tracks.len(), 1);
+        assert_eq!(restored.cached_snapshot().queue.len(), 1);
+        restored
+            .commit_youtube_import(ResolvedYouTubeImport {
+                entries: parse_import_metadata(
+                    r#"{"id":"M7lc1UVf-VE","title":"Accessible","availability":"subscriber_only"}"#,
+                )
+                .unwrap(),
+                skipped_member_only: 0,
+                skipped_member_only_ids: HashSet::new(),
+                timed_out_sources: 0,
+            })
+            .unwrap();
+        assert_eq!(restored.library_snapshot().tracks.len(), 2);
+        assert_eq!(
+            restored.library_snapshot().playlists[0].track_ids,
+            ["M7lc1UVf-VE"]
+        );
+        assert_eq!(
+            restored
+                .library_item("M7lc1UVf-VE")
+                .unwrap()
+                .play_history_ms,
+            [42]
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

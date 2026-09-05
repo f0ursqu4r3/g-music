@@ -385,6 +385,16 @@ const metadataRefreshRemaining = computed(() =>
     0,
   ),
 );
+const metadataRefreshFailed = computed(
+  () =>
+    props.metadataRefreshes?.jobs.filter((job) => job.state === "failed")
+      .length ?? 0,
+);
+const metadataRefreshSkipped = computed(
+  () =>
+    props.metadataRefreshes?.jobs.filter((job) => job.state === "skipped")
+      .length ?? 0,
+);
 const hasActiveMetadataRefresh = computed(
   () =>
     metadataRefreshRemaining.value > 0 &&
@@ -956,10 +966,6 @@ function toggleOptions(open: boolean): void {
   libraryOptionsOpen.value = open;
 }
 
-function toggleMetadataRefresh(): void {
-  metadataRefreshDrawerOpen.value = !metadataRefreshDrawerOpen.value;
-}
-
 function resizeSidebar(width: number): void {
   sidebarWidth.value = Math.min(360, Math.max(180, Math.round(width)));
 }
@@ -1035,6 +1041,8 @@ onBeforeUnmount(finishTrackDrag);
           :library-options-open="libraryOptionsOpen"
           :metadata-refresh-drawer-open="metadataRefreshDrawerOpen"
           :metadata-refresh-remaining="metadataRefreshRemaining"
+          :metadata-refresh-failed="metadataRefreshFailed"
+          :metadata-refresh-skipped="metadataRefreshSkipped"
           :sort-by="sortBy"
           :search-open="searchOpen"
           @toggle-search="toggleSearch"
@@ -1042,10 +1050,20 @@ onBeforeUnmount(finishTrackDrag);
           @set-grid-item-size="setGridItemSize"
           @set-group="setGroup"
           @set-sort="setSort"
-          @toggle-metadata-refresh="toggleMetadataRefresh"
+          @toggle-metadata-refresh="metadataRefreshDrawerOpen = $event"
           @toggle-options="toggleOptions"
           @play-playlist="playActivePlaylist"
-        />
+        >
+          <template #metadata-refresh>
+            <MetadataRefreshDrawer
+              v-if="metadataRefreshes"
+              :refreshes="metadataRefreshes"
+              :is-retrying="isRetryingMetadata"
+              @retry="emit('retryMetadataRefreshes')"
+              @close="metadataRefreshDrawerOpen = false"
+            />
+          </template>
+        </LibraryHeader>
         <section
           v-if="isImporting && importProgress"
           aria-label="Import progress"
@@ -1238,13 +1256,6 @@ onBeforeUnmount(finishTrackDrag);
       @toggle="togglePlayback"
       @cycle-repeat-mode="emit('cycleRepeatMode')"
       @toggle-details="detailsSidebarOpen = !detailsSidebarOpen"
-    />
-
-    <MetadataRefreshDrawer
-      v-if="metadataRefreshDrawerOpen && metadataRefreshes"
-      :refreshes="metadataRefreshes"
-      :is-retrying="isRetryingMetadata"
-      @retry="emit('retryMetadataRefreshes')"
     />
 
     <LibraryMetadataEditor

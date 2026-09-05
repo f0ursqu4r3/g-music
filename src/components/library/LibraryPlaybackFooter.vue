@@ -168,7 +168,7 @@ function emitSeek(values: number[]): void {
                 : 'Play'
           "
           :aria-busy="props.isStarting ? 'true' : undefined"
-          class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
+          class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) disabled:bg-(--text)/50 disabled:opacity-100"
           size="icon"
           :disabled="props.isUpdating || props.isStarting"
           @click="emit('toggle')"

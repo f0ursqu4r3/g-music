@@ -201,6 +201,8 @@ describe("LibrarySidebar", () => {
     expect(menu?.classList).toContain("py-1.5");
     expect(menu?.classList).not.toContain("p-1.5");
     expect(item?.classList).toContain("rounded-none");
+    expect(menu?.classList).toContain("bg-(--menu-surface)");
+    expect(item?.classList).toContain("data-highlighted:bg-(--text)/10");
     expect(item?.classList).not.toContain("rounded-md");
 
     wrapper.unmount();

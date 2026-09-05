@@ -136,7 +136,7 @@ function emitSeek(values: number[]): void {
               as="h1"
               class="text-2xl font-semibold tracking-[-0.04em]"
               speed="slow"
-              :text="currentItem?.title ?? 'Nothing selected'"
+              :text="currentItem?.title ?? 'Nothing playing'"
             />
             <AutoScrollText
               as="p"
@@ -207,7 +207,7 @@ function emitSeek(values: number[]): void {
               isStarting ? 'Starting playback' : isPlaying ? 'Pause' : 'Play'
             "
             :aria-busy="isStarting ? 'true' : undefined"
-            class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text)"
+            class="size-10 rounded-full bg-(--text) text-(--accent-ink) hover:bg-(--text) disabled:bg-(--text)/50 disabled:opacity-100"
             size="icon"
             :disabled="
               isUpdating ||

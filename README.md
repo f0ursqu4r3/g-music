@@ -69,6 +69,27 @@ extractor error markers; it does not treat every network or format error as an
 expired session. Raw extractor messages and session values stay out of the UI
 and application logs.
 
+### Subscriber-only tracks during metadata refresh
+
+YouTube tracks that require a channel membership or supporter subscription may be
+inaccessible to the current YouTube session. When the metadata refresh job for
+such a track is skipped by the backend, G Music handles it as follows:
+
+- The track stays hidden from the library track list and play queue, including
+  after restart. The database record, play history, and playlist membership are
+  preserved. Only a confirmed provider access denial triggers this filter;
+  titles and the provider's `subscriber_only` metadata value do not.
+- The Metadata refresh drawer shows a dedicated **Skipped** section for
+  skipped tracks, separate from refreshed and failed tracks.
+- Skipped tracks do not count toward the refreshed or failed tallies.
+- The **Retry failed metadata** button does not appear when only skipped tracks
+  are present; it only appears when real network or parse failures exist.
+- The status line says "Finished with skipped tracks" when skips are the only
+  non-refreshed outcome. The library header keeps the skipped count and details
+  available after completion.
+- Re-importing a track with a YouTube session that has the required membership
+  restores full metadata and makes the track visible again.
+
 ## Hermes library control
 
 When G Music starts, it opens a local Unix socket at:
