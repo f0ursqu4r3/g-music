@@ -105,6 +105,7 @@ const isCreatingPlaylist = ref(false);
 const detailsSidebarOpen = ref(false);
 const activePlaylistId = ref<string>();
 const sidebarWidth = ref(244);
+const isSidebarResizing = ref(false);
 const playback = computed<PlaybackTransport>(
   () =>
     props.transport ??
@@ -969,12 +970,15 @@ onBeforeUnmount(finishTrackDrag);
 <template>
   <main
     ref="libraryElement"
-    class="library-window window-shell window-surface grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none max-[1040px]:grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
-    :class="
+    class="library-window window-shell window-surface grid h-screen min-h-0 grid-rows-[minmax(0,1fr)_64px] max-[1040px]:grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)] max-[920px]:grid-rows-[minmax(0,1fr)_104px] max-[760px]:grid-cols-1"
+    :class="[
       detailsSidebarOpen
         ? 'grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)_272px]'
-        : 'grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)_0px]'
-    "
+        : 'grid-cols-[var(--library-sidebar-width)_minmax(0,1fr)_0px]',
+      isSidebarResizing
+        ? 'transition-none'
+        : 'transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none',
+    ]"
     :style="{ '--library-sidebar-width': `${sidebarWidth}px` }"
     aria-label="Music library"
   >
@@ -1004,6 +1008,8 @@ onBeforeUnmount(finishTrackDrag);
       @select-collection="selectCollection"
       @select-playlist="selectPlaylist"
       @resize-sidebar="resizeSidebar"
+      @sidebar-resize-end="isSidebarResizing = false"
+      @sidebar-resize-start="isSidebarResizing = true"
     />
 
     <section

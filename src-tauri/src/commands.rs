@@ -418,7 +418,11 @@ impl MetadataRefreshState {
 impl From<YouTubePlaybackError> for CommandError {
     fn from(error: YouTubePlaybackError) -> Self {
         Self {
-            code: "youtube_playback_failed",
+            code: if matches!(error, YouTubePlaybackError::SessionExpired) {
+                "youtube_session_expired"
+            } else {
+                "youtube_playback_failed"
+            },
             message: error.to_string(),
         }
     }

@@ -188,6 +188,31 @@ afterEach(() => {
 });
 
 describe("App product workflows through real components and IPC", () => {
+  it.each(["library", "mini", "queue", "artwork", "settings"])(
+    "reconnects an expired YouTube session from the %s error notification",
+    async (view) => {
+      const app = await open(view);
+      const message =
+        "Your saved YouTube session may have expired. Sign in again, save the session, then retry playback.";
+      events.get("playback-error")?.({
+        payload: { code: "youtube_session_expired", message },
+      });
+      await flushPromises();
+      const action = () => app.get("[data-sonner-toast] button[data-action]");
+      expect(action().text()).toBe("Reconnect YouTube");
+      await action().trigger("click");
+      await flushPromises();
+      expect(invoke).toHaveBeenCalledWith("open_youtube_login");
+      expect(invoke).not.toHaveBeenCalledWith("disconnect_youtube");
+      expect(action().text()).toBe("Save session and retry");
+      expect(app.text()).toContain("Complete sign-in in the YouTube window");
+      await action().trigger("click");
+      await flushPromises();
+      expect(invoke).toHaveBeenCalledWith("save_youtube_session");
+      expect(invoke).toHaveBeenCalledWith("play");
+    },
+  );
+
   it("shows a startup string error once and retries the failed inspection", async () => {
     const message = "Command inspect_import_progress not found";
     commandOverrides.set("inspect_import_progress", () =>
@@ -217,8 +242,53 @@ describe("App product workflows through real components and IPC", () => {
     events.get("playback-error")?.({ payload: { code: "player", message } });
     await flushPromises();
     expect(app.text().split(message)).toHaveLength(2);
+    expect(app.get("[data-sonner-toast] button[data-action]").text()).toBe(
+      "Retry",
+    );
     await app.get('button[aria-label="Dismiss error"]').trigger("click");
     await expect.poll(() => app.text()).not.toContain(message);
+  });
+
+  it("keeps the reconnect notification after a failed save and blocks duplicate saves", async () => {
+    const app = await open("library");
+    events.get("playback-error")?.({
+      payload: {
+        code: "youtube_session_expired",
+        message: "Sign in again to restore your YouTube session.",
+      },
+    });
+    await flushPromises();
+    const action = () => app.get("[data-sonner-toast] button[data-action]");
+    await action().trigger("click");
+    await flushPromises();
+    let reject!: (reason: unknown) => void;
+    commandOverrides.set(
+      "save_youtube_session",
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    );
+    await action().trigger("click");
+    await action().trigger("click");
+    expect(
+      vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === "save_youtube_session"),
+    ).toHaveLength(1);
+    reject({ message: "Finish signing in before saving the session." });
+    await flushPromises();
+    expect(app.text()).toContain(
+      "Finish signing in before saving the session.",
+    );
+    expect(action().text()).toBe("Save session and retry");
+    expect(invoke).not.toHaveBeenCalledWith("play");
+    commandOverrides.set("save_youtube_session", async () => ({
+      connected: true,
+    }));
+    await action().trigger("click");
+    await flushPromises();
+    expect(invoke).toHaveBeenCalledWith("play");
   });
 
   it("updates one Sonner toast when the same playback error repeats", async () => {

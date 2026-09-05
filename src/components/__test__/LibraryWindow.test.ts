@@ -808,6 +808,30 @@ describe("LibraryWindow", () => {
     );
   });
 
+  it("disables sidebar width transitions during a pointer resize", async () => {
+    const wrapper = mount(LibraryWindow, {
+      attachTo: document.body,
+      props: { isUpdating: false, snapshot },
+    });
+
+    const library = wrapper.get("main");
+    const divider = wrapper.get("[data-library-sidebar-resize]");
+    expect(library.classes()).toContain("transition-[grid-template-columns]");
+
+    await divider.trigger("mousedown", { button: 0, clientX: 300 });
+
+    expect(library.classes()).toContain("transition-none");
+    expect(library.classes()).not.toContain(
+      "transition-[grid-template-columns]",
+    );
+
+    window.dispatchEvent(new MouseEvent("mouseup"));
+    await wrapper.vm.$nextTick();
+
+    expect(library.classes()).toContain("transition-[grid-template-columns]");
+    expect(library.classes()).not.toContain("transition-none");
+  });
+
   it("uses shared scroll areas for library content surfaces", async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,

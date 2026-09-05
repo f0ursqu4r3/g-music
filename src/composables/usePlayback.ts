@@ -71,6 +71,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     };
   });
   const errorMessage = ref("");
+  const errorCode = ref("");
   const importProgress = ref<ImportProgress | null>(null);
   const metadataRefreshes = ref<MetadataRefreshSnapshot>({
     completedTracks: 0,
@@ -100,6 +101,13 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
   function reportError(error: unknown, retry?: () => Promise<unknown>): void {
     if (!alive) return;
     errorMessage.value = readErrorMessage(error);
+    errorCode.value =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "";
     retryAction = retry;
   }
 
@@ -630,6 +638,7 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     cycleRepeatMode,
     deletePlaylist,
     errorMessage,
+    errorCode,
     importProgress,
     isImporting,
     isStarting,

@@ -54,6 +54,21 @@ Logs include Tauri commands, YouTube metadata resolution, queue persistence,
 `mpv` process startup, and IPC command names. They do not include cookie values,
 cookie paths, raw stream URLs, or IPC payload bodies.
 
+### Playback session errors
+
+A password change can invalidate the saved YouTube session. G Music waits for
+`mpv` to finish loading each track. A failed load stops playback instead of
+skipping through the queue. Known session failures show a persistent notification:
+
+1. Select **Reconnect YouTube** to open the sign-in window.
+2. Complete sign-in in that window.
+3. Select **Save session and retry** in the notification.
+
+Other load failures keep the normal Retry action. Session detection uses known
+extractor error markers; it does not treat every network or format error as an
+expired session. Raw extractor messages and session values stay out of the UI
+and application logs.
+
 ## Hermes library control
 
 When G Music starts, it opens a local Unix socket at:

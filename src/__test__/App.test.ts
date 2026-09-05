@@ -117,6 +117,7 @@ vi.mock("@/composables/usePlayback", () => ({
       value: { completedTracks: 0, jobs: [], totalTracks: 0 },
     },
     errorMessage: { value: "" },
+    errorCode: { value: "" },
     refresh: playbackMocks.refresh,
     initialize: playbackMocks.refresh,
     sync: playbackMocks.sync,

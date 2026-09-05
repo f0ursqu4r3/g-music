@@ -21,6 +21,7 @@ import {
   type PlaybackTransport,
   type Playlist,
   windowApi,
+  youtubeAuthApi,
 } from "@/api";
 import { resolvePlaybackHotkey } from "@/lib/hotkeys";
 import { useTheme, themes } from "@/lib/theme";
@@ -67,6 +68,8 @@ const startupAttempted = ref(false);
 let retryWindowAction: (() => Promise<void>) | undefined;
 let errorToastId: string | number | undefined;
 const isRetryingError = ref(false);
+const isReconnectingYouTube = ref(false);
+const youtubeReconnectError = ref("");
 
 const isViewLoaded = computed(() =>
   view === "library"
@@ -97,11 +100,27 @@ const canDismissError = computed(
   () =>
     isViewLoaded.value && !failedSubscriptions.size && !isRetryingError.value,
 );
+const needsYouTubeReconnect = computed(
+  () =>
+    !windowError.value &&
+    !failedSubscriptions.size &&
+    Boolean(playback.errorMessage.value) &&
+    playback.errorCode.value === "youtube_session_expired",
+);
+watch(needsYouTubeReconnect, (needed) => {
+  if (!needed) {
+    isReconnectingYouTube.value = false;
+    youtubeReconnectError.value = "";
+  }
+});
 watch(
   [
     displayedError,
     canDismissError,
     isRetryingError,
+    needsYouTubeReconnect,
+    isReconnectingYouTube,
+    youtubeReconnectError,
     () => playback.isUpdating.value,
   ],
   ([message, dismissible]) => {
@@ -117,8 +136,19 @@ watch(
       duration: Infinity,
       dismissible,
       closeButton: dismissible,
+      description:
+        youtubeReconnectError.value ||
+        (needsYouTubeReconnect.value && isReconnectingYouTube.value
+          ? "Complete sign-in in the YouTube window, then select Save session and retry."
+          : undefined),
       action: {
-        label: isRetryingError.value ? "Retrying…" : "Retry",
+        label: isRetryingError.value
+          ? "Retrying…"
+          : needsYouTubeReconnect.value
+            ? isReconnectingYouTube.value
+              ? "Save session and retry"
+              : "Reconnect YouTube"
+            : "Retry",
         onClick: (event) => {
           // Sonner otherwise removes the toast before an async retry can fail.
           event.preventDefault();
@@ -139,6 +169,26 @@ watch(
 async function retryError(): Promise<void> {
   isRetryingError.value = true;
   try {
+    if (needsYouTubeReconnect.value) {
+      youtubeReconnectError.value = "";
+      try {
+        if (!isReconnectingYouTube.value) {
+          await youtubeAuthApi.openLogin();
+          if (isMounted) isReconnectingYouTube.value = true;
+          return;
+        }
+        await youtubeAuthApi.saveSession();
+        if (!isMounted) return;
+        isReconnectingYouTube.value = false;
+      } catch (error) {
+        if (isMounted)
+          youtubeReconnectError.value =
+            typeof error === "object" && error !== null && "message" in error
+              ? String(error.message)
+              : "Could not reconnect YouTube. Complete sign-in and try again.";
+        return;
+      }
+    }
     await retryOperation();
   } finally {
     isRetryingError.value = false;

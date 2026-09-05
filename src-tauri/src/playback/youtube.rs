@@ -62,6 +62,16 @@ pub enum YouTubePlaybackError {
     #[error("The audio player failed. Check the system audio output and retry Play.")]
     Player(String),
 
+    #[error(
+        "Could not load this track. Check the connection and yt-dlp. If YouTube is connected, reconnect the session or disconnect it for public playback."
+    )]
+    MediaLoad,
+
+    #[error(
+        "Your saved YouTube session may have expired or been invalidated by a password change. Sign in again, save the session, then retry playback."
+    )]
+    SessionExpired,
+
     #[error("queue index {index} is outside the current queue")]
     QueueIndexOutOfBounds { index: usize },
 
@@ -2552,9 +2562,35 @@ impl MpvPlayer {
         }
         let mut stream = UnixStream::connect(&self.socket_path)
             .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+        let loading = command_name == "loadfile";
+        // Configure once, before any request. On macOS, changing socket options
+        // after a peer closes can fail even while its replies remain buffered.
         stream
-            .set_read_timeout(Some(IPC_TIMEOUT))
+            .set_read_timeout(Some(if loading {
+                MEDIA_LOAD_POLL_INTERVAL
+            } else {
+                IPC_TIMEOUT
+            }))
             .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+        // Classify extractor messages in memory. Never expose their raw content.
+        if loading && self.session_cookie_path.is_some() {
+            serde_json::to_writer(
+                &mut stream,
+                &json!({
+                    "command": ["request_log_messages", "warn"]
+                }),
+            )
+            .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+            stream
+                .write_all(b"\n")
+                .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+        }
+        let deadline = Instant::now()
+            + if loading {
+                MEDIA_LOAD_TIMEOUT
+            } else {
+                IPC_TIMEOUT
+            };
         let request = json!({
             "command": command,
             "request_id": request_id,
@@ -2567,11 +2603,32 @@ impl MpvPlayer {
 
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
+        let mut acknowledged = false;
+        let mut started = false;
+        let mut loaded = false;
+        let mut session_failed = false;
         loop {
-            line.clear();
-            let bytes = reader
-                .read_line(&mut line)
-                .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(if loading {
+                    YouTubePlaybackError::MediaLoad
+                } else {
+                    YouTubePlaybackError::Player("timed out waiting for mpv".into())
+                });
+            }
+            let bytes = match reader.read_line(&mut line) {
+                Ok(bytes) => bytes,
+                Err(error)
+                    if loading
+                        && matches!(
+                            error.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(YouTubePlaybackError::Player(error.to_string())),
+            };
             if bytes == 0 {
                 return Err(YouTubePlaybackError::Player(
                     "mpv closed the IPC connection".into(),
@@ -2579,6 +2636,41 @@ impl MpvPlayer {
             }
             let response: Value = serde_json::from_str(&line)
                 .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
+            line.clear();
+            if loading {
+                match response.get("event").and_then(Value::as_str) {
+                    Some("log-message")
+                        if self.session_cookie_path.is_some()
+                            && response.get("prefix").and_then(Value::as_str)
+                                == Some("ytdl_hook") =>
+                    {
+                        let message = response
+                            .get("text")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_ascii_lowercase();
+                        session_failed |= message.contains("innertube_context")
+                            || message.contains("cookies are no longer valid")
+                            || message.contains("cookies have expired");
+                    }
+                    Some("start-file") => started = true,
+                    Some("file-loaded") if started => loaded = true,
+                    // A replacement can first stop the previous file. Only the new
+                    // file's terminal event can fail this load.
+                    Some("end-file") if started => {
+                        tracing::warn!("mpv ended the requested track before media loaded");
+                        return Err(if session_failed {
+                            YouTubePlaybackError::SessionExpired
+                        } else {
+                            YouTubePlaybackError::MediaLoad
+                        });
+                    }
+                    _ => {}
+                }
+                if acknowledged && loaded {
+                    return Ok(Value::Null);
+                }
+            }
             if response.get("request_id").and_then(Value::as_u64) != Some(request_id) {
                 continue;
             }
@@ -2595,6 +2687,10 @@ impl MpvPlayer {
                 return Err(YouTubePlaybackError::Player(
                     error.unwrap_or("unknown mpv error").to_owned(),
                 ));
+            }
+            if loading && !loaded {
+                acknowledged = true;
+                continue;
             }
             if command_name == "get_property" {
                 tracing::trace!(
@@ -2969,6 +3065,10 @@ mod tests {
                 stream
                     .write_all(b"\n")
                     .expect("player response should terminate");
+                if command[0] == "loadfile" {
+                    writeln!(stream, "{}", serde_json::json!({"event": "start-file"})).unwrap();
+                    writeln!(stream, "{}", serde_json::json!({"event": "file-loaded"})).unwrap();
+                }
                 if command == serde_json::json!(["set_property", "pause", false]) {
                     break;
                 }
@@ -3018,6 +3118,144 @@ mod tests {
     }
 
     #[test]
+    fn authenticated_load_classifies_session_failure_without_exposing_logs() {
+        for marker in [
+            "KeyError('INNERTUBE_CONTEXT')",
+            "The provided YouTube account cookies are no longer valid",
+            "HTTP Error 403",
+        ] {
+            let mut player = MpvPlayer::new();
+            player.session_cookie_path = Some("/private/session-fixture".into());
+            let listener = UnixListener::bind(&player.socket_path).unwrap();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let request = loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                    if request["command"][0] == "loadfile" {
+                        break request;
+                    }
+                };
+                for response in [
+                    serde_json::json!({"request_id": request["request_id"], "error": "success"}),
+                    serde_json::json!({"event": "start-file"}),
+                    serde_json::json!({"event": "log-message", "prefix": "ytdl_hook", "level": "error", "text": format!("{marker} private-fixture-secret")}),
+                    serde_json::json!({"event": "end-file", "reason": "error", "file_error": "unrecognized file format"}),
+                ] {
+                    let _ = writeln!(stream, "{response}");
+                }
+            });
+            let result = player.send(serde_json::json!([
+                "loadfile",
+                "https://www.youtube.com/watch?v=Qz0Qyd7fvZk",
+                "replace"
+            ]));
+            server.join().unwrap();
+            let error = result.unwrap_err();
+            let detail = format!("{error:?}");
+            let command_error = crate::commands::CommandError::from(error);
+            assert_eq!(
+                command_error.code,
+                if marker == "HTTP Error 403" {
+                    "youtube_playback_failed"
+                } else {
+                    "youtube_session_expired"
+                },
+                "{marker}: {detail}"
+            );
+            assert!(!command_error.message.contains("private-fixture-secret"));
+        }
+    }
+
+    #[test]
+    fn loadfile_rejects_extractor_failure_after_command_acknowledgment() {
+        let mut player = MpvPlayer::new();
+        let listener = UnixListener::bind(&player.socket_path).unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = String::new();
+            BufReader::new(stream.try_clone().unwrap())
+                .read_line(&mut request)
+                .unwrap();
+            let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+            for response in [
+                serde_json::json!({"request_id": request["request_id"], "error": "success"}),
+                serde_json::json!({"event": "start-file", "playlist_entry_id": 1}),
+                serde_json::json!({"event": "end-file", "playlist_entry_id": 1,
+                    "reason": "error", "file_error": "unrecognized file format"}),
+            ] {
+                let _ = writeln!(stream, "{response}");
+            }
+        });
+
+        let result = player.send(serde_json::json!([
+            "loadfile",
+            "https://www.youtube.com/watch?v=Qz0Qyd7fvZk",
+            "replace"
+        ]));
+        server.join().unwrap();
+        assert!(
+            result.is_err(),
+            "an accepted load command is not successful playback"
+        );
+    }
+
+    #[test]
+    fn loadfile_waits_for_file_loaded_not_command_acknowledgment() {
+        let mut player = MpvPlayer::new();
+        let listener = UnixListener::bind(&player.socket_path).unwrap();
+        let (ack_tx, ack_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = String::new();
+            BufReader::new(stream.try_clone().unwrap())
+                .read_line(&mut request)
+                .unwrap();
+            let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+            writeln!(
+                stream,
+                "{}",
+                serde_json::json!({
+                    "request_id": request["request_id"], "error": "success"
+                })
+            )
+            .unwrap();
+            writeln!(stream, "{}", serde_json::json!({"event": "start-file"})).unwrap();
+            ack_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            let _ = writeln!(stream, "{}", serde_json::json!({"event": "file-loaded"}));
+        });
+        let client = thread::spawn(move || {
+            result_tx
+                .send(player.send(serde_json::json!([
+                    "loadfile",
+                    "https://www.youtube.com/watch?v=Qz0Qyd7fvZk",
+                    "replace"
+                ])))
+                .unwrap();
+        });
+        ack_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let premature = result_rx.recv_timeout(Duration::from_millis(50));
+        release_tx.send(()).unwrap();
+        server.join().unwrap();
+        client.join().unwrap();
+        assert!(
+            premature.is_err(),
+            "load must stay pending during stream resolution"
+        );
+        assert!(
+            result_rx
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn load_waits_until_mpv_reports_a_media_path() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3046,6 +3284,9 @@ mod tests {
                     }
                     Err(error) => panic!("loading player socket failed: {error}"),
                 };
+                stream
+                    .set_nonblocking(false)
+                    .expect("fixture requests should be blocking");
                 idle_deadline = Instant::now() + Duration::from_millis(100);
                 let mut request = String::new();
                 BufReader::new(
@@ -3081,6 +3322,10 @@ mod tests {
                 stream
                     .write_all(b"\n")
                     .expect("player response should terminate");
+                if command[0] == "loadfile" {
+                    writeln!(stream, "{}", serde_json::json!({"event": "start-file"})).unwrap();
+                    writeln!(stream, "{}", serde_json::json!({"event": "file-loaded"})).unwrap();
+                }
                 if path_checks == 2 {
                     break;
                 }

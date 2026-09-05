@@ -49,6 +49,8 @@ const emit = defineEmits<{
   playPlaylist: [playlist: Playlist];
   reorderPlaylists: [playlistIds: string[]];
   resizeSidebar: [width: number];
+  sidebarResizeStart: [];
+  sidebarResizeEnd: [];
 }>();
 
 const sidebarMinimumWidth = 180;
@@ -220,6 +222,7 @@ function startSidebarResize(event: MouseEvent): void {
 
   event.preventDefault();
   stopSidebarResize?.();
+  emit("sidebarResizeStart");
   const startX = event.clientX;
   const startWidth = props.sidebarWidth ?? 244;
   const handleMouseMove = (moveEvent: MouseEvent): void => {
@@ -232,6 +235,7 @@ function startSidebarResize(event: MouseEvent): void {
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
     stopSidebarResize = undefined;
+    emit("sidebarResizeEnd");
   };
 
   stopSidebarResize = handleMouseUp;
