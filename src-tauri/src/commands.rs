@@ -498,6 +498,7 @@ fn unavailable() -> CommandError {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn cached_transport(app: &AppHandle) -> Result<PlaybackTransport, CommandError> {
     Ok(app
         .state::<AppState>()
@@ -507,12 +508,14 @@ pub(crate) fn cached_transport(app: &AppHandle) -> Result<PlaybackTransport, Com
         .cached_transport())
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn native_pause_hint(app: &AppHandle) {
     app.state::<AppState>()
         .pause_epoch
         .fetch_add(1, Ordering::AcqRel);
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn native_transport(
     app: &AppHandle,
     action: crate::media_session::NativeAction,
