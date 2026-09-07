@@ -11,8 +11,8 @@ const props = defineProps<{
 const source = ref<string | null>(null)
 let requestId = 0
 const youtubeVideoId = computed(() => {
-  const videoId = props.videoId?.trim() ?? ''
-  return /^[A-Za-z0-9_-]{11}$/.test(videoId) ? videoId : null
+  const videoId = props.videoId ?? ''
+  return videoId.length === 11 && /^[A-Za-z0-9_-]{11}$/.test(videoId) ? videoId : null
 })
 watch(
   youtubeVideoId,
@@ -36,7 +36,9 @@ watch(
   { immediate: true },
 )
 
-function clearBrokenImage(): void {
+function clearBrokenImage(event: Event): void {
+  if ((event.target as HTMLImageElement).getAttribute('src') !== source.value) return
+  if (youtubeVideoId.value) artworkApi.invalidateYouTube(youtubeVideoId.value)
   source.value = null
 }
 </script>

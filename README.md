@@ -26,6 +26,42 @@ not save media files or collect Google credentials.
 - Per-track play counts, last-played times, and a bounded play-time history.
 - A private local agent socket and an MCP bridge for Hermes-driven organization.
 
+## Artwork cache
+
+Artwork persists in the application data directory under `artwork/`. The
+`artwork_cache` table in `library.sqlite3` tracks file size and last access.
+The cache keeps up to **512 MiB** of indexed images and evicts the least recently
+used files. Each image has an **8 MiB** limit. This cache stores artwork only.
+
+One backend resolver serves all native windows. It checks cached max-resolution
+and HQ images before any network request, including after an app restart.
+Valid cached images remain available offline until eviction. Missing, invalid,
+or oversized files are removed from the index and can be fetched again.
+
+The resolver combines concurrent requests for the same video ID. It permits
+**4 blocking jobs** across windows. Excess requests wait asynchronously for a
+job slot instead of creating more workers or returning a missing image.
+Network requests run concurrently and reuse an HTTP client. Each quality has a
+**10-second timeout**. A failed max-resolution fetch still tries HQ. Failed
+lookups have a **5-second cooldown**, held in a bounded list of **256 IDs**.
+Local files are checked before this cooldown.
+
+Downloads read at most 8 MiB plus one byte to detect overflow. Cached file checks
+use file size and at most 12 signature bytes. Supported signatures are JPEG,
+PNG, and WebP. Writes use unique temporary files and atomic rename; errors remove
+the temporary file. Artwork directories have owner-only `0700` permissions and
+new files have `0600` permissions. The asset protocol stays scoped to
+`$APPDATA/artwork/**`.
+
+Each WebView also keeps up to **256 results** in least-recently-used order.
+Successful paths expire after **30 seconds**, since another window can evict the
+file. Missing results and command errors expire after **2 seconds**. Each WebView
+allows **8 active requests** and queues the rest, sharing promises for duplicate
+video IDs. Both layers accept only exact 11-character YouTube video IDs.
+An image load error clears its WebView cache entry
+and shows the placeholder. Expiry and invalidation do not start automatic retry
+loops. Responses for an earlier video cannot replace the current image.
+
 ## Development
 
 Install the local playback tools:

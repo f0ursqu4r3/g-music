@@ -187,12 +187,67 @@ export const playbackApi = {
     invoke<PlaybackSnapshot>('remove_queue_item', { index }),
 }
 
+// Each WebView owns this small cache. Disk paths can be evicted by another window.
+const artworkResults = new Map<string, { value: string | null; expires: number }>()
+const artworkRequests = new Map<string, Promise<string | null>>()
+let activeArtworkRequests = 0
+const artworkQueue: (() => Promise<void>)[] = []
+
+function requestArtwork(videoId: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const start = async (): Promise<void> => {
+      activeArtworkRequests++
+      try {
+        const path = await invoke<string | null>('resolve_youtube_artwork', { videoId })
+        resolve(path ? convertFileSrc(path) : null)
+      } catch {
+        resolve(null)
+      } finally {
+        activeArtworkRequests--
+        void artworkQueue.shift()?.()
+      }
+    }
+    if (activeArtworkRequests < 8) void start()
+    else artworkQueue.push(start)
+  })
+}
+
 export const artworkApi = {
-  resolveYouTube: async (videoId: string): Promise<string | null> => {
-    const localPath = await invoke<string | null>('resolve_youtube_artwork', {
-      videoId,
+  resolveYouTube: (videoId: string): Promise<string | null> => {
+    if (videoId.length !== 11 || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      return Promise.resolve(null)
+    }
+    const cached = artworkResults.get(videoId)
+    if (cached) {
+      artworkResults.delete(videoId)
+      if (cached.expires > Date.now()) {
+        artworkResults.set(videoId, cached)
+        return Promise.resolve(cached.value)
+      }
+    }
+    const pending = artworkRequests.get(videoId)
+    if (pending) return pending
+
+    const request = requestArtwork(videoId).then((value) => {
+      if (artworkRequests.get(videoId) === request) {
+        artworkRequests.delete(videoId)
+        artworkResults.delete(videoId)
+        artworkResults.set(videoId, {
+          value,
+          expires: Date.now() + (value ? 30_000 : 2_000),
+        })
+        if (artworkResults.size > 256) {
+          artworkResults.delete(artworkResults.keys().next().value!)
+        }
+      }
+      return value
     })
-    return localPath ? convertFileSrc(localPath) : null
+    artworkRequests.set(videoId, request)
+    return request
+  },
+  invalidateYouTube: (videoId: string): void => {
+    artworkResults.delete(videoId)
+    artworkRequests.delete(videoId)
   },
 }
 
