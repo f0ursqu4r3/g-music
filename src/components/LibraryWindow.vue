@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type {
   ImportProgress,
@@ -8,8 +8,19 @@ import type {
   PlaybackSnapshot,
   PlaybackTransport,
   Playlist,
+  SmartPlaylistDefinition,
+  SmartPlaylistPreview,
   TrackMetadataUpdate,
 } from '@/api'
+import SmartPlaylistEditor from './library/SmartPlaylistEditor.vue'
+import CommandPalette from './CommandPalette.vue'
+import {
+  hasOpenOverlay,
+  isPaletteShortcut,
+  type CommandMode,
+  type CommandResult,
+} from '@/lib/command-palette'
+import { ordinaryPlaylist } from '@/lib/smart-playlists'
 import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue'
 import LibraryAlbumGrid from './library/LibraryAlbumGrid.vue'
 import LibraryArtistGrid from './library/LibraryArtistGrid.vue'
@@ -57,6 +68,11 @@ interface Props {
   saveMetadata?: (updates: TrackMetadataUpdate[]) => Promise<unknown>
   savePlaylist?: (playlist: Playlist) => Promise<unknown>
   deletePlaylistAction?: (id: string) => Promise<unknown>
+  previewSmartPlaylist?: (definition: SmartPlaylistDefinition) => Promise<SmartPlaylistPreview>
+  freezeSmartPlaylist?: (id: string) => Promise<unknown>
+  runPaletteTracks?: (ids: string[], mode: CommandMode) => Promise<unknown>
+  openWindowAction?: (view: 'import' | 'queue' | 'settings') => Promise<unknown>
+  paletteRequest?: number
   resetMetadata?: (ids: string[]) => Promise<unknown>
 }
 
@@ -85,6 +101,76 @@ const emit = defineEmits<{
   cancelImport: [runId: number]
 }>()
 
+const smartEditorOpen = ref(false)
+const smartEditorTarget = ref<Playlist>()
+const paletteOpen = ref(false)
+function openPalette(): void {
+  if (
+    hasOpenOverlay() ||
+    smartEditorOpen.value ||
+    playlistEditorTarget.value ||
+    metadataEditorTarget.value
+  )
+    return
+  paletteOpen.value = true
+}
+watch(
+  () => props.paletteRequest,
+  (value) => {
+    if (value) openPalette()
+  },
+)
+function handlePaletteKey(event: KeyboardEvent): void {
+  if (!isPaletteShortcut(event) || hasOpenOverlay()) return
+  event.preventDefault()
+  openPalette()
+}
+onMounted(() => {
+  window.addEventListener('keydown', handlePaletteKey)
+  if (props.paletteRequest) openPalette()
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', handlePaletteKey))
+function newSmartPlaylist(): void {
+  smartEditorTarget.value = undefined
+  smartEditorOpen.value = true
+}
+function smartSaved(id: string): void {
+  smartEditorOpen.value = false
+  if (activePlaylistId.value !== id) selectPlaylist(id)
+}
+function smartDeleted(id: string): void {
+  smartEditorOpen.value = false
+  if (activePlaylistId.value === id) activePlaylistId.value = undefined
+}
+async function runPaletteAction(result: CommandResult, mode: CommandMode): Promise<void> {
+  if (props.isUpdating) throw new Error('Another update is in progress. Try again.')
+  if (result.kind === 'selection') {
+    const playlist = playlists.value.find((p) => p.id === result.playlistId)
+    if (!playlist || !ordinaryPlaylist(playlist)) throw new Error('Choose a regular playlist.')
+    if (!props.savePlaylist) throw new Error('Playlist editing is unavailable.')
+    const available = new Set(allTracks.value.map((track) => track.id))
+    await props.savePlaylist({
+      ...playlist,
+      trackIds: [
+        ...new Set([...playlist.trackIds, ...result.trackIds.filter((id) => available.has(id))]),
+      ],
+    })
+  } else if (result.kind === 'action') {
+    if (result.id === 'new-playlist' || result.id === 'new-smart-playlist') {
+      paletteOpen.value = false
+      // Let Reka return focus before opening the next editor.
+      await nextTick()
+      if (result.id === 'new-playlist') beginPlaylistCreation()
+      else newSmartPlaylist()
+    } else {
+      if (!props.openWindowAction) throw new Error('Window actions are unavailable.')
+      await props.openWindowAction(result.id as 'import' | 'queue' | 'settings')
+    }
+  } else {
+    if (!props.runPaletteTracks) throw new Error('Playback is unavailable.')
+    await props.runPaletteTracks(result.trackIds, mode)
+  }
+}
 const activeCollection = ref<LibraryCollection>('tracks')
 const displayMode = ref<LibraryDisplayMode>('list')
 const groupBy = ref<LibraryGroupOption>('none')
@@ -138,6 +224,9 @@ async function toggleSearch(): Promise<void> {
 function handleSearchKey(event: KeyboardEvent): void {
   if (
     event.defaultPrevented ||
+    hasOpenOverlay() ||
+    smartEditorOpen.value ||
+    paletteOpen.value ||
     event.repeat ||
     event.isComposing ||
     metadataEditorTarget.value ||
@@ -211,7 +300,8 @@ const canRemoveFromPlaylist = computed(
   () =>
     activePlaylist.value !== null &&
     activePlaylist.value.id !== 'favorites' &&
-    activePlaylist.value.id !== 'most-played',
+    activePlaylist.value.id !== 'most-played' &&
+    !activePlaylist.value.smart,
 )
 const playlistTracks = computed(() => {
   const playlist = activePlaylist.value
@@ -244,7 +334,9 @@ const libraryTracks = computed(() => {
       })
     : searchedTracks.value
 
-  return sortCollection(filteredTracks, sortBy.value, 'track')
+  return activePlaylist.value?.smart
+    ? filteredTracks
+    : sortCollection(filteredTracks, sortBy.value, 'track')
 })
 const selectedTracks = computed(() =>
   libraryTracks.value.filter((track) => selectedTrackIds.value.has(track.id)),
@@ -294,6 +386,8 @@ const selectedArtist = computed(() => {
   return libraryArtists.value.find((artist) => artist.name === selection.name) ?? null
 })
 const groupedTracks = computed<TrackGroup[]>(() => {
+  if (activePlaylist.value?.smart)
+    return [{ label: activePlaylist.value.name, items: libraryTracks.value }]
   if (groupBy.value === 'none') {
     return groupSortSections(libraryTracks.value, sortBy.value, 'track')
   }
@@ -498,7 +592,10 @@ function selectPlaylist(id: string): void {
 }
 
 function openPlaylistEditor(playlist: Playlist): void {
-  playlistEditorTarget.value = playlist
+  if (playlist.smart) {
+    smartEditorTarget.value = playlist
+    smartEditorOpen.value = true
+  } else playlistEditorTarget.value = playlist
 }
 
 function beginPlaylistCreation(): void {
@@ -536,7 +633,7 @@ function handlePlaylistSave(playlist: Playlist): void {
 }
 
 function addTracksToPlaylist(playlist: Playlist, trackIds: string[]): void {
-  if (props.isUpdating || playlist.id === 'favorites' || playlist.id === 'most-played') {
+  if (props.isUpdating || !ordinaryPlaylist(playlist)) {
     return
   }
 
@@ -925,6 +1022,7 @@ onBeforeUnmount(finishTrackDrag)
       @drop-tracks="addTracksToPlaylist"
       @edit-playlist="openPlaylistEditor"
       @new-playlist="beginPlaylistCreation"
+      @new-smart-playlist="newSmartPlaylist"
       @open-import="emit('openImport')"
       @play-playlist="playPlaylist"
       @reorder-playlists="emit('reorderPlaylists', $event)"
@@ -958,6 +1056,8 @@ onBeforeUnmount(finishTrackDrag)
           :metadata-refresh-skipped="metadataRefreshSkipped"
           :sort-by="sortBy"
           :search-open="searchOpen"
+          :smart-playlist="!!activePlaylist?.smart"
+          @open-command-palette="openPalette"
           @toggle-search="toggleSearch"
           @set-display-mode="setDisplayMode"
           @set-grid-item-size="setGridItemSize"
@@ -1053,6 +1153,7 @@ onBeforeUnmount(finishTrackDrag)
         :selected-track-ids="[...selectedTrackIds]"
         :sort-by="sortBy"
         :track-filter="trackFilter"
+        :rule-order="!!activePlaylist?.smart"
         :tracks="libraryTracks"
         :favorite-track-ids="
           playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ?? []
@@ -1171,6 +1272,28 @@ onBeforeUnmount(finishTrackDrag)
       @saved="metadataEditorTarget = null"
       @cancel="metadataEditorTarget = null"
       @save="handleMetadataSave"
+    />
+    <CommandPalette
+      v-if="paletteOpen"
+      :tracks="allTracks"
+      :playlists="playlists"
+      :selected-ids="selectedTracks.map((track) => track.id)"
+      :is-updating="props.isUpdating"
+      :run-action="runPaletteAction"
+      @close="paletteOpen = false"
+    />
+    <SmartPlaylistEditor
+      v-if="smartEditorOpen"
+      :playlist="smartEditorTarget"
+      :tracks="allTracks"
+      :is-updating="props.isUpdating"
+      :save-action="props.savePlaylist"
+      :preview-action="props.previewSmartPlaylist"
+      :freeze-action="props.freezeSmartPlaylist"
+      :delete-action="props.deletePlaylistAction"
+      @cancel="smartEditorOpen = false"
+      @saved="smartSaved"
+      @deleted="smartDeleted"
     />
     <PlaylistEditor
       v-if="playlistEditorTarget"

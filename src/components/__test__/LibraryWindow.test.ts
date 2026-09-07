@@ -790,7 +790,13 @@ describe('LibraryWindow', () => {
       wrapper
         .findAll('[aria-label="Library view options"] button')
         .map((button) => button.attributes('aria-label')),
-    ).toEqual(['Open library search', 'List view', 'Grid view', 'More library options'])
+    ).toEqual([
+      'Open command palette',
+      'Open library search',
+      'List view',
+      'Grid view',
+      'More library options',
+    ])
     expect(wrapper.findAll('thead th')).toHaveLength(6)
     expect(wrapper.findAll('[data-library-track-virtualizer] [role="row"]')).toHaveLength(2)
     expect(wrapper.findAll('.track-row-artwork')).toHaveLength(0)

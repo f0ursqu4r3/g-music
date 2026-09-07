@@ -33,8 +33,8 @@
   --card-foreground: var(--text);
   /* Opaque overlays follow the window tint without showing content below. */
   --popover: oklch(from var(--glass-window) calc(l + 0.12) calc(c * 0.5) h / 1);
-  --dialog-surface: var(--surface-raised);
   --menu-surface: var(--popover);
+  --dialog-surface: var(--menu-surface);
   --error-text: color-mix(in oklch, var(--danger), var(--text) 38%);
   --error-surface: var(--danger-soft);
   --popover-foreground: var(--text);

@@ -23,6 +23,8 @@ not save media files or collect Google credentials.
 - Typed Tauri IPC client and serializable Rust payloads.
 - Durable editable track metadata: title, artist, album, label, and genres.
 - Durable playlists that preserve ordered stable track IDs.
+- Smart playlists with saved rules, match previews, and automatic membership.
+- A command palette for music search, playback, queue actions, and app windows.
 - Per-track play counts, last-played times, and a bounded play-time history.
 - A private local agent socket and an MCP bridge for Hermes-driven organization.
 
@@ -170,6 +172,10 @@ All write tools require `confirmed=true`. An agent must first show the proposed
 metadata, playlist, or order change and get the user's current explicit
 approval.
 
+The MCP `upsert_playlist` tool edits regular playlists. Use the app's smart
+playlist editor to create, edit, or convert smart rules. A regular upsert cannot
+erase an existing smart definition.
+
 Add this to `~/.hermes/config.yaml`, then restart Hermes:
 
 ```yaml
@@ -200,21 +206,70 @@ Click a track to select it. Command-click or Control-click toggles individual
 tracks. Shift-click selects a range. The context menu applies playback, queue,
 Favorites, and removal actions to the selected tracks.
 
-To remove tracks from a custom playlist, open the playlist, select the tracks,
+To remove tracks from a regular custom playlist, open it, select the tracks,
 and choose **Remove from playlist** from the context menu. This keeps the tracks
 in the library, other playlists, and the play queue. **Remove from library** is
 a separate action that requires confirmation.
 
-Drag selected tracks from the list or grid onto a custom playlist to add them.
-Favorites and Most Played are not drop targets. Drag the sidebar's right edge to
-resize it. When the resize control has keyboard focus, use the arrow keys, Home,
-or End to change its width.
+Drag selected tracks from the list or grid onto a regular custom playlist.
+Favorites, Most Played, and smart playlists are not drop targets.
+Drag the sidebar's right edge to resize it. When the resize control has keyboard
+focus, use the arrow keys, Home, or End to change its width.
 
 The Library window uses HTML drag and drop. Keep Tauri's native file-drop
 handler disabled: `dragDropEnabled: false` in the startup window configuration
 and `disable_drag_drop_handler()` when Rust recreates the Library window. The
 native handler intercepts DOM drag events on macOS. Restart the native app after
 changing this setting; frontend hot reload does not recreate its WebView.
+
+### Smart playlists
+
+Select **New smart playlist** beside the Playlists heading, or use that action
+in the command palette. Choose **All rules** or **Any rule**, then add rules for
+title, artist, album, label, genre, duration, play count, Favorites, or time since
+last playback. Text comparisons ignore case and surrounding rule-value spaces.
+Duration values use milliseconds. Relative-time values use days.
+
+The presets populate the editor without saving:
+
+- **Never played:** play count equals zero.
+- **Forgotten favorites:** Favorites not played within 30 days, including tracks
+  that have never played.
+- **Short tracks:** duration less than three minutes, shortest first.
+
+Choose a sort field and direction, with an optional track limit. Select
+**Preview** to see the total before the limit, the resulting playlist count,
+and why each displayed track matches. The preview shows at most 20 tracks.
+Select **Save playlist** to store the rules. Failed requests keep the draft.
+
+Smart playlists include available tracks only. Membership updates after library
+changes. The focused Library also refreshes relative-time rules once a minute.
+Smart playlists use their saved rule order for display and playback; edit the
+rules to change that order. Manual track removal and drop-to-add are disabled.
+
+Open a smart playlist's editor to change its rules, delete it, or select
+**Convert to regular playlist**. Conversion requires confirmation. It keeps
+the saved name, playlist ID, and current track order, then removes the rules.
+Conversion discards unsaved edits. Deleting a playlist keeps its library tracks.
+SQLite backups include smart playlist definitions.
+
+### Command palette
+
+Select **Commands** in the Library header, or press Command-K on macOS
+(Control-K on other platforms). The shortcut opens the Library from other app
+windows. It does not open over another dialog or menu.
+
+Search tracks, albums, artists, playlists, and actions. Exact and prefix title
+matches rank above substring matches. The palette shows up to 40 results.
+Use the arrow keys to choose a result, Enter to run it, or Escape to close.
+Choose **Play**, **Play next**, or **Add to queue** in **Music action** to set
+the operation for a music result.
+
+Actions include creating regular or smart playlists, opening Import, Queue,
+or Settings, and adding the Library's selected tracks to a regular playlist.
+Multi-track queue actions preserve collection order. An empty collection or a
+failed action shows an error without closing the palette. If a queue batch
+fails partway through, earlier successful changes remain in the queue.
 
 ## App icon
 

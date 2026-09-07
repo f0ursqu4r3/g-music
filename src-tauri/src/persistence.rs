@@ -185,7 +185,11 @@ pub(crate) fn load_library(path: &Path) -> Result<(Vec<QueueEntry>, Vec<Playlist
         .map_err(error)?;
 
     let mut playlist_statement = connection
-        .prepare("SELECT id, name FROM playlists ORDER BY library_position")
+        .prepare(
+            "SELECT playlists.id, name, definition_json FROM playlists
+                  LEFT JOIN smart_playlists ON smart_playlists.playlist_id = playlists.id
+                  ORDER BY library_position",
+        )
         .map_err(error)?;
     let playlists = playlist_statement
         .query_map([], |row| {
@@ -199,10 +203,30 @@ pub(crate) fn load_library(path: &Path) -> Result<(Vec<QueueEntry>, Vec<Playlist
                 .query_map([&id], |track_row| track_row.get(0))
                 .map_err(|_| rusqlite::Error::InvalidQuery)?
                 .collect::<Result<Vec<String>, _>>()?;
+            let definition_json: Option<String> = row.get(2)?;
+            let smart = definition_json
+                .map(|value| {
+                    serde_json::from_str::<crate::playback::SmartPlaylistDefinition>(&value)
+                        .map_err(|error| error.to_string())?
+                        .normalized()
+                })
+                .transpose()
+                .map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        2,
+                        rusqlite::types::Type::Text,
+                        Box::new(std::io::Error::other(error)),
+                    )
+                })?;
             Ok(Playlist {
+                track_ids: if smart.is_some() {
+                    Vec::new()
+                } else {
+                    track_ids
+                },
+                smart,
                 id,
                 name: row.get(1)?,
-                track_ids,
             })
         })
         .map_err(error)?
@@ -243,6 +267,14 @@ fn save_library_rows(
     entries: &[QueueEntry],
     playlists: &[Playlist],
 ) -> Result<(), String> {
+    for playlist in playlists {
+        if let Some(definition) = &playlist.smart {
+            if matches!(playlist.id.as_str(), "favorites" | "most-played") {
+                return Err("default playlists cannot have smart definitions".into());
+            }
+            definition.validate()?;
+        }
+    }
     transaction
         .execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS desired_track_ids (id TEXT PRIMARY KEY);
@@ -516,17 +548,39 @@ fn save_library_rows(
         let mut delete_stale_members = transaction
             .prepare("DELETE FROM playlist_tracks WHERE playlist_id = ?1 AND position >= ?2")
             .map_err(error)?;
+        let mut upsert_smart = transaction
+            .prepare(
+                "INSERT INTO smart_playlists (playlist_id, definition_json) VALUES (?1, ?2)
+             ON CONFLICT(playlist_id) DO UPDATE SET definition_json = excluded.definition_json
+             WHERE smart_playlists.definition_json IS NOT excluded.definition_json",
+            )
+            .map_err(error)?;
+        let mut delete_smart = transaction
+            .prepare("DELETE FROM smart_playlists WHERE playlist_id = ?1")
+            .map_err(error)?;
         for (position, playlist) in playlists.iter().enumerate() {
             upsert_playlist
                 .execute(params![playlist.id, playlist.name, position as i64])
                 .map_err(error)?;
-            for (track_position, track_id) in playlist.track_ids.iter().enumerate() {
+            let track_ids = if let Some(definition) = &playlist.smart {
+                upsert_smart
+                    .execute(params![
+                        playlist.id,
+                        serde_json::to_string(definition).map_err(error)?
+                    ])
+                    .map_err(error)?;
+                &[][..]
+            } else {
+                delete_smart.execute([&playlist.id]).map_err(error)?;
+                playlist.track_ids.as_slice()
+            };
+            for (track_position, track_id) in track_ids.iter().enumerate() {
                 upsert_member
                     .execute(params![playlist.id, track_id, track_position as i64])
                     .map_err(error)?;
             }
             delete_stale_members
-                .execute(params![playlist.id, playlist.track_ids.len() as i64])
+                .execute(params![playlist.id, track_ids.len() as i64])
                 .map_err(error)?;
         }
     }
@@ -619,6 +673,10 @@ fn open(path: &Path) -> Result<Connection, String> {
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 library_position INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS smart_playlists (
+                playlist_id TEXT PRIMARY KEY REFERENCES playlists(id) ON DELETE CASCADE,
+                definition_json TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS playlist_tracks (
                 playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
@@ -942,6 +1000,7 @@ mod tests {
         let fixture = DatabaseFixture::new("changed-rows");
         let mut entries = (0..2_000).map(entry).collect::<Vec<_>>();
         let mut playlists = vec![Playlist {
+            smart: None,
             id: "favorites".into(),
             name: "Favorites".into(),
             track_ids: Vec::new(),
@@ -1049,6 +1108,7 @@ mod tests {
         let fixture = DatabaseFixture::new("rollback");
         let entries = (0..12).map(entry).collect::<Vec<_>>();
         let playlists = vec![Playlist {
+            smart: None,
             id: "favorites".into(),
             name: "Favorites".into(),
             track_ids: vec![entries[0].item.id.clone()],
@@ -1090,6 +1150,7 @@ mod tests {
         let fixture = DatabaseFixture::new("backup");
         let entries = vec![entry(0), entry(1)];
         let playlists = vec![Playlist {
+            smart: None,
             id: "favorites".into(),
             name: "Favorites".into(),
             track_ids: vec![entries[1].item.id.clone()],

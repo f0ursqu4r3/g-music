@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock3, Disc3, Heart, ListMusic, Mic2, Pencil, Plus } from 'lucide-vue-next'
+import { Clock3, Disc3, Heart, ListMusic, Mic2, Pencil, Plus, ListFilter } from 'lucide-vue-next'
 import { ReorderGroup, ReorderItem } from 'motion-v'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
@@ -11,6 +11,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { ordinaryPlaylist } from '@/lib/smart-playlists'
 import type { Playlist } from '@/api'
 import {
   LIBRARY_TRACK_IDS_MIME_TYPE,
@@ -34,6 +35,7 @@ const emit = defineEmits<{
   createPlaylist: [name: string]
   cancelPlaylistCreation: []
   newPlaylist: []
+  newSmartPlaylist: []
   deletePlaylist: [playlist: Playlist]
   editPlaylist: [playlist: Playlist]
   dropTracks: [playlist: Playlist, trackIds: string[]]
@@ -78,6 +80,7 @@ function cancelNewPlaylist(): void {
 }
 
 function playlistIcon(id: string) {
+  if (props.playlists.find((playlist) => playlist.id === id)?.smart) return ListFilter
   return id === 'favorites' ? Heart : id === 'most-played' ? Clock3 : ListMusic
 }
 
@@ -110,7 +113,7 @@ function readDroppedTrackIds(event: DragEvent): string[] | null {
 }
 
 function previewTrackDrop(playlist: Playlist, event: DragEvent): void {
-  if (props.isUpdating) {
+  if (props.isUpdating || !ordinaryPlaylist(playlist)) {
     return
   }
 
@@ -130,7 +133,7 @@ function clearTrackDrop(playlist: Playlist): void {
 }
 
 function dropTracks(playlist: Playlist, event: DragEvent): void {
-  if (props.isUpdating) {
+  if (props.isUpdating || !ordinaryPlaylist(playlist)) {
     return
   }
 
@@ -301,6 +304,15 @@ onBeforeUnmount(() => {
             <p class="text-[0.61rem] font-semibold tracking-[0.06em] text-(--subtle-text)">
               Playlists
             </p>
+            <button
+              type="button"
+              aria-label="New smart playlist"
+              title="New smart playlist"
+              class="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-(--muted-text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              @click="emit('newSmartPlaylist')"
+            >
+              <ListFilter aria-hidden="true" class="size-4" />
+            </button>
             <button
               aria-label="New playlist"
               :disabled="props.isCreatingPlaylist"

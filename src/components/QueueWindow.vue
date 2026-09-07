@@ -317,7 +317,7 @@ watch(
         <DialogPortal>
           <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
           <DialogContent
-            class="queue-action-dialog fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-(--line-strong) bg-(--surface) p-5 text-(--text) shadow-xl"
+            class="queue-action-dialog fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-(--line) bg-(--menu-surface) p-5 text-(--text) shadow-xl"
             @escape-key-down="actionPending && $event.preventDefault()"
             @interact-outside.prevent
           >
@@ -376,7 +376,7 @@ watch(
         <DialogPortal>
           <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
           <DialogContent
-            class="queue-action-dialog fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-(--line-strong) bg-(--surface) p-5 text-(--text) shadow-xl"
+            class="queue-action-dialog fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-(--line) bg-(--menu-surface) p-5 text-(--text) shadow-xl"
             @escape-key-down="actionPending && $event.preventDefault()"
             @interact-outside.prevent
           >

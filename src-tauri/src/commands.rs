@@ -216,6 +216,21 @@ impl AppState {
         })
     }
 
+    pub fn preview_smart_playlist(
+        &self,
+        definition: crate::playback::SmartPlaylistDefinition,
+    ) -> Result<crate::playback::SmartPlaylistPreview, CommandError> {
+        with_playback(self, "preview_smart_playlist", |playback| {
+            playback.preview_smart_playlist(definition)
+        })
+    }
+
+    pub fn freeze_smart_playlist(&self, id: &str) -> Result<LibrarySnapshot, CommandError> {
+        with_playback(self, "freeze_smart_playlist", |playback| {
+            playback.freeze_smart_playlist(id)
+        })
+    }
+
     pub fn reorder_playlists(
         &self,
         playlist_ids: &[String],
@@ -536,9 +551,9 @@ pub(crate) fn native_transport(
     })
 }
 
-async fn blocking<T: Send + 'static>(
-    app: AppHandle,
-    operation: impl FnOnce(&AppState, &AppHandle) -> Result<T, CommandError> + Send + 'static,
+async fn blocking<R: Runtime, T: Send + 'static>(
+    app: AppHandle<R>,
+    operation: impl FnOnce(&AppState, &AppHandle<R>) -> Result<T, CommandError> + Send + 'static,
 ) -> Result<T, CommandError> {
     tauri::async_runtime::spawn_blocking(move || operation(&app.state::<AppState>(), &app))
         .await
@@ -1203,12 +1218,38 @@ pub async fn remove_tracks(
 }
 
 #[tauri::command]
-pub async fn upsert_playlist(
-    app: AppHandle,
+pub async fn upsert_playlist<R: Runtime>(
+    app: AppHandle<R>,
     playlist: Playlist,
 ) -> Result<LibrarySnapshot, CommandError> {
     blocking(app, move |state, app| {
         let snapshot = state.upsert_playlist(playlist)?;
+        if let Err(error) = app.emit("library-updated", ()) {
+            tracing::debug!(%error, "could not deliver library update event");
+        }
+        Ok(snapshot)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn preview_smart_playlist<R: Runtime>(
+    app: AppHandle<R>,
+    definition: crate::playback::SmartPlaylistDefinition,
+) -> Result<crate::playback::SmartPlaylistPreview, CommandError> {
+    blocking(app, move |state, _app| {
+        state.preview_smart_playlist(definition)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn freeze_smart_playlist<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+) -> Result<LibrarySnapshot, CommandError> {
+    blocking(app, move |state, app| {
+        let snapshot = state.freeze_smart_playlist(&id)?;
         if let Err(error) = app.emit("library-updated", ()) {
             tracing::debug!(%error, "could not deliver library update event");
         }
@@ -1728,6 +1769,7 @@ mod tests {
 
         let error = state
             .upsert_playlist(Playlist {
+                smart: None,
                 id: "focus".into(),
                 name: "Focus".into(),
                 track_ids: vec!["missing".into()],
@@ -1736,3 +1778,7 @@ mod tests {
         assert_eq!(error.code, "youtube_playback_failed");
     }
 }
+
+#[cfg(test)]
+#[path = "smart_command_tests.rs"]
+mod smart_tests;

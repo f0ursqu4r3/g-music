@@ -9,6 +9,8 @@ import {
   type PlaybackSnapshot,
   type PlaybackTransport,
   type Playlist,
+  type SmartPlaylistDefinition,
+  type SmartPlaylistPreview,
 } from '@/api'
 
 type RequiredClientMethods =
@@ -466,6 +468,56 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
     await mutateLibrary(() => client.upsertPlaylist!(playlist))
   }
 
+  async function previewSmartPlaylist(
+    definition: SmartPlaylistDefinition,
+  ): Promise<SmartPlaylistPreview> {
+    if (!alive || !client.previewSmartPlaylist) throw new Error('Preview is unavailable.')
+    return client.previewSmartPlaylist(definition)
+  }
+
+  async function freezeSmartPlaylist(id: string): Promise<void> {
+    if (!client.freezeSmartPlaylist) throw new Error('Conversion is unavailable.')
+    await mutateLibrary(() => client.freezeSmartPlaylist!(id))
+  }
+
+  // The palette awaits one owner for the whole batch. Errors must reach its dialog.
+  async function runPaletteTracks(ids: string[], mode: 'play' | 'next' | 'queue'): Promise<void> {
+    if (!alive) throw new Error('This window is closed.')
+    if (isUpdating.value) throw new Error('Another update is in progress. Try again.')
+    if (!ids.length) throw new Error('This collection has no available tracks.')
+    if (mode === 'play') {
+      await startPlayback(() => client.playTrack(ids[0]!, ids))
+      if (errorMessage.value) throw new Error(errorMessage.value)
+      return
+    }
+    const action = mode === 'next' ? client.playNext : client.addToQueue
+    if (!action) throw new Error('Queue editing is unavailable.')
+    isUpdating.value = true
+    errorMessage.value = ''
+    // Native play-next inserts immediately after the current track. Reverse
+    // insertion keeps collection order. An idle queue starts the first item.
+    const unique = [...new Set(ids)]
+    const ordered =
+      mode === 'next'
+        ? snapshot.value?.status === 'playing'
+          ? unique.reverse()
+          : [unique[0]!, ...unique.slice(1).reverse()]
+        : unique
+    try {
+      for (const id of ordered) {
+        if (!alive) throw new Error('This window is closed.')
+        const operation = ++generation
+        const result = await action(id)
+        if (alive && operation === generation) applySnapshot(result)
+      }
+    } catch (error) {
+      reportError(error)
+      throw new Error(readErrorMessage(error))
+    } finally {
+      finishUpdate()
+    }
+  }
+
   async function reorderPlaylists(playlistIds: string[]): Promise<void> {
     if (!client.reorderPlaylists) return
     try {
@@ -591,6 +643,9 @@ export function usePlayback(client: PlaybackClient = playbackApi) {
 
   return {
     initialize,
+    previewSmartPlaylist,
+    freezeSmartPlaylist,
+    runPaletteTracks,
     addToQueue,
     cancelYouTubeImport,
     clearQueue,

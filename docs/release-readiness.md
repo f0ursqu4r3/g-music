@@ -124,6 +124,14 @@ and actual result for each row. An unchecked row remains unverified.
 - [ ] Cancel import during discovery and enrichment without losing saved tracks.
 - [ ] Retry failed metadata enrichment after network recovery.
 - [ ] Edit mixed metadata and rename a reordered playlist without data loss.
+- [ ] Create and edit smart playlists with All/Any rules, sorting, and a limit.
+- [ ] Preview match explanations without saving; retry a failed save with the
+      draft intact.
+- [ ] Change Favorites or metadata and verify smart playlist membership.
+- [ ] Verify relative-time rules after restart and after a focused minute.
+- [ ] Confirm smart playlists reject track drops and manual membership removal.
+- [ ] Convert a smart playlist and verify its ID, name, and ordered membership
+      after restart; cancel conversion and deletion without changes.
 - [ ] Refresh provider metadata after edits and after application restart.
 - [ ] Start playback and verify real audio and advancing position.
 - [ ] Seek, drag volume, mute, pause, resume, Previous, and Next.
@@ -140,6 +148,14 @@ and actual result for each row. An unchecked row remains unverified.
 - [ ] Fail playback and verify visible error and usable recovery in each window.
 - [ ] Fail initialization and an editor save; retry without losing input.
 - [ ] Test Tab, Shift+Tab, Escape, arrows, Space, and focus return in dialogs.
+- [ ] Open Commands by pointer and Command-K from every native app window,
+      including when Library must be recreated; verify no duplicate palette.
+- [ ] Search tracks, albums, artists, and regular/smart playlists; verify Play,
+      Play next, and Add to queue preserve multi-track order.
+- [ ] Use palette actions for playlist creation, selection adds, Import, Queue,
+      and Settings; verify busy states and failed-action recovery.
+- [ ] Verify palette shortcuts leave IME input and other open dialogs/menus
+      unchanged; Command-F still controls Library search.
 - [ ] Test Library at 780 × 480 and each other window at its configured minimum.
 - [ ] Test long metadata, validation errors, increased text size, and reduced
       motion.
@@ -178,7 +194,8 @@ For manual recovery:
 3. Validate a candidate backup with SQLite's `PRAGMA integrity_check`.
 4. Test the candidate in a disposable user environment.
 5. Replace the active library only after explicit user approval.
-6. Reopen G Music and verify tracks, playlist order, metadata, and paused state.
+6. Reopen G Music and verify tracks, playlist order, smart rules, metadata, and
+   paused state.
 
 Do not delete the only copy of a corrupt database. Do not package the entire
 application-data directory into a support report: it can contain a private
@@ -187,11 +204,17 @@ also be treated as private.
 
 ## Bundle and signing verification
 
-Build an unsigned/ad-hoc development artifact with:
+Build a development artifact with:
 
 ```sh
 bun run tauri build --debug --bundles app
 ```
+
+Debug mode does not disable signing or notarization. Bundling uses the configured
+signing settings and can submit the app to Apple's notarization service. Check
+the intended signing scope before running a bundle build. For a local compile
+without bundling or notarization, use `cargo build --locked` from `src-tauri`
+after `bun run build`.
 
 Build the release artifact with:
 

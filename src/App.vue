@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { listen } from '@tauri-apps/api/event'
+import { emitTo, listen } from '@tauri-apps/api/event'
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
 import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { DialogRoot, DialogContent, DialogOverlay, DialogTitle } from 'reka-ui'
@@ -15,6 +15,13 @@ import {
   windowApi,
   youtubeAuthApi,
 } from '@/api'
+import { hasOpenOverlay, isPaletteShortcut } from '@/lib/command-palette'
+import {
+  handoffCommandPalette,
+  PALETTE_ACK_EVENT,
+  PALETTE_REQUEST_EVENT,
+  showAppWindow,
+} from '@/lib/app-windows'
 import { resolvePlaybackHotkey } from '@/lib/hotkeys'
 import { useTheme, themes } from '@/lib/theme'
 import { resolveMockWindowView } from '@/lib/window-view'
@@ -32,6 +39,10 @@ const SettingsWindow = defineAsyncComponent(() => import('@/components/SettingsW
 
 const playback = usePlayback()
 const view = resolveMockWindowView(window.location.search)
+const paletteRequest = ref(0)
+let smartRefreshInterval: number | undefined
+let paletteHandoffPending = false
+const paletteHandoffAbort = new AbortController()
 const queueExpanded = ref(false)
 const keyboardShortcutsOpen = ref(false)
 const theme = useTheme()
@@ -262,7 +273,29 @@ async function openImportWindow(): Promise<void> {
   }
 }
 
+async function openPaletteFromCompactWindow(): Promise<void> {
+  if (paletteHandoffPending) return
+  paletteHandoffPending = true
+  try {
+    await handoffCommandPalette(getCurrentWindow().label, paletteHandoffAbort.signal)
+  } catch (error) {
+    if (isMounted) playback.reportError(error, openPaletteFromCompactWindow)
+  } finally {
+    paletteHandoffPending = false
+  }
+}
+
 function handleKeyboard(event: KeyboardEvent): void {
+  if (
+    view !== 'library' &&
+    isPaletteShortcut(event) &&
+    !hasOpenOverlay() &&
+    !keyboardShortcutsOpen.value
+  ) {
+    event.preventDefault()
+    void openPaletteFromCompactWindow()
+    return
+  }
   const target = event.target
   if (
     event.defaultPrevented ||
@@ -319,7 +352,15 @@ async function trackArtworkWindowFocus(): Promise<void> {
     if (!isMounted) return
     isWindowFocused.value = focused
     const unlisten = await currentWindow.onFocusChanged(({ payload }) => {
-      if (isMounted) isWindowFocused.value = payload
+      if (isMounted) {
+        isWindowFocused.value = payload
+        if (
+          payload &&
+          view === 'library' &&
+          playback.library.value?.playlists.some((playlist) => playlist.smart)
+        )
+          void playback.refresh()
+      }
     })
 
     if (isMounted) {
@@ -377,6 +418,34 @@ onMounted(async () => {
     subscribe<MetadataRefreshSnapshot>('metadata-refresh-progress', (payload) =>
       playback.updateMetadataRefreshes(payload),
     ),
+    ...(view === 'library'
+      ? [
+          subscribe<{ requestId: string; sourceLabel: string }>(
+            PALETTE_REQUEST_EVENT,
+            (payload) => {
+              const paletteAlreadyOpen = Boolean(document.querySelector('[data-command-search]'))
+              if (
+                !isViewLoaded.value ||
+                (hasOpenOverlay() && !paletteAlreadyOpen) ||
+                keyboardShortcutsOpen.value
+              )
+                return
+              if (
+                !payload ||
+                typeof payload.requestId !== 'string' ||
+                !['main', 'artwork', 'queue', 'mini-player', 'settings', 'import'].includes(
+                  payload.sourceLabel,
+                )
+              )
+                return
+              if (!paletteAlreadyOpen) paletteRequest.value++
+              void emitTo(payload.sourceLabel, PALETTE_ACK_EVENT, {
+                requestId: payload.requestId,
+              }).catch((error) => playback.reportError(error))
+            },
+          ),
+        ]
+      : []),
     subscribe('show-keyboard-shortcuts', () => {
       keyboardShortcutsOpen.value = true
     }),
@@ -389,13 +458,25 @@ onMounted(async () => {
     playbackSyncInterval = window.setInterval(() => {
       void playback.sync()
     }, 500)
-  if (view === 'artwork') void trackArtworkWindowFocus()
+  if (view === 'artwork' || view === 'library') void trackArtworkWindowFocus()
+  if (view === 'library')
+    smartRefreshInterval = window.setInterval(() => {
+      if (
+        isWindowFocused.value &&
+        playback.library.value?.playlists.some((playlist) =>
+          playlist.smart?.rules.some((rule) => rule.field === 'lastPlayedDays'),
+        )
+      )
+        void playback.refresh()
+    }, 60_000)
 })
 
 onUnmounted(() => {
   isMounted = false
+  paletteHandoffAbort.abort()
   if (errorToastId !== undefined) toast.dismiss(errorToastId)
   unlistenWindowFocus?.()
+  if (smartRefreshInterval !== undefined) window.clearInterval(smartRefreshInterval)
   unlisteners.splice(0).forEach((unlisten) => unlisten())
   if (playbackSyncInterval !== undefined) {
     window.clearInterval(playbackSyncInterval)
@@ -457,6 +538,11 @@ onUnmounted(() => {
       @toggle-mute="playback.toggleMute"
       @open-import="openImportWindow"
       :save-playlist="playback.upsertPlaylist"
+      :preview-smart-playlist="playback.previewSmartPlaylist"
+      :freeze-smart-playlist="playback.freezeSmartPlaylist"
+      :run-palette-tracks="playback.runPaletteTracks"
+      :open-window-action="showAppWindow"
+      :palette-request="paletteRequest"
       @upsert-playlist="persistPlaylist"
       :save-metadata="playback.updateTracksMetadata"
       :delete-playlist-action="playback.deletePlaylist"
@@ -554,7 +640,7 @@ onUnmounted(() => {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60" />
       <DialogContent
         :aria-describedby="undefined"
-        class="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[min(23rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-(--line-strong) bg-(--popover) p-5 text-(--text)"
+        class="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[min(23rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-(--line) bg-(--menu-surface) p-5 text-(--text) shadow-xl"
       >
         <header class="flex items-center justify-between gap-4">
           <DialogTitle class="text-lg font-semibold text-(--text)">
@@ -570,6 +656,10 @@ onUnmounted(() => {
           </button>
         </header>
         <dl class="mt-5 grid grid-cols-[1fr_auto] gap-x-6 gap-y-3 text-sm">
+          <dt class="text-(--muted-text)">Command palette</dt>
+          <dd class="font-mono text-(--text)">⌘ K / Ctrl K</dd>
+          <dt class="text-(--muted-text)">Library search</dt>
+          <dd class="font-mono text-(--text)">⌘ F / Ctrl F</dd>
           <dt class="text-(--muted-text)">Play or pause</dt>
           <dd class="font-mono text-(--text)">Space</dd>
           <dt class="text-(--muted-text)">Previous track</dt>

@@ -106,7 +106,7 @@ pub(crate) struct QueueEntry {
 
 impl QueueEntry {
     fn is_available(&self) -> bool {
-        self.item.availability.as_deref() != Some("subscriber_only_unavailable")
+        self.item.is_available()
     }
 
     fn editable_metadata(&self) -> EditableTrackMetadata {
@@ -501,17 +501,94 @@ impl YouTubePlaybackProvider {
             .map(|entry| entry.source_url.clone())
     }
 
-    pub fn library_snapshot(&self) -> LibrarySnapshot {
-        LibrarySnapshot {
-            playlists: self.playlists_with_defaults(),
-            total_plays: self.entries.iter().map(|entry| entry.item.play_count).sum(),
-            tracks: self
-                .entries
+    pub fn preview_smart_playlist(
+        &self,
+        definition: super::SmartPlaylistDefinition,
+    ) -> Result<super::SmartPlaylistPreview, YouTubePlaybackError> {
+        definition
+            .validate()
+            .map_err(YouTubePlaybackError::InvalidPlaylist)?;
+        let tracks = self.available_tracks();
+        Ok(super::smart::resolve(
+            &definition,
+            &tracks,
+            &self.favorite_ids(),
+            now_epoch_ms()?,
+        ))
+    }
+
+    pub fn freeze_smart_playlist(
+        &mut self,
+        id: &str,
+    ) -> Result<LibrarySnapshot, YouTubePlaybackError> {
+        self.library_transaction(|provider| {
+            if is_default_playlist(id) {
+                return Err(YouTubePlaybackError::InvalidPlaylist(
+                    "default playlists cannot be frozen".into(),
+                ));
+            }
+            let position = provider
+                .playlists
                 .iter()
-                .filter(|entry| entry.is_available())
-                .map(|entry| entry.item.clone())
-                .collect(),
+                .position(|playlist| playlist.id == id)
+                .ok_or_else(|| {
+                    YouTubePlaybackError::InvalidPlaylist(format!("playlist {id} does not exist"))
+                })?;
+            let definition = provider.playlists[position].smart.clone().ok_or_else(|| {
+                YouTubePlaybackError::InvalidPlaylist("only smart playlists can be frozen".into())
+            })?;
+            let preview = provider.preview_smart_playlist(definition)?;
+            provider.playlists[position].track_ids = preview
+                .matches
+                .into_iter()
+                .map(|item| item.track_id)
+                .collect();
+            provider.playlists[position].smart = None;
+            provider.persist_library()?;
+            Ok(provider.library_snapshot())
+        })
+    }
+
+    fn favorite_ids(&self) -> HashSet<&str> {
+        self.playlists
+            .iter()
+            .find(|playlist| playlist.id == FAVORITES_PLAYLIST_ID)
+            .into_iter()
+            .flat_map(|playlist| playlist.track_ids.iter().map(String::as_str))
+            .collect()
+    }
+
+    fn available_tracks(&self) -> Vec<MediaItem> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.is_available())
+            .map(|entry| entry.item.clone())
+            .collect()
+    }
+
+    fn library_snapshot_at(&self, now_ms: u64) -> LibrarySnapshot {
+        let tracks = self.available_tracks();
+        let mut playlists = self.playlists_with_defaults();
+        let favorites = self.favorite_ids();
+        for playlist in &mut playlists {
+            if let Some(definition) = &playlist.smart {
+                playlist.track_ids = super::smart::resolve(definition, &tracks, &favorites, now_ms)
+                    .matches
+                    .into_iter()
+                    .map(|item| item.track_id)
+                    .collect();
+            }
         }
+        LibrarySnapshot {
+            playlists,
+            total_plays: self.entries.iter().map(|entry| entry.item.play_count).sum(),
+            tracks,
+        }
+    }
+
+    pub fn library_snapshot(&self) -> LibrarySnapshot {
+        // Resolve on every inspection: relative-time rules can change without a write.
+        self.library_snapshot_at(now_epoch_ms().unwrap_or_default())
     }
 
     fn toggle_favorite_inner(&mut self, id: &str) -> Result<LibrarySnapshot, YouTubePlaybackError> {
@@ -527,6 +604,7 @@ impl YouTubePlaybackProvider {
             playlist
         } else {
             self.playlists.push(Playlist {
+                smart: None,
                 id: FAVORITES_PLAYLIST_ID.into(),
                 name: "Favorites".into(),
                 track_ids: Vec::new(),
@@ -662,18 +740,36 @@ impl YouTubePlaybackProvider {
                 "default playlists cannot be edited directly".into(),
             ));
         }
+        if playlist.smart.is_none()
+            && self
+                .playlists
+                .iter()
+                .any(|existing| existing.id == id && existing.smart.is_some())
+        {
+            return Err(YouTubePlaybackError::InvalidPlaylist(
+                "a smart definition cannot be removed by upsert; use freeze_smart_playlist".into(),
+            ));
+        }
+        let smart = playlist
+            .smart
+            .map(super::SmartPlaylistDefinition::normalized)
+            .transpose()
+            .map_err(YouTubePlaybackError::InvalidPlaylist)?;
         let mut track_ids = Vec::new();
-        for track_id in playlist.track_ids {
-            if !self.entries.iter().any(|entry| entry.item.id == track_id) {
-                return Err(YouTubePlaybackError::InvalidPlaylist(format!(
-                    "track {track_id} is not in the library"
-                )));
-            }
-            if !track_ids.contains(&track_id) {
-                track_ids.push(track_id);
+        if smart.is_none() {
+            for track_id in playlist.track_ids {
+                if !self.entries.iter().any(|entry| entry.item.id == track_id) {
+                    return Err(YouTubePlaybackError::InvalidPlaylist(format!(
+                        "track {track_id} is not in the library"
+                    )));
+                }
+                if !track_ids.contains(&track_id) {
+                    track_ids.push(track_id);
+                }
             }
         }
         let playlist = Playlist {
+            smart,
             id,
             name,
             track_ids,
@@ -1408,11 +1504,13 @@ impl YouTubePlaybackProvider {
 
         let mut playlists = vec![
             Playlist {
+                smart: None,
                 id: FAVORITES_PLAYLIST_ID.into(),
                 name: "Favorites".into(),
                 track_ids: favorite_track_ids,
             },
             Playlist {
+                smart: None,
                 id: MOST_PLAYED_PLAYLIST_ID.into(),
                 name: "Most Played".into(),
                 track_ids: most_played
@@ -1887,6 +1985,17 @@ fn validate_stored_playlists(
             return Err(YouTubePlaybackError::Library(
                 "the library contains duplicate playlist IDs".into(),
             ));
+        }
+        if let Some(definition) = &playlist.smart {
+            if is_default_playlist(&playlist.id) {
+                return Err(YouTubePlaybackError::Library(
+                    "default playlists cannot have smart definitions".into(),
+                ));
+            }
+            definition
+                .validate()
+                .map_err(YouTubePlaybackError::Library)?;
+            continue;
         }
         for track_id in &playlist.track_ids {
             if !entries.iter().any(|entry| entry.item.id == *track_id) {
@@ -4731,6 +4840,7 @@ mod tests {
         )
         .expect("fixture metadata is valid")).into();
         provider.playlists = vec![Playlist {
+            smart: None,
             id: "focus".into(),
             name: "Focus".into(),
             track_ids: vec!["M7lc1UVf-VE".into(), "BaW_jenozKc".into()],
@@ -4805,6 +4915,7 @@ mod tests {
 
         provider
             .upsert_playlist(Playlist {
+                smart: None,
                 id: "focus".into(),
                 name: "Focus".into(),
                 track_ids: vec!["BaW_jenozKc".into(), "M7lc1UVf-VE".into()],
@@ -4843,6 +4954,7 @@ mod tests {
         for id in ["focus", "other"] {
             provider
                 .upsert_playlist(Playlist {
+                    smart: None,
                     id: id.into(),
                     name: id.into(),
                     track_ids: ids.clone(),
@@ -4854,6 +4966,7 @@ mod tests {
             .expect("known tracks can be favorited");
         provider
             .upsert_playlist(Playlist {
+                smart: None,
                 id: "focus".into(),
                 name: "focus".into(),
                 track_ids: vec!["BaW_jenozKc".into()],
@@ -4912,6 +5025,7 @@ mod tests {
 
         provider
             .upsert_playlist(Playlist {
+                smart: None,
                 id: "focus".into(),
                 name: "Focus".into(),
                 track_ids: Vec::new(),
@@ -4919,6 +5033,7 @@ mod tests {
             .expect("the first user playlist is valid");
         provider
             .upsert_playlist(Playlist {
+                smart: None,
                 id: "road-trip".into(),
                 name: "Road Trip".into(),
                 track_ids: Vec::new(),
@@ -5268,3 +5383,7 @@ mod tests {
         provider.shutdown();
     }
 }
+
+#[cfg(test)]
+#[path = "smart_provider_tests.rs"]
+mod smart_tests;

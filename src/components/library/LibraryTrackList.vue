@@ -19,6 +19,7 @@ type TrackSortColumn = 'album' | 'artist' | 'duration' | 'title'
 const props = defineProps<{
   canRemoveFromPlaylist?: boolean
   isUpdating?: boolean
+  ruleOrder?: boolean
   tracks: MediaItem[]
   playingItemId: string | undefined
   selectedTrackIds: string[]
@@ -112,6 +113,7 @@ function selectionModifiers(event: MouseEvent | KeyboardEvent): TrackSelectionMo
 }
 
 function sortDirection(column: TrackSortColumn): 'ascending' | 'descending' | 'none' {
+  if (props.ruleOrder) return 'none'
   if (!props.sortBy.startsWith(`${column}-`)) {
     return 'none'
   }
@@ -126,6 +128,7 @@ function sortIndicator(column: TrackSortColumn): string {
 }
 
 function sortButtonLabel(column: TrackSortColumn, label: string): string {
+  if (props.ruleOrder) return `${label}, ordered by smart playlist rules`
   const direction = sortDirection(column)
   const nextDirection = direction === 'ascending' ? 'descending' : 'ascending'
 
@@ -133,6 +136,7 @@ function sortButtonLabel(column: TrackSortColumn, label: string): string {
 }
 
 function toggleSort(column: TrackSortColumn): void {
+  if (props.ruleOrder) return
   const direction = sortDirection(column)
   const nextDirection = direction === 'ascending' ? 'desc' : 'asc'
 
@@ -248,6 +252,7 @@ onBeforeUnmount(() => {
             :aria-sort="sortDirection('title')"
             class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
             data-sort-column="title"
+            :disabled="ruleOrder"
           >
             <button
               :aria-label="sortButtonLabel('title', 'Title')"
@@ -275,6 +280,7 @@ onBeforeUnmount(() => {
             :aria-sort="sortDirection('artist')"
             class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
             data-sort-column="artist"
+            :disabled="ruleOrder"
           >
             <button
               :aria-label="sortButtonLabel('artist', 'Artist')"
@@ -302,6 +308,7 @@ onBeforeUnmount(() => {
             :aria-sort="sortDirection('album')"
             class="relative px-3 pb-1 text-[0.66rem] font-medium text-(--subtle-text)"
             data-sort-column="album"
+            :disabled="ruleOrder"
           >
             <button
               :aria-label="sortButtonLabel('album', 'Album')"
@@ -329,6 +336,7 @@ onBeforeUnmount(() => {
             :aria-sort="sortDirection('duration')"
             class="relative px-1.5 pb-1 text-center text-(--subtle-text)"
             data-sort-column="duration"
+            :disabled="ruleOrder"
           >
             <button
               :aria-label="sortButtonLabel('duration', 'Duration')"

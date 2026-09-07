@@ -288,4 +288,27 @@ mod tests {
         }
         assert!(!library_mutation_method("library.inspect"));
     }
+    #[test]
+    fn smart_legacy_agent_upserts_cannot_remove_definitions() {
+        let state = crate::commands::AppState::default();
+        let request: super::PlaylistUpsertRequest = super::decode_params(&serde_json::json!({
+            "playlist": { "id":"smart", "name":"Smart", "trackIds":[], "smart": {
+                "match":"all", "rules":[{"field":"playCount","operator":"equals","value":0}],
+                "sort":{"field":"libraryOrder","direction":"asc"}, "limit":null
+            }}
+        }))
+        .unwrap();
+        let before = state.upsert_playlist(request.playlist).unwrap();
+        for smart in [None, Some(serde_json::Value::Null)] {
+            let mut payload =
+                serde_json::json!({"playlist":{"id":"smart","name":"Legacy","trackIds":[]}});
+            if let Some(smart) = smart {
+                payload["playlist"]["smart"] = smart;
+            }
+            let request: super::PlaylistUpsertRequest = super::decode_params(&payload).unwrap();
+            let error = state.upsert_playlist(request.playlist).unwrap_err();
+            assert!(error.message.contains("freeze_smart_playlist"));
+            assert_eq!(state.library_snapshot().unwrap(), before);
+        }
+    }
 }

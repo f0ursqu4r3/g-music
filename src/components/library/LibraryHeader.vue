@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ChevronRight,
+  Command,
   CircleAlert,
   Ellipsis,
   Grid2X2,
@@ -30,6 +31,7 @@ const props = withDefaults(
     collectionTitle: string
     collectionSummary: string
     searchOpen?: boolean
+    smartPlaylist?: boolean
     playlistName?: string
     canPlayPlaylist?: boolean
     isUpdating?: boolean
@@ -61,6 +63,7 @@ const emit = defineEmits<{
   toggleMetadataRefresh: [open: boolean]
   playPlaylist: []
   toggleSearch: []
+  openCommandPalette: []
 }>()
 
 const summaryElement = ref<HTMLElement>()
@@ -207,6 +210,17 @@ function emitGridItemSize(values: number[]): void {
 
     <nav class="flex items-center gap-1" aria-label="Library view options">
       <button
+        type="button"
+        data-command-palette-trigger
+        aria-label="Open command palette"
+        aria-keyshortcuts="Meta+k Control+k"
+        title="Command palette (⌘K / Ctrl+K)"
+        class="flex h-8.5 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-(--muted-text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+        @click="emit('openCommandPalette')"
+      >
+        <Command aria-hidden="true" class="size-4" /><span>Commands</span>
+      </button>
+      <button
         :aria-label="searchOpen ? 'Close library search' : 'Open library search'"
         :aria-expanded="!!searchOpen"
         :aria-controls="searchOpen ? 'library-search' : undefined"
@@ -259,7 +273,11 @@ function emitGridItemSize(values: number[]): void {
           >
             Sort by
           </p>
+          <p v-if="smartPlaylist" class="px-2 text-xs text-(--muted-text)">
+            Order follows smart playlist rules.
+          </p>
           <DropdownMenuRadioGroup
+            :disabled="smartPlaylist"
             :model-value="sortBy"
             @update:model-value="emit('setSort', $event as LibrarySortOption)"
           >
@@ -280,6 +298,7 @@ function emitGridItemSize(values: number[]): void {
             Group in grid
           </p>
           <DropdownMenuRadioGroup
+            :disabled="smartPlaylist"
             :model-value="groupBy"
             @update:model-value="emit('setGroup', $event as LibraryGroupOption)"
           >

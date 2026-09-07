@@ -3,7 +3,8 @@ use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum WindowSurface {
     Library,
     Artwork,
@@ -327,6 +328,21 @@ pub fn show_import<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     show_surface(app, WindowSurface::Import)
 }
 
+/// Tauri command: show or restore a finite native application window by surface name.
+///
+/// Accepts one of the six lowercase surface names: `"library"`, `"artwork"`,
+/// `"queue"`, `"mini"`, `"settings"`, `"import"`. Serde rejects any other
+/// string before the function body is reached. The command delegates entirely
+/// to `show_surface`, which reuses existing windows rather than constructing
+/// new ones when possible.
+#[tauri::command]
+pub fn show_app_window<R: Runtime>(
+    app: AppHandle<R>,
+    surface: WindowSurface,
+) -> Result<(), String> {
+    show_surface(&app, surface).map_err(|e| e.to_string())
+}
+
 pub fn show_youtube_login<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("youtube-auth") {
         window.show()?;
@@ -367,6 +383,57 @@ fn is_youtube_auth_navigation(url: &url::Url) -> bool {
 mod tests {
     use super::{MENU_TITLES, WindowSurface, all_surfaces, is_youtube_auth_navigation};
     use url::Url;
+
+    // ── show_app_window deserialization tests ──────────────────────────────
+
+    fn deser(s: &str) -> Result<WindowSurface, serde_json::Error> {
+        serde_json::from_value(serde_json::Value::String(s.to_owned()))
+    }
+
+    #[test]
+    fn deserializes_all_six_lowercase_surface_names() {
+        assert_eq!(deser("library").unwrap(), WindowSurface::Library);
+        assert_eq!(deser("artwork").unwrap(), WindowSurface::Artwork);
+        assert_eq!(deser("queue").unwrap(), WindowSurface::Queue);
+        assert_eq!(deser("mini").unwrap(), WindowSurface::Mini);
+        assert_eq!(deser("settings").unwrap(), WindowSurface::Settings);
+        assert_eq!(deser("import").unwrap(), WindowSurface::Import);
+    }
+
+    #[test]
+    fn rejects_unknown_surface_names() {
+        assert!(deser("unknown").is_err());
+        assert!(deser("albums").is_err());
+        assert!(deser("Library").is_err()); // wrong case
+        assert!(deser("LIBRARY").is_err());
+        assert!(deser("").is_err());
+    }
+
+    #[test]
+    fn rejects_paths_and_urls() {
+        assert!(deser("/library").is_err());
+        assert!(deser("http://localhost/library").is_err());
+        assert!(deser("?view=library").is_err());
+        assert!(deser("../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn all_six_surfaces_have_specs_in_surfaces_table() {
+        let surfaces = all_surfaces();
+        for variant in [
+            WindowSurface::Library,
+            WindowSurface::Artwork,
+            WindowSurface::Queue,
+            WindowSurface::Mini,
+            WindowSurface::Settings,
+            WindowSurface::Import,
+        ] {
+            assert!(
+                surfaces.iter().any(|s| s.kind == variant),
+                "SURFACES table missing entry for {variant:?}"
+            );
+        }
+    }
 
     #[test]
     fn startup_and_recreated_library_share_geometry() {

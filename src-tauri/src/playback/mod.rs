@@ -1,9 +1,15 @@
 mod fake;
+mod smart;
 mod youtube;
 
 use serde::{Deserialize, Serialize};
 
 pub use fake::{FakePlaybackProvider, PlaybackError};
+pub use smart::{
+    SmartMatch, SmartOperator, SmartPlaylistDefinition, SmartPlaylistMatch, SmartPlaylistPreview,
+    SmartPlaylistRule, SmartPlaylistSort, SmartRuleField, SmartRuleValue, SmartSortDirection,
+    SmartSortField,
+};
 pub(crate) use youtube::find_executable as dependency_executable;
 pub(crate) use youtube::{
     DirtyTrack, QueueEntry, import_cancellable, resolve_youtube_imports, search_youtube,
@@ -73,6 +79,12 @@ pub struct MediaItem {
     pub play_history_ms: Vec<u64>,
 }
 
+impl MediaItem {
+    pub(crate) fn is_available(&self) -> bool {
+        self.availability.as_deref() != Some("subscriber_only_unavailable")
+    }
+}
+
 fn default_provider() -> String {
     "youtube".into()
 }
@@ -91,6 +103,8 @@ pub struct EditableTrackMetadata {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smart: Option<SmartPlaylistDefinition>,
     pub id: String,
     pub name: String,
     pub track_ids: Vec<String>,

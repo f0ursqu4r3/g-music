@@ -62,10 +62,43 @@ export interface LibrarySnapshot {
   tracks: MediaItem[]
 }
 
+export type SmartPlaylistField =
+  | 'title'
+  | 'artist'
+  | 'album'
+  | 'label'
+  | 'genre'
+  | 'durationMs'
+  | 'playCount'
+  | 'favorite'
+  | 'lastPlayedDays'
+export type SmartPlaylistOperator =
+  'contains' | 'equals' | 'notContains' | 'lessThan' | 'greaterThan' | 'within' | 'notWithin'
+export interface SmartPlaylistRule {
+  field: SmartPlaylistField
+  operator: SmartPlaylistOperator
+  value: string | number | boolean
+}
+export interface SmartPlaylistDefinition {
+  match: 'all' | 'any'
+  rules: SmartPlaylistRule[]
+  sort: {
+    field:
+      'libraryOrder' | 'title' | 'artist' | 'album' | 'durationMs' | 'playCount' | 'lastPlayedAtMs'
+    direction: 'asc' | 'desc'
+  }
+  limit: number | null
+}
+export interface SmartPlaylistPreview {
+  totalMatches: number
+  matches: { trackId: string; matchedRuleIndexes: number[] }[]
+}
+
 export interface Playlist {
   id: string
   name: string
   trackIds: string[]
+  smart?: SmartPlaylistDefinition | null
 }
 
 export interface EditableTrackMetadata {
@@ -154,6 +187,10 @@ export const playbackApi = {
     invoke<LibrarySnapshot>('toggle_favorite', { id }),
   removeTracks: (ids: string[]): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>('remove_tracks', { ids }),
+  previewSmartPlaylist: (definition: SmartPlaylistDefinition): Promise<SmartPlaylistPreview> =>
+    invoke<SmartPlaylistPreview>('preview_smart_playlist', { definition }),
+  freezeSmartPlaylist: (id: string): Promise<LibrarySnapshot> =>
+    invoke<LibrarySnapshot>('freeze_smart_playlist', { id }),
   upsertPlaylist: (playlist: Playlist): Promise<LibrarySnapshot> =>
     invoke<LibrarySnapshot>('upsert_playlist', { playlist }),
   reorderPlaylists: (playlistIds: string[]): Promise<LibrarySnapshot> =>
@@ -252,6 +289,8 @@ export const artworkApi = {
 }
 
 export const windowApi = {
+  showApp: (surface: 'library' | 'queue' | 'settings' | 'import'): Promise<void> =>
+    invoke<void>('show_app_window', { surface }),
   showImport: (): Promise<void> => invoke<void>('show_import_window'),
 }
 
