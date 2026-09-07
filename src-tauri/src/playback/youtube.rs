@@ -4452,6 +4452,7 @@ mod tests {
         provider
             .replace_queue(&["BaW_jenozKc".into(), "M7lc1UVf-VE".into()])
             .expect("known library tracks create a play queue");
+        provider.player.test_commands = Some(Default::default());
         provider
             .queue_track_next("M7lc1UVf-VE")
             .expect("a library track can be placed next");

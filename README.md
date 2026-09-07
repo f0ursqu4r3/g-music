@@ -1,9 +1,9 @@
 # G Music
 
 G Music is a desktop YouTube audio player built with Tauri 2, Rust, Vue 3, Vite,
-Tailwind CSS v4, Reka UI, and Lucide icons. The current distribution target is
-macOS. See [release readiness](docs/release-readiness.md) for the verification
-and distribution requirements.
+Tailwind CSS v4, Reka UI, and Lucide icons. It builds on macOS and Linux; macOS
+remains the primary distribution target. See [release readiness](docs/release-readiness.md)
+for the verification and distribution requirements.
 
 ## Current mode
 
@@ -64,11 +64,25 @@ loops. Responses for an earlier video cannot replace the current image.
 
 ## Development
 
-Install the local playback tools:
+Install Bun and Rust, then install the local playback tools and Tauri system
+dependencies for your platform.
+
+On macOS:
 
 ```sh
 brew install mpv yt-dlp
 ```
+
+On Ubuntu 24.04:
+
+```sh
+sudo apt install mpv yt-dlp libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev librsvg2-dev patchelf
+```
+
+Ubuntu installations that already use Ayatana AppIndicator should keep
+`libayatana-appindicator3-dev`; installing `libappindicator3-dev` instead can
+cause a package conflict.
 
 Install both tools explicitly. They are local prerequisites, not bundled
 sidecars. Then run the app:

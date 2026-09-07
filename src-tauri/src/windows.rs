@@ -24,7 +24,9 @@ struct WindowSpec {
     decorations: bool,
     transparent: bool,
     resizable: bool,
+    #[cfg(any(target_os = "macos", test))]
     overlay_titlebar: bool,
+    #[cfg(any(target_os = "macos", test))]
     hidden_title: bool,
 }
 
@@ -52,7 +54,9 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        #[cfg(any(target_os = "macos", test))]
         overlay_titlebar: true,
+        #[cfg(any(target_os = "macos", test))]
         hidden_title: true,
     },
     WindowSpec {
@@ -65,7 +69,9 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        #[cfg(any(target_os = "macos", test))]
         overlay_titlebar: true,
+        #[cfg(any(target_os = "macos", test))]
         hidden_title: true,
     },
     WindowSpec {
@@ -78,7 +84,9 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        #[cfg(any(target_os = "macos", test))]
         overlay_titlebar: true,
+        #[cfg(any(target_os = "macos", test))]
         hidden_title: true,
     },
     WindowSpec {
@@ -91,7 +99,9 @@ const SURFACES: &[WindowSpec] = &[
         decorations: false,
         transparent: true,
         resizable: false,
+        #[cfg(any(target_os = "macos", test))]
         overlay_titlebar: false,
+        #[cfg(any(target_os = "macos", test))]
         hidden_title: false,
     },
     WindowSpec {
@@ -104,7 +114,9 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        #[cfg(any(target_os = "macos", test))]
         overlay_titlebar: false,
+        #[cfg(any(target_os = "macos", test))]
         hidden_title: false,
     },
     WindowSpec {
@@ -117,7 +129,9 @@ const SURFACES: &[WindowSpec] = &[
         decorations: true,
         transparent: true,
         resizable: true,
+        #[cfg(any(target_os = "macos", test))]
         overlay_titlebar: true,
+        #[cfg(any(target_os = "macos", test))]
         hidden_title: true,
     },
 ];
@@ -245,19 +259,19 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
     }
 }
 
-pub fn apply_native_glass<R: Runtime>(window: &WebviewWindow<R>) {
+pub fn apply_native_glass<R: Runtime>(_window: &WebviewWindow<R>) {
     #[cfg(target_os = "macos")]
     {
         use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState, apply_vibrancy};
 
-        let radius = (window.label() == "mini-player").then_some(22.0);
+        let radius = (_window.label() == "mini-player").then_some(22.0);
         if let Err(error) = apply_vibrancy(
-            window,
+            _window,
             NSVisualEffectMaterial::HudWindow,
             Some(NSVisualEffectState::FollowsWindowActiveState),
             radius,
         ) {
-            tracing::error!(window = window.label(), %error, "failed to apply native vibrancy");
+            tracing::error!(window = _window.label(), %error, "failed to apply native vibrancy");
         }
     }
 }
