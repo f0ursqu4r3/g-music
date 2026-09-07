@@ -60,6 +60,6 @@ describe('AutoScrollText', () => {
     expect(autoScrollTextSource).toContain('animation-name: auto-scroll-edge-fade;')
     expect(autoScrollTextSource).toMatch(/0%,\s*14%,\s*86%,\s*100%\s*\{[\s\S]*?black 0/)
     expect(autoScrollTextSource).toMatch(/15%,\s*85%\s*\{[\s\S]*?transparent 0/)
-    expect(autoScrollTextSource).toContain('.auto-scroll-text[data-overflowing="true"]:hover')
+    expect(autoScrollTextSource).toContain(".auto-scroll-text[data-overflowing='true']:hover")
   })
 })

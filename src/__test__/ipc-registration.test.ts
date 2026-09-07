@@ -6,7 +6,7 @@ const backend = readFileSync('src-tauri/src/commands.rs', 'utf8')
 const bootstrap = readFileSync('src-tauri/src/lib.rs', 'utf8')
 const handler = bootstrap.split('tauri::generate_handler![')[1]?.split(']')[0]
 const commands = [
-  ...new Set([...api.matchAll(/invoke(?:<[^;]*?>)?\(\s*"(\w+)"/g)].map((match) => match[1])),
+  ...new Set([...api.matchAll(/invoke(?:<[^;]*?>)?\(\s*['"](\w+)['"]/g)].map((match) => match[1])),
 ]
 
 describe('frontend to native command registration', () => {

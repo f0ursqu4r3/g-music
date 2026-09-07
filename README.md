@@ -77,6 +77,7 @@ On Ubuntu 24.04:
 
 ```sh
 sudo apt install mpv yt-dlp libwebkit2gtk-4.1-dev \
+  build-essential curl wget file libxdo-dev libssl-dev \
   libayatana-appindicator3-dev librsvg2-dev patchelf
 ```
 

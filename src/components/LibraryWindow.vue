@@ -530,7 +530,7 @@ function cancelPlaylistCreation(): void {
   isCreatingPlaylist.value = false
 }
 
-function savePlaylist(playlist: Playlist): void {
+function handlePlaylistSave(playlist: Playlist): void {
   playlistEditorTarget.value = null
   emit('upsertPlaylist', playlist)
 }
@@ -842,7 +842,7 @@ function openArtistMetadataEditor(artist: LibraryArtist): void {
   }
 }
 
-function saveMetadata(updates: TrackMetadataUpdate[]): void {
+function handleMetadataSave(updates: TrackMetadataUpdate[]): void {
   metadataEditorTarget.value = null
   emit('updateTracksMetadata', updates)
 }
@@ -1170,7 +1170,7 @@ onBeforeUnmount(finishTrackDrag)
       :reset-action="props.resetMetadata"
       @saved="metadataEditorTarget = null"
       @cancel="metadataEditorTarget = null"
-      @save="saveMetadata"
+      @save="handleMetadataSave"
     />
     <PlaylistEditor
       v-if="playlistEditorTarget"
@@ -1181,7 +1181,7 @@ onBeforeUnmount(finishTrackDrag)
       @saved="playlistEditorTarget = null"
       @cancel="playlistEditorTarget = null"
       @delete="deletePlaylist"
-      @save="savePlaylist"
+      @save="handlePlaylistSave"
     />
     <LibraryDialog
       v-if="trackRemovalTarget.length"
