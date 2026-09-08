@@ -10,7 +10,11 @@ const focusEvents = vi.hoisted(() => ({
   changed: undefined as ((event: { payload: boolean }) => void) | undefined,
 }))
 const events = vi.hoisted(() => new Map<string, (e: { payload: unknown }) => void>())
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (p: string) => p }))
+vi.mock('@tauri-apps/api/core', () => ({
+  isTauri: () => false,
+  invoke: vi.fn(),
+  convertFileSrc: (p: string) => p,
+}))
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async (name, handler) => {
     events.set(name, handler)

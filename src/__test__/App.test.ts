@@ -1,4 +1,4 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window'
 import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { Storage } from 'happy-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +9,8 @@ import App from '../App.vue'
 import LibraryWindow from '../components/LibraryWindow.vue'
 import MiniWindow from '../components/MiniWindow.vue'
 import QueueWindow from '../components/QueueWindow.vue'
+import ArtworkWindow from '../components/ArtworkWindow.vue'
+import { dragSlider } from '../components/__test__/slider-interaction'
 
 enableAutoUnmount(afterEach)
 
@@ -29,15 +31,20 @@ const playbackMocks = vi.hoisted(() => ({
   toggleFavorite: vi.fn(),
   toggleMute: vi.fn(),
   toggleShuffle: vi.fn(),
+  setVolume: vi.fn(),
+  seek: vi.fn(),
+  reportError: vi.fn(),
 }))
 const windowMocks = vi.hoisted(() => ({
   showImport: vi.fn(),
+  showApp: vi.fn(),
 }))
 const eventMocks = vi.hoisted(() => ({
   listen: vi.fn().mockResolvedValue(vi.fn()),
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
+  cursorPosition: vi.fn(),
   getCurrentWindow: vi.fn(),
   LogicalSize: vi.fn(),
 }))
@@ -128,8 +135,9 @@ vi.mock('@/composables/usePlayback', () => ({
     cycleRepeatMode: playbackMocks.cycleRepeatMode,
     previous: playbackMocks.previous,
     next: playbackMocks.next,
-    seek: vi.fn(),
-    setVolume: vi.fn(),
+    seek: playbackMocks.seek,
+    setVolume: playbackMocks.setVolume,
+    reportError: playbackMocks.reportError,
     moveQueueItem: playbackMocks.moveQueueItem,
     reorderPlaylists: playbackMocks.reorderPlaylists,
     removeQueueItem: playbackMocks.removeQueueItem,
@@ -162,6 +170,10 @@ describe('application landmarks', () => {
     playbackMocks.toggleMute.mockReset()
     playbackMocks.toggleShuffle.mockReset()
     windowMocks.showImport.mockReset()
+    windowMocks.showApp.mockReset()
+    playbackMocks.setVolume.mockReset()
+    playbackMocks.seek.mockReset()
+    playbackMocks.reportError.mockReset()
     eventMocks.listen.mockReset()
     eventMocks.listen.mockResolvedValue(vi.fn())
     window.history.replaceState({}, '', '/?view=library')
@@ -376,6 +388,38 @@ describe('application landmarks', () => {
     expect(wrapper.get('main').attributes('aria-label')).toBe('Settings')
   })
 
+  it('tracks the native cursor independently of focus and stops on unmount', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('isTauri', true)
+    vi.mocked(cursorPosition).mockResolvedValue({ x: 100, y: 100 } as never)
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      isFocused: vi.fn().mockResolvedValue(false),
+      onFocusChanged: vi.fn().mockResolvedValue(vi.fn()),
+      outerPosition: vi.fn().mockResolvedValue({ x: 0, y: 0 }),
+      outerSize: vi.fn().mockResolvedValue({ width: 570, height: 540 }),
+      isVisible: vi.fn().mockResolvedValue(true),
+      isMinimized: vi.fn().mockResolvedValue(false),
+    } as never)
+    window.history.replaceState({}, '', '/?view=artwork')
+    const wrapper = mount(App, { attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.getComponent(ArtworkWindow).props('isWindowFocused')).toBe(false)
+      expect(wrapper.get('.artwork-controls').attributes('data-visible')).toBe('true')
+      vi.mocked(cursorPosition).mockResolvedValue({ x: 900, y: 100 } as never)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(wrapper.get('.artwork-controls').attributes('data-visible')).toBe('false')
+      wrapper.unmount()
+      const calls = vi.mocked(cursorPosition).mock.calls.length
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(cursorPosition).toHaveBeenCalledTimes(calls)
+    } finally {
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+      vi.useRealTimers()
+    }
+  })
+
   it('tracks native focus for the Artwork controls', async () => {
     let focusListener: ((event: { payload: boolean }) => void) | undefined
     const unlisten = vi.fn()
@@ -398,8 +442,45 @@ describe('application landmarks', () => {
     await nextTick()
 
     expect(controls.attributes('data-window-focused')).toBe('false')
+    expect(wrapper.getComponent(ArtworkWindow).props('isWindowFocused')).toBe(false)
+    expect(controls.attributes('aria-hidden')).toBe('true')
 
     wrapper.unmount()
     expect(unlisten).toHaveBeenCalledOnce()
   })
+
+  it('routes rendered Artwork controls to playback and native window navigation', async () => {
+    window.history.replaceState({}, '', '/?view=artwork')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    await dragSlider(wrapper.get('[data-slot="slider"][aria-label="Volume"]'), 25)
+    await dragSlider(wrapper.get('[data-slot="slider"][aria-label="Track progress"]'), 50)
+    await wrapper.get('[aria-label="Mute volume"]').trigger('click')
+    await wrapper.get('[aria-label="Open queue"]').trigger('click')
+    await wrapper.get('[aria-label="Open library"]').trigger('click')
+    expect(playbackMocks.setVolume).toHaveBeenCalledExactlyOnceWith(25)
+    expect(playbackMocks.seek).toHaveBeenCalledExactlyOnceWith(119000)
+    expect(playbackMocks.toggleMute).toHaveBeenCalledOnce()
+    expect(windowMocks.showApp.mock.calls).toEqual([['queue'], ['library']])
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }))
+    expect(playbackMocks.toggleMute).toHaveBeenCalledTimes(2)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+    expect(playbackMocks.toggle).toHaveBeenCalledOnce()
+  })
+
+  it.each(['queue', 'library'])(
+    'reports and retries Artwork %s navigation errors',
+    async (view) => {
+      const error = new Error('Window unavailable')
+      windowMocks.showApp.mockRejectedValueOnce(error)
+      window.history.replaceState({}, '', '/?view=artwork')
+      const wrapper = mount(App, { attachTo: document.body })
+      await flushPromises()
+      await wrapper.get(`[aria-label="Open ${view}"]`).trigger('click')
+      await flushPromises()
+      expect(playbackMocks.reportError).toHaveBeenCalledWith(error, expect.any(Function))
+      await playbackMocks.reportError.mock.calls[0]![1]()
+      expect(windowMocks.showApp.mock.calls).toEqual([[view], [view]])
+    },
+  )
 })

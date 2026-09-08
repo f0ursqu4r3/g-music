@@ -73,6 +73,9 @@ function stopInteraction(): void {
       :key="index"
       data-slot="slider-thumb"
       :aria-label="thumbLabel"
+      :aria-valuetext="
+        typeof attrs['aria-valuetext'] === 'string' ? attrs['aria-valuetext'] : undefined
+      "
       class="block size-3.5 shrink-0 rounded-full border border-accent bg-(--text) opacity-0 shadow-sm ring-(--focus-ring)/50 transition-[opacity,box-shadow] duration-150 group-hover/slider:opacity-100 group-focus-within/slider:opacity-100 hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none"
     />
   </SliderRoot>

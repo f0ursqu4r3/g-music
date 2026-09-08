@@ -28,6 +28,25 @@ not save media files or collect Google credentials.
 - Per-track play counts, last-played times, and a bounded play-time history.
 - A private local agent socket and an MCP bridge for Hermes-driven organization.
 
+## Artwork window
+
+Artwork fills the window behind one bottom scrim and native window buttons.
+Playback controls slide up when Artwork becomes active and stay visible until
+it loses focus, regardless of cursor position. On focus loss, controls slide
+below the frame and track information moves into the freed bottom space.
+Title and artist also appear on inactive hover. Native cursor tracking includes
+the titlebar and does not activate the window. Hover and open menus cannot reveal
+inactive playback controls. Overlay entrances take 300 ms; exits take 1200 ms. Reduced-motion
+mode applies state changes immediately. Thin bottom progress remains when controls
+hide. Native window buttons are unchanged.
+
+Drag the seek slider to preview a timestamp, then release to seek. Escape, a
+canceled drag, a track change, or window blur cancels the preview. Seeking is
+disabled when the track duration is unknown. Use the volume slider and mute button
+to adjust sound. Open queue and Open library show their native windows. Drag the
+artwork to move the window, or right-click it for favorite and window actions.
+Tab reaches playback controls only in an active window. Playback shortcuts stay the same.
+
 ## Artwork cache
 
 Artwork persists in the application data directory under `artwork/`. The

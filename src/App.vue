@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { emitTo, listen } from '@tauri-apps/api/event'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
 import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { DialogRoot, DialogContent, DialogOverlay, DialogTitle } from 'reka-ui'
@@ -25,6 +26,7 @@ import {
 import { resolvePlaybackHotkey } from '@/lib/hotkeys'
 import { useTheme, themes } from '@/lib/theme'
 import { resolveMockWindowView } from '@/lib/window-view'
+import { trackWindowCursor } from '@/lib/window-cursor'
 import { playerDimensions } from '@/presentation'
 
 import { Toaster } from '@/components/ui/sonner'
@@ -48,6 +50,8 @@ const keyboardShortcutsOpen = ref(false)
 const theme = useTheme()
 const windowError = ref('')
 const isWindowFocused = ref(true)
+const isCursorWithinWindow = ref<boolean | null>(null)
+let stopWindowCursor: (() => void) | undefined
 let isMounted = false
 let unlistenWindowFocus: (() => void) | undefined
 let playbackSyncInterval: number | undefined
@@ -273,6 +277,14 @@ async function openImportWindow(): Promise<void> {
   }
 }
 
+async function openArtworkDestination(view: 'queue' | 'library'): Promise<void> {
+  try {
+    await showAppWindow(view)
+  } catch (error) {
+    playback.reportError(error, () => openArtworkDestination(view))
+  }
+}
+
 async function openPaletteFromCompactWindow(): Promise<void> {
   if (paletteHandoffPending) return
   paletteHandoffPending = true
@@ -400,6 +412,11 @@ async function retrySubscriptions(): Promise<void> {
 
 onMounted(async () => {
   isMounted = true
+  if (view === 'artwork' && isTauri()) {
+    stopWindowCursor = trackWindowCursor((inside) => {
+      isCursorWithinWindow.value = inside
+    })
+  }
   window.addEventListener('keydown', handleKeyboard)
   await Promise.all([
     subscribe<PlaybackSnapshot>('playback-updated', (payload) => playback.applySnapshot(payload)),
@@ -476,6 +493,7 @@ onUnmounted(() => {
   paletteHandoffAbort.abort()
   if (errorToastId !== undefined) toast.dismiss(errorToastId)
   unlistenWindowFocus?.()
+  stopWindowCursor?.()
   if (smartRefreshInterval !== undefined) window.clearInterval(smartRefreshInterval)
   unlisteners.splice(0).forEach((unlisten) => unlisten())
   if (playbackSyncInterval !== undefined) {
@@ -572,6 +590,11 @@ onUnmounted(() => {
       :snapshot="playbackSnapshot"
       :is-updating="playback.isUpdating.value"
       :is-window-focused="isWindowFocused"
+      :is-cursor-within-window="isCursorWithinWindow"
+      @set-volume="playback.setVolume"
+      @toggle-mute="playback.toggleMute"
+      @open-queue="openArtworkDestination('queue')"
+      @open-library="openArtworkDestination('library')"
       :is-starting="playback.isStarting.value"
       :favorite-track-ids="favoriteTrackIds"
       @toggle-shuffle="playback.toggleShuffle"

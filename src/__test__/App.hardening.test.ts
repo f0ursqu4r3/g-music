@@ -9,6 +9,7 @@ import type { PlaybackSnapshot, Playlist } from '@/api'
 
 const events = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>())
 vi.mock('@tauri-apps/api/core', () => ({
+  isTauri: () => false,
   invoke: vi.fn(),
   convertFileSrc: (path: string) => path,
 }))

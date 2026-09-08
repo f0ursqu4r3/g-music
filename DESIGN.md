@@ -72,8 +72,41 @@ Use the shared utilities in `src/styles.css` for all standard windows.
 | `window-alert-warning` | Warning message surface.                      |
 
 Artwork is an immersive exception. It uses `window-shell` but keeps the artwork
-as its surface. The mini player is compact and uses the shared panel treatment
-rather than a full window surface.
+across the full frame, native traffic lights, and one bottom scrim. Use compact
+controls without cards or a decorative divider. Put the full-width seek slider
+above auto-width time labels. Center transport above compact volume, favorite,
+Open queue, and Open library actions. Use the accent for active shuffle and repeat.
+The mini player is compact and uses the shared panel treatment rather than a full
+window surface.
+
+Keep Artwork playback controls visible while its native window is active,
+independently of cursor position. When inactive, fade metadata and scrim as the
+cursor enters or leaves the frame. Track native cursor and frame bounds in physical pixels
+from the shell, including the native titlebar, with DOM hover as a fallback.
+Do not activate the window to detect hover. Stop tracking on unmount and ignore
+late samples. Hidden or minimized windows do not count as hovered.
+
+Playback controls require native focus. Hover, pointer presses, slider drags,
+and menus must not bypass this gate. Hidden playback controls are inert and
+excluded from accessibility; Tab must not remove inert while inactive.
+Slide the complete overlay down by the control region's reserved height on blur,
+moving metadata into the freed space and controls below the frame. Reverse this
+motion on activation. Keep layout geometry fixed; animate opacity and CSS translate,
+not height or margins. Use 300 ms overlay entrances and 1200 ms exits with a smooth ease-out.
+Keep metadata fade timing independent of control slide timing so inactive hover
+still fades in at 300 ms. Crossfade thin bottom progress rather than popping it
+in and out. Give buttons restrained hover and press feedback; keep slider positions
+directly attached to the pointer. Reduced-motion mode skips motion. Native buttons
+remain unchanged.
+
+Bind the artwork context menu to the full-frame native drag surface behind the
+controls. Do not hold controls open for native window drags. Provide the
+same favorite and window actions as visible buttons. Seek drags show a timestamp
+preview and commit once. Cancel the preview on track change, cancellation, or blur.
+Disable seeking for unknown or zero duration. Playback state and window navigation
+remain parent-owned. Keep the seek thumb mounted through completed playback
+commands so repeated keyboard seeks retain focus. Expose formatted time on the
+slider thumb for assistive technology.
 
 Import uses one continuous window surface with compact link entry before search.
 Reserve the native title-bar area above the heading. Keep import activity and
@@ -104,7 +137,8 @@ Keep inactive icons and controls in `--subtle-text` or `--muted-text`. Hover
 states use a low-opacity surface fill. Focus remains visible through
 `--focus-ring`.
 
-Use 150 to 250 ms ease-out transitions only for state changes. Respect the
+Use 150 to 250 ms ease-out transitions only for state changes, except Artwork's
+coordinated 300 ms overlay entrances and 1200 ms exits. Respect the
 global reduced-motion rule. Do not animate layout for decoration.
 
 ## Component boundaries

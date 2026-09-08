@@ -135,7 +135,7 @@ describe('authoritative player controls', () => {
     )
     cleanup.push(() => wrapper.unmount())
     expect(wrapper.get('[aria-label="Favorite track"]').attributes('aria-pressed')).toBe('true')
-    await wrapper.get('.artwork-cover').trigger('contextmenu')
+    await wrapper.get('.artwork-drag-region').trigger('contextmenu')
     expect(document.querySelector('[data-artwork-context-menu]')?.textContent).toContain(
       'Remove from Favorites',
     )
