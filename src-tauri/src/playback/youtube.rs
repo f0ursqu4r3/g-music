@@ -1708,6 +1708,11 @@ struct YtDlpMetadata {
     channel_id: Option<String>,
     uploader: Option<String>,
     uploader_id: Option<String>,
+    playlist_id: Option<String>,
+    playlist_channel: Option<String>,
+    playlist_channel_id: Option<String>,
+    playlist_uploader: Option<String>,
+    playlist_uploader_id: Option<String>,
     thumbnail: Option<String>,
     categories: Option<Vec<String>>,
     tags: Option<Vec<String>>,
@@ -1802,9 +1807,33 @@ fn is_youtube_video_id(value: &str) -> bool {
 fn metadata_entry(metadata: YtDlpMetadata, metadata_dirty: bool) -> Option<QueueEntry> {
     let id = nonempty(metadata.id).filter(|id| is_youtube_video_id(id))?;
     let title = nonempty(metadata.track.clone()).or_else(|| nonempty(metadata.title.clone()))?;
+    // Flat listings omit per-video channel fields. A channel tab's owner is the artist of every
+    // entry, but a regular playlist's owner is not.
+    let channel_tab = nonempty(metadata.playlist_id.clone())
+        .is_some_and(|id| nonempty(metadata.playlist_channel_id.clone()).as_ref() == Some(&id));
+    let channel = nonempty(metadata.channel.clone()).or_else(|| {
+        channel_tab
+            .then(|| nonempty(metadata.playlist_channel.clone()))
+            .flatten()
+    });
+    let channel_id = nonempty(metadata.channel_id.clone()).or_else(|| {
+        channel_tab
+            .then(|| nonempty(metadata.playlist_channel_id.clone()))
+            .flatten()
+    });
+    let uploader = nonempty(metadata.uploader.clone()).or_else(|| {
+        channel_tab
+            .then(|| nonempty(metadata.playlist_uploader.clone()))
+            .flatten()
+    });
+    let uploader_id = nonempty(metadata.uploader_id.clone()).or_else(|| {
+        channel_tab
+            .then(|| nonempty(metadata.playlist_uploader_id.clone()))
+            .flatten()
+    });
     let artist = nonempty(metadata.artist.clone())
-        .or_else(|| nonempty(metadata.channel.clone()))
-        .or_else(|| nonempty(metadata.uploader.clone()))
+        .or_else(|| channel.clone())
+        .or_else(|| uploader.clone())
         .unwrap_or_else(|| "YouTube".into());
     let duration_ms = metadata
         .duration
@@ -1828,10 +1857,10 @@ fn metadata_entry(metadata: YtDlpMetadata, metadata_dirty: bool) -> Option<Queue
             release_date: normalize_date(metadata.release_date),
             upload_date: normalize_date(metadata.upload_date),
             description: nonempty(metadata.description),
-            channel: nonempty(metadata.channel),
-            channel_id: nonempty(metadata.channel_id),
-            uploader: nonempty(metadata.uploader),
-            uploader_id: nonempty(metadata.uploader_id),
+            channel,
+            channel_id,
+            uploader,
+            uploader_id,
             thumbnail_url: nonempty(metadata.thumbnail),
             label: None,
             genres: Vec::new(),
@@ -4094,6 +4123,25 @@ mod tests {
         ] {
             assert!(finish_metadata_resolution(Vec::new(), stderr, false).is_err());
         }
+    }
+
+    #[test]
+    fn flat_channel_listings_name_the_channel_as_artist() {
+        let flat = |playlist_id: &str| {
+            format!(
+                r#"{{"id":"1dcns_zjbbs","title":"Portrait","duration":3435,"playlist_id":"{playlist_id}","playlist_channel":"Lemuria","playlist_channel_id":"UCMYSjwig4-XrzqY6Ka28t4g","playlist_uploader":"Lemuria","playlist_uploader_id":"@lemurian.archives"}}"#
+            )
+        };
+
+        let channel = parse_import_metadata(&flat("UCMYSjwig4-XrzqY6Ka28t4g")).unwrap();
+        assert_eq!(channel[0].item.artist, "Lemuria");
+        assert_eq!(
+            channel[0].item.channel_id.as_deref(),
+            Some("UCMYSjwig4-XrzqY6Ka28t4g")
+        );
+
+        let playlist = parse_import_metadata(&flat("PLexample")).unwrap();
+        assert_eq!(playlist[0].item.artist, "YouTube");
     }
 
     #[test]
