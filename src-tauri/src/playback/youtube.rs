@@ -2109,19 +2109,21 @@ pub(crate) fn search_youtube(query: &str) -> Result<Vec<MediaItem>, YouTubePlayb
         "yt-dlp",
     );
     let output = crate::process::capture(
-        Command::new(executable).args([
-            "--ignore-config",
-            "--flat-playlist",
-            "--dump-single-json",
-            "--skip-download",
-            "--no-warnings",
-            "--socket-timeout",
-            "10",
-            "--retries",
-            "0",
-            "--",
-            &format!("ytsearch20:{query}"),
-        ]),
+        Command::new(executable)
+            .args([
+                "--ignore-config",
+                "--flat-playlist",
+                "--dump-single-json",
+                "--skip-download",
+                "--no-warnings",
+                "--socket-timeout",
+                "10",
+                "--retries",
+                "0",
+                "--",
+                &format!("ytsearch20:{query}"),
+            ])
+            .env("PATH", playback_path()),
         &AtomicBool::new(false),
         Duration::from_secs(30),
         2 * 1024 * 1024,
@@ -2313,7 +2315,10 @@ fn resolve_metadata_with_progress(
         "starting yt-dlp metadata resolution"
     );
     resolve_metadata_command(
-        Command::new(&yt_dlp).args(arguments),
+        // yt-dlp finds its JavaScript runtime on PATH. Apps started from the Dock get a minimal one.
+        Command::new(&yt_dlp)
+            .args(arguments)
+            .env("PATH", playback_path()),
         metadata_dirty,
         report_tracks,
         cancelled,
