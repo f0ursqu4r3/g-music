@@ -59,6 +59,9 @@ pub enum YouTubePlaybackError {
     )]
     Metadata(String),
 
+    #[error("yt-dlp could not resolve this source: {0}.")]
+    Extractor(String),
+
     #[error("The audio player failed. Check the system audio output and retry Play.")]
     Player(String),
 
@@ -146,6 +149,13 @@ pub(crate) struct ResolvedYouTubeImport {
 impl ResolvedYouTubeImport {
     pub(crate) fn track_count(&self) -> usize {
         self.entries.len()
+    }
+
+    pub(crate) fn track_ids(&self) -> HashSet<String> {
+        self.entries
+            .iter()
+            .map(|entry| entry.item.id.clone())
+            .collect()
     }
 
     pub(crate) fn skipped_member_only_count(&self) -> usize {
@@ -2366,10 +2376,12 @@ fn resolve_metadata_command(
         .wait()
         .map_err(|error| YouTubePlaybackError::Metadata(error.to_string()))?;
     let stderr = stderr_reader.join().unwrap_or_default();
-    let resolution = finish_metadata_resolution(entries, &stderr, timed_out)?;
+    let resolution = finish_metadata_resolution(entries, &stderr, timed_out)
+        .inspect_err(|error| tracing::warn!(status = %status, %error, "yt-dlp metadata failed"))?;
     if !status.success() {
         tracing::warn!(
             status = %status,
+            reason = provider_error_reason(&stderr),
             skipped_member_only = resolution.skipped_member_only,
             tracks = resolution.entries.len(),
             "yt-dlp skipped unavailable import entries"
@@ -2448,6 +2460,37 @@ fn metadata_error_message(stderr: &str, playable_tracks: usize) -> String {
     "No playable tracks found. Check the source, connection, and yt-dlp version.".into()
 }
 
+/// Returns the first sentence of the last yt-dlp error without paths, URLs, or video IDs.
+fn provider_error_reason(stderr: &str) -> Option<String> {
+    let line = stderr
+        .lines()
+        .rev()
+        .find_map(|line| line.trim().strip_prefix("ERROR: "))?;
+    let message = match line
+        .strip_prefix('[')
+        .and_then(|line| line.split_once("] "))
+    {
+        Some((_, rest)) => rest
+            .split_once(": ")
+            .filter(|(id, _)| !id.contains(' '))
+            .map_or(rest, |(_, message)| message),
+        None => line,
+    };
+    let sentence = message.split(". ").next().unwrap_or(message);
+    let reason = sentence
+        .split_whitespace()
+        .filter(|word| {
+            !word.contains("://") && !word.starts_with(['/', '~']) && !word.contains('\\')
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let reason = reason.trim_end_matches('.');
+    if reason.is_empty() {
+        return None;
+    }
+    Some(reason.chars().take(160).collect())
+}
+
 fn finish_metadata_resolution(
     entries: Vec<QueueEntry>,
     stderr: &str,
@@ -2461,6 +2504,11 @@ fn finish_metadata_resolution(
                 "metadata resolution stopped after {} seconds without a playable track",
                 METADATA_IDLE_TIMEOUT.as_secs()
             )));
+        }
+        if skipped_member_only == 0
+            && let Some(reason) = provider_error_reason(stderr)
+        {
+            return Err(YouTubePlaybackError::Extractor(reason));
         }
         return Err(YouTubePlaybackError::Metadata(metadata_error_message(
             stderr, 0,
@@ -4046,6 +4094,46 @@ mod tests {
         ] {
             assert!(finish_metadata_resolution(Vec::new(), stderr, false).is_err());
         }
+    }
+
+    #[test]
+    fn unresolved_sources_report_the_last_provider_reason() {
+        let stderr = concat!(
+            "ERROR: [youtube] M7lc1UVf-VE: Connection timed out\n",
+            "ERROR: [youtube] BaW_jenozKc: Sign in to confirm you're not a bot. Use --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ for help\n",
+        );
+
+        let error = finish_metadata_resolution(Vec::new(), stderr, false)
+            .err()
+            .expect("an empty resolution is a failure");
+
+        assert_eq!(
+            error.to_string(),
+            "yt-dlp could not resolve this source: Sign in to confirm you're not a bot."
+        );
+    }
+
+    #[test]
+    fn unresolved_sources_without_provider_errors_keep_the_generic_message() {
+        let error = finish_metadata_resolution(Vec::new(), "WARNING: slow network\n", false)
+            .err()
+            .expect("an empty resolution is a failure");
+
+        assert!(matches!(error, super::YouTubePlaybackError::Metadata(_)));
+    }
+
+    #[test]
+    fn provider_reasons_never_include_private_details() {
+        let reason = super::provider_error_reason(
+            "ERROR: Unable to read /Users/private/session.txt for https://youtube.com/watch?v=secret\n",
+        )
+        .expect("an error line has a reason");
+
+        assert_eq!(reason, "Unable to read for");
+        assert_eq!(
+            super::provider_error_reason("WARNING: only a warning"),
+            None
+        );
     }
 
     #[test]

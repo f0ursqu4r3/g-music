@@ -1,7 +1,17 @@
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use serde::Serialize;
-use std::{process::Command, sync::atomic::AtomicBool, time::Duration};
+use std::{
+    fs::File,
+    io,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::{Mutex, atomic::AtomicBool},
+    time::Duration,
+};
+
+const APP_IDENTIFIER: &str = "com.kyle.gmusic";
+const LOG_FILE: &str = "gmusic.log";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,18 +116,103 @@ pub fn init() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
 
-    if let Err(error) = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .compact()
+    let log_file = log_directory(
+        std::env::consts::OS,
+        std::env::var_os("HOME").map(PathBuf::from).as_deref(),
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .as_deref(),
+    )
+    .and_then(|directory| {
+        open_log_file(&directory)
+            .inspect_err(|error| eprintln!("failed to open the log file: {error}"))
+            .ok()
+    });
+    let file_layer = log_file.map(|file| {
+        fmt::layer()
+            .with_ansi(false)
+            .with_target(false)
+            .compact()
+            .with_writer(Mutex::new(file))
+    });
+
+    if let Err(error) = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_target(false).compact())
+        .with(file_layer)
         .try_init()
     {
         eprintln!("failed to initialize Rust logging: {error}");
     }
 }
 
+/// Mirrors Tauri's app log directory, which is not available before the app starts.
+fn log_directory(os: &str, home: Option<&Path>, xdg_data_home: Option<&Path>) -> Option<PathBuf> {
+    if os == "macos" {
+        return Some(home?.join("Library/Logs").join(APP_IDENTIFIER));
+    }
+    let data_home = match xdg_data_home {
+        Some(path) => path.to_path_buf(),
+        None => home?.join(".local/share"),
+    };
+    Some(data_home.join(APP_IDENTIFIER).join("logs"))
+}
+
+/// Starts a new log and keeps the previous run as `gmusic.log.1`.
+fn open_log_file(directory: &Path) -> io::Result<File> {
+    std::fs::create_dir_all(directory)?;
+    let path = directory.join(LOG_FILE);
+    match std::fs::rename(&path, directory.join(format!("{LOG_FILE}.1"))) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    File::create(path)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn log_directories_follow_platform_conventions() {
+        let home = Some(Path::new("/home/user"));
+        assert_eq!(
+            super::log_directory("macos", home, None),
+            Some(PathBuf::from("/home/user/Library/Logs/com.kyle.gmusic"))
+        );
+        assert_eq!(
+            super::log_directory("linux", home, None),
+            Some(PathBuf::from(
+                "/home/user/.local/share/com.kyle.gmusic/logs"
+            ))
+        );
+        assert_eq!(
+            super::log_directory("linux", home, Some(Path::new("/data"))),
+            Some(PathBuf::from("/data/com.kyle.gmusic/logs"))
+        );
+        assert_eq!(super::log_directory("linux", None, None), None);
+    }
+
+    #[test]
+    fn opening_the_log_keeps_the_previous_run() {
+        let directory = std::env::temp_dir().join(format!("gmusic-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("gmusic.log"), "previous run").unwrap();
+
+        let file = super::open_log_file(&directory).unwrap();
+        drop(file);
+
+        assert_eq!(
+            std::fs::read_to_string(directory.join("gmusic.log.1")).unwrap(),
+            "previous run"
+        );
+        assert_eq!(
+            std::fs::read_to_string(directory.join("gmusic.log")).unwrap(),
+            ""
+        );
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
     #[test]
     fn successful_probe_is_available_even_without_a_known_version_format() {
         for output in [b"mpv custom-build".as_slice(), b""] {

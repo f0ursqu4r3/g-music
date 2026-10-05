@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { Clock3, Heart, ListFilter, LoaderCircle, Play, Volume2, X } from 'lucide-vue-next'
+import {
+  CircleAlert,
+  Clock3,
+  Heart,
+  ListFilter,
+  LoaderCircle,
+  Play,
+  Volume2,
+  X,
+} from 'lucide-vue-next'
 import {
   observeElementRect,
   type Rect,
@@ -8,7 +17,7 @@ import {
 } from '@tanstack/vue-virtual'
 import { type ComponentPublicInstance, computed, onBeforeUnmount, ref } from 'vue'
 
-import type { MediaItem } from '@/api'
+import type { MediaItem, MetadataRefreshJob } from '@/api'
 import { formatDuration } from '@/lib/time'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import LibraryTrackContextMenu from './LibraryTrackContextMenu.vue'
@@ -19,6 +28,7 @@ type TrackSortColumn = 'album' | 'artist' | 'duration' | 'title'
 const props = defineProps<{
   canRemoveFromPlaylist?: boolean
   isUpdating?: boolean
+  refreshJobs?: Record<string, MetadataRefreshJob>
   ruleOrder?: boolean
   tracks: MediaItem[]
   playingItemId: string | undefined
@@ -36,6 +46,7 @@ const emit = defineEmits<{
   playTrack: [tracks: MediaItem[]]
   playNext: [tracks: MediaItem[]]
   clearTrackFilter: []
+  retryMetadata: []
   editTrack: [track: MediaItem]
   openAlbum: [track: MediaItem]
   openArtist: [track: MediaItem]
@@ -45,6 +56,19 @@ const emit = defineEmits<{
   setSort: [option: LibrarySortOption]
   toggleFavorite: [ids: string[]]
 }>()
+
+/** A dirty track spins only while a refresh is queued or running. Without refresh data it stays pending. */
+function isRefreshStalled(track: MediaItem): boolean {
+  if (!props.refreshJobs) return false
+  const state = props.refreshJobs[track.id]?.state
+  return state !== 'queued' && state !== 'refreshing'
+}
+
+function stalledLabel(track: MediaItem): string {
+  const job = props.refreshJobs?.[track.id]
+  const reason = job?.state === 'failed' ? job.message : 'Metadata refresh is not running.'
+  return `${reason} Select to retry.`
+}
 
 const columnWidths = ref([6, 29, 25, 25, 9, 6])
 const minimumColumnWidths = [5, 18, 12, 12, 7, 5] as const
@@ -454,12 +478,24 @@ onBeforeUnmount(() => {
                   {{ track.title }}
                 </span>
                 <LoaderCircle
-                  v-if="track.metadataDirty"
+                  v-if="track.metadataDirty && !isRefreshStalled(track)"
                   class="size-3.5 shrink-0 animate-spin text-amber-200"
                   data-metadata-dirty
                   aria-label="Metadata refresh pending"
                   role="status"
                 />
+                <button
+                  v-else-if="track.metadataDirty"
+                  type="button"
+                  class="shrink-0 rounded-sm text-(--warning) hover:text-(--text) focus-visible:outline-2"
+                  data-metadata-stalled
+                  :aria-label="stalledLabel(track)"
+                  :title="stalledLabel(track)"
+                  @click.stop="emit('retryMetadata')"
+                  @dblclick.stop
+                >
+                  <CircleAlert class="size-3.5" aria-hidden="true" />
+                </button>
               </span>
             </div>
             <div

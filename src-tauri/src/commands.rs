@@ -775,41 +775,40 @@ fn run_metadata_refresh_worker(
             });
         let result = match source {
             Err(error) => Err(error),
-            Ok((Some(source_url), (cookie_path, generation), _)) => {
-                resolve_youtube_imports(&[source_url], cookie_path.as_deref(), |_, _, _, _, _| {})
-                    .and_then(|resolved| {
-                        playback
-                            .lock()
-                            .map_err(|_| {
-                                YouTubePlaybackError::Library(
-                                    "the playback service is unavailable".into(),
-                                )
-                            })
-                            .and_then(|mut playback| {
-                                if playback.session_generation() != generation {
-                                    return Err(YouTubePlaybackError::Metadata(
-                                        "YouTube session changed during metadata refresh.".into(),
-                                    ));
-                                }
-                                if playback.is_subscriber_only_unavailable(&job.track_id) {
-                                    return Ok(MetadataRefreshOutcome::Skipped);
-                                }
-                                if playback.dirty_track_source(&job.track_id).is_none() {
-                                    return Ok(MetadataRefreshOutcome::Unchanged);
-                                }
-                                let skipped = resolved.skipped_member_only_track(&job.track_id);
-                                let snapshot = playback.commit_youtube_import(resolved)?;
-                                drop(playback);
-                                let _ = app.emit("library-updated", ());
-                                emit_playback_updated(&app, &snapshot);
-                                Ok(if skipped {
-                                    MetadataRefreshOutcome::Skipped
-                                } else {
-                                    MetadataRefreshOutcome::Refreshed
-                                })
-                            })
+            Ok((Some(source_url), (cookie_path, generation), _)) => resolve_with_transient_retry(
+                &source_url,
+                cookie_path.as_deref(),
+            )
+            .and_then(|resolved| {
+                playback
+                    .lock()
+                    .map_err(|_| {
+                        YouTubePlaybackError::Library("the playback service is unavailable".into())
                     })
-            }
+                    .and_then(|mut playback| {
+                        if playback.session_generation() != generation {
+                            return Err(YouTubePlaybackError::Metadata(
+                                "YouTube session changed during metadata refresh.".into(),
+                            ));
+                        }
+                        if playback.is_subscriber_only_unavailable(&job.track_id) {
+                            return Ok(MetadataRefreshOutcome::Skipped);
+                        }
+                        if playback.dirty_track_source(&job.track_id).is_none() {
+                            return Ok(MetadataRefreshOutcome::Unchanged);
+                        }
+                        let skipped = resolved.skipped_member_only_track(&job.track_id);
+                        let snapshot = playback.commit_youtube_import(resolved)?;
+                        drop(playback);
+                        let _ = app.emit("library-updated", ());
+                        emit_playback_updated(&app, &snapshot);
+                        Ok(if skipped {
+                            MetadataRefreshOutcome::Skipped
+                        } else {
+                            MetadataRefreshOutcome::Refreshed
+                        })
+                    })
+            }),
             Ok((None, _, true)) => Ok(MetadataRefreshOutcome::Skipped),
             Ok((None, _, false)) => Ok(MetadataRefreshOutcome::Unchanged),
         };
@@ -896,6 +895,7 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
             });
         }
         let playback = state.playback.clone();
+        let metadata_refreshes = state.metadata_refreshes.clone();
         let active = state.active_import.clone();
         let app = app.clone();
         let worker = thread::Builder::new()
@@ -908,6 +908,7 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                 let total_sources = urls.len();
                 let mut saved = 0;
                 let mut completed = 0;
+                let mut deferred = 0;
                 let skipped_member_only = std::cell::Cell::new(0);
                 let progress = |phase, message: String, saved, completed| ImportProgress {
                     completed_sources: completed,
@@ -922,6 +923,7 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                     || -> Result<(), YouTubePlaybackError> {
                         for url in urls {
+                            let mut discovered_ids = HashSet::new();
                             for discovery in [true, false] {
                                 let (cookie_path, generation) = playback
                                     .lock()
@@ -929,7 +931,7 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                                         YouTubePlaybackError::Library("service unavailable".into())
                                     })?
                                     .metadata_session();
-                                let imported = crate::playback::import_cancellable(
+                                let imported = match crate::playback::import_cancellable(
                                     std::slice::from_ref(&url),
                                     cookie_path.as_deref(),
                                     discovery,
@@ -949,7 +951,52 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                                             ),
                                         );
                                     },
-                                )?;
+                                ) {
+                                    Ok(imported) => imported,
+                                    // Discovered tracks are saved. Refresh them one by one instead.
+                                    Err(error) if !discovery && defers_refresh_failure(&error) => {
+                                        let tracks = playback
+                                            .lock()
+                                            .map_err(|_| {
+                                                YouTubePlaybackError::Library(
+                                                    "service unavailable".into(),
+                                                )
+                                            })?
+                                            .dirty_tracks()
+                                            .into_iter()
+                                            .filter(|track| discovered_ids.contains(&track.id))
+                                            .collect::<Vec<_>>();
+                                        tracing::warn!(
+                                            %error,
+                                            tracks = tracks.len(),
+                                            "import metadata refresh deferred"
+                                        );
+                                        emit_import_progress(
+                                            &app,
+                                            progress(
+                                                "resolving",
+                                                format!(
+                                                    "{error} Refreshing {} tracks in the background.",
+                                                    tracks.len()
+                                                ),
+                                                saved,
+                                                completed,
+                                            ),
+                                        );
+                                        deferred += tracks.len();
+                                        schedule_metadata_refreshes(
+                                            &app,
+                                            &playback,
+                                            &metadata_refreshes,
+                                            tracks,
+                                        );
+                                        break;
+                                    }
+                                    Err(error) => return Err(error),
+                                };
+                                if discovery {
+                                    discovered_ids = imported.track_ids();
+                                }
                                 let count = imported.track_count();
                                 if !discovery {
                                     skipped_member_only.set(
@@ -991,17 +1038,24 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
                         "import worker stopped".into(),
                     ))
                 });
+                // A failed import still saves discovered tracks. Never leave them dirty without a refresh.
+                if !matches!(result, Err(YouTubePlaybackError::Cancelled)) {
+                    match playback.lock() {
+                        Ok(provider) => schedule_metadata_refreshes(
+                            &app,
+                            &playback,
+                            &metadata_refreshes,
+                            provider.dirty_tracks(),
+                        ),
+                        Err(_) => tracing::error!(
+                            "could not inspect dirty tracks because the playback mutex is poisoned"
+                        ),
+                    }
+                }
                 if let Ok(mut active) = active.lock()
                     && active.as_ref().is_some_and(|run| run.id == run_id)
                 {
-                    let (phase, message) = match result {
-                        Err(YouTubePlaybackError::Cancelled) => (
-                            "cancelled",
-                            "Import cancelled. Saved discoveries remain in the library.".into(),
-                        ),
-                        Ok(()) => ("completed", format!("Imported {saved} tracks.")),
-                        Err(error) => ("failed", error.to_string()),
-                    };
+                    let (phase, message) = import_outcome(result, saved, deferred);
                     emit_import_progress(&app, progress(phase, message, saved, completed));
                     *active = None;
                 }
@@ -1016,6 +1070,85 @@ pub async fn import_youtube_urls(app: AppHandle, urls: Vec<String>) -> Result<()
         Ok(())
     })
     .await
+}
+
+const TRANSIENT_RETRY_DELAYS: [std::time::Duration; 2] = [
+    std::time::Duration::from_secs(5),
+    std::time::Duration::from_secs(20),
+];
+
+/// YouTube answers some requests with a temporary failure. A later attempt usually succeeds.
+fn is_transient_provider_failure(error: &YouTubePlaybackError) -> bool {
+    let YouTubePlaybackError::Extractor(reason) = error else {
+        return false;
+    };
+    let reason = reason.to_ascii_lowercase();
+    [
+        "needs to be reloaded",
+        "timed out",
+        "http error 429",
+        "http error 5",
+        "temporarily",
+    ]
+    .iter()
+    .any(|marker| reason.contains(marker))
+}
+
+fn resolve_with_transient_retry(
+    source_url: &str,
+    cookie_path: Option<&std::path::Path>,
+) -> Result<crate::playback::ResolvedYouTubeImport, YouTubePlaybackError> {
+    let mut delays = TRANSIENT_RETRY_DELAYS.iter();
+    loop {
+        match resolve_youtube_imports(
+            std::slice::from_ref(&source_url.to_owned()),
+            cookie_path,
+            |_, _, _, _, _| {},
+        ) {
+            Err(error) if is_transient_provider_failure(&error) => {
+                let Some(delay) = delays.next() else {
+                    return Err(error);
+                };
+                tracing::warn!(%error, delay_seconds = delay.as_secs(), "retrying metadata refresh");
+                let deadline = std::time::Instant::now() + *delay;
+                while std::time::Instant::now() < deadline {
+                    if crate::process::is_stopping() {
+                        return Err(YouTubePlaybackError::Cancelled);
+                    }
+                    thread::sleep(std::time::Duration::from_millis(250));
+                }
+            }
+            result => return result,
+        }
+    }
+}
+
+fn defers_refresh_failure(error: &YouTubePlaybackError) -> bool {
+    matches!(
+        error,
+        YouTubePlaybackError::Metadata(_) | YouTubePlaybackError::Extractor(_)
+    )
+}
+
+fn import_outcome(
+    result: Result<(), YouTubePlaybackError>,
+    saved: usize,
+    deferred: usize,
+) -> (&'static str, String) {
+    match result {
+        Err(YouTubePlaybackError::Cancelled) => (
+            "cancelled",
+            "Import cancelled. Saved discoveries remain in the library.".into(),
+        ),
+        Ok(()) if deferred > 0 => (
+            "completed",
+            format!(
+                "Imported {saved} tracks. Full metadata for {deferred} tracks will refresh in the background."
+            ),
+        ),
+        Ok(()) => ("completed", format!("Imported {saved} tracks.")),
+        Err(error) => ("failed", error.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -1078,27 +1211,23 @@ pub async fn retry_metadata_refreshes(
     app: AppHandle,
 ) -> Result<MetadataRefreshSnapshot, CommandError> {
     blocking(app, |state, app| {
-        let failed: HashSet<_> = {
+        {
             let mut refreshes = state.metadata_refreshes.lock().map_err(|_| unavailable())?;
             let failed = refreshes
                 .jobs
                 .iter()
                 .filter(|job| job.state == "failed")
-                .map(|job| job.track_id.clone())
-                .collect::<HashSet<_>>();
+                .count();
             refreshes.jobs.retain(|job| job.state != "failed");
-            refreshes.completed_tracks = refreshes.completed_tracks.saturating_sub(failed.len());
-            refreshes.total_tracks = refreshes.total_tracks.saturating_sub(failed.len());
-            failed
-        };
+            refreshes.completed_tracks = refreshes.completed_tracks.saturating_sub(failed);
+            refreshes.total_tracks = refreshes.total_tracks.saturating_sub(failed);
+        }
+        // Dirty tracks without a job, such as after a failed import, retry too. Queued ones dedupe.
         let tracks = state
             .playback
             .lock()
             .map_err(|_| unavailable())?
-            .dirty_tracks()
-            .into_iter()
-            .filter(|track| failed.contains(&track.id))
-            .collect();
+            .dirty_tracks();
         schedule_metadata_refreshes(app, &state.playback, &state.metadata_refreshes, tracks);
         Ok(state
             .metadata_refreshes
@@ -1538,6 +1667,55 @@ mod tests {
     use crate::playback::{EditableTrackMetadata, Playlist};
 
     use super::{AppState, with_playback};
+
+    #[test]
+    fn deferred_metadata_refreshes_complete_the_import() {
+        assert_eq!(
+            super::import_outcome(Ok(()), 37, 37),
+            (
+                "completed",
+                "Imported 37 tracks. Full metadata for 37 tracks will refresh in the background."
+                    .into()
+            )
+        );
+        assert_eq!(
+            super::import_outcome(Ok(()), 1, 0),
+            ("completed", "Imported 1 tracks.".into())
+        );
+    }
+
+    #[test]
+    fn only_temporary_provider_failures_are_retried() {
+        use crate::playback::YouTubePlaybackError;
+
+        assert!(super::is_transient_provider_failure(
+            &YouTubePlaybackError::Extractor("The page needs to be reloaded".into())
+        ));
+        assert!(!super::is_transient_provider_failure(
+            &YouTubePlaybackError::Extractor("This video is unavailable".into())
+        ));
+        assert!(!super::is_transient_provider_failure(
+            &YouTubePlaybackError::Metadata("The page needs to be reloaded".into())
+        ));
+    }
+
+    #[test]
+    fn only_provider_failures_defer_the_metadata_refresh() {
+        use crate::playback::YouTubePlaybackError;
+
+        assert!(super::defers_refresh_failure(
+            &YouTubePlaybackError::Extractor("blocked".into())
+        ));
+        assert!(super::defers_refresh_failure(
+            &YouTubePlaybackError::Metadata("no playable tracks".into())
+        ));
+        assert!(!super::defers_refresh_failure(
+            &YouTubePlaybackError::Cancelled
+        ));
+        assert!(!super::defers_refresh_failure(
+            &YouTubePlaybackError::Library("disk full".into())
+        ));
+    }
 
     #[test]
     fn import_progress_is_inspectable_on_boot_and_broadcast_before_windows_reopen() {

@@ -114,8 +114,14 @@ bun install
 bun run tauri dev
 ```
 
-Rust logs are written to the terminal running Tauri. Development builds use
-`DEBUG` by default. Set `RUST_LOG` to change the level:
+Rust logs are written to the terminal running Tauri and to `gmusic.log`. The
+log from the previous run is kept as `gmusic.log.1`:
+
+- macOS: `~/Library/Logs/com.kyle.gmusic/`
+- Linux: `$XDG_DATA_HOME/com.kyle.gmusic/logs/` (default
+  `~/.local/share/com.kyle.gmusic/logs/`)
+
+Development builds use `DEBUG` by default. Set `RUST_LOG` to change the level:
 
 ```sh
 RUST_LOG=gmusic_lib=info bun run tauri dev

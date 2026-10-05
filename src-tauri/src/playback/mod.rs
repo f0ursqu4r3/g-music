@@ -12,7 +12,8 @@ pub use smart::{
 };
 pub(crate) use youtube::find_executable as dependency_executable;
 pub(crate) use youtube::{
-    DirtyTrack, QueueEntry, import_cancellable, resolve_youtube_imports, search_youtube,
+    DirtyTrack, QueueEntry, ResolvedYouTubeImport, import_cancellable, resolve_youtube_imports,
+    search_youtube,
 };
 pub use youtube::{YouTubePlaybackError, YouTubePlaybackProvider};
 

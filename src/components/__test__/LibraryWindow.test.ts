@@ -1541,6 +1541,42 @@ describe('LibraryWindow', () => {
     expect(indicator.text()).toBe('')
   })
 
+  it('replaces the spinner with a retry control when no refresh is running', async () => {
+    const dirtySnapshot = {
+      ...snapshot,
+      queue: [{ ...importedTracks[0], metadataDirty: true }],
+    }
+    const job = (state: 'failed' | 'refreshing') => ({
+      message: 'yt-dlp could not resolve this source: The page needs to be reloaded.',
+      state,
+      title: importedTracks[0].title,
+      trackId: importedTracks[0].id,
+    })
+    const mountWith = (jobs: ReturnType<typeof job>[]) =>
+      mount(LibraryWindow, {
+        attachTo: document.body,
+        props: {
+          isUpdating: false,
+          snapshot: dirtySnapshot,
+          metadataRefreshes: { completedTracks: 0, jobs, totalTracks: jobs.length },
+        },
+      })
+    const row = '[data-track-id="M7lc1UVf-VE"]'
+
+    const running = mountWith([job('refreshing')])
+    expect(running.find(`${row} [data-metadata-dirty]`).exists()).toBe(true)
+    expect(running.find(`${row} [data-metadata-stalled]`).exists()).toBe(false)
+
+    for (const jobs of [[job('failed')], []]) {
+      const stalled = mountWith(jobs)
+      expect(stalled.find(`${row} [data-metadata-dirty]`).exists()).toBe(false)
+      const retry = stalled.get(`${row} [data-metadata-stalled]`)
+      expect(retry.attributes('aria-label')).toContain('Select to retry.')
+      await retry.trigger('click')
+      expect(stalled.emitted('retryMetadataRefreshes')).toHaveLength(1)
+    }
+  })
+
   it('provides the complete reference-style playback strip', async () => {
     const wrapper = mount(LibraryWindow, {
       attachTo: document.body,

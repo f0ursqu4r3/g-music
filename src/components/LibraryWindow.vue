@@ -439,6 +439,11 @@ const metadataRefreshFailed = computed(
 const metadataRefreshSkipped = computed(
   () => props.metadataRefreshes?.jobs.filter((job) => job.state === 'skipped').length ?? 0,
 )
+const metadataRefreshJobs = computed(() =>
+  props.metadataRefreshes
+    ? Object.fromEntries(props.metadataRefreshes.jobs.map((job) => [job.trackId, job]))
+    : undefined,
+)
 const hasActiveMetadataRefresh = computed(
   () =>
     metadataRefreshRemaining.value > 0 &&
@@ -1154,11 +1159,13 @@ onBeforeUnmount(finishTrackDrag)
         :sort-by="sortBy"
         :track-filter="trackFilter"
         :rule-order="!!activePlaylist?.smart"
+        :refresh-jobs="metadataRefreshJobs"
         :tracks="libraryTracks"
         :favorite-track-ids="
           playlists.find((playlist) => playlist.id === 'favorites')?.trackIds ?? []
         "
         @clear-track-filter="trackFilter = null"
+        @retry-metadata="emit('retryMetadataRefreshes')"
         @add-to-queue="addTracksToQueue"
         @drag-tracks="startTrackDrag"
         @drag-tracks-end="finishTrackDrag"
