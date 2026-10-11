@@ -29,6 +29,8 @@ pub(crate) struct PickerAnchor {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RouteError {
+    // Returned by the macOS route in Task 6.
+    #[allow(dead_code)]
     PermissionDenied(String),
     Unavailable(String),
 }

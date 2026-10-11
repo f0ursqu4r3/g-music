@@ -2731,6 +2731,7 @@ impl MpvPlayer {
 
     fn set_paused(&mut self, paused: bool) -> Result<(), YouTubePlaybackError> {
         self.send(json!(["set_property", "pause", paused]))?;
+        crate::output::set_playing(!paused);
         Ok(())
     }
 
@@ -2750,6 +2751,7 @@ impl MpvPlayer {
             "time-pos",
             position_ms as f64 / 1000.0
         ]))?;
+        crate::output::seeked();
         Ok(())
     }
 
@@ -2779,7 +2781,9 @@ impl MpvPlayer {
         Ok(PlayerState {
             eof_reached: eof_reached || idle_active,
             paused,
-            position_ms: (position_seconds.max(0.0) * 1000.0).round() as u64,
+            position_ms: crate::output::corrected_position_ms(
+                (position_seconds.max(0.0) * 1000.0).round() as u64,
+            ),
         })
     }
 
@@ -2845,6 +2849,7 @@ impl MpvPlayer {
                     visualizer.start(&self.socket_path, &mpv);
                 }
                 self.apply_preferred_audio_device();
+                crate::output::mpv_started(child_pid);
                 return Ok(());
             }
             if let Some(status) = self
@@ -3116,6 +3121,7 @@ impl MpvPlayer {
         }
         if self.child.is_some() {
             tracing::info!("stopping mpv process");
+            crate::output::mpv_stopped();
             let _ = self.send(json!(["quit"]));
         }
         if let Some(mut child) = self.child.take() {
@@ -3820,6 +3826,13 @@ mod tests {
             path_checks, 2,
             "load must remain pending until mpv detects the media"
         );
+    }
+
+    #[test]
+    fn placeholder_player_drop_does_not_report_an_mpv_exit() {
+        let placeholder = MpvPlayer::new();
+        assert!(placeholder.child.is_none());
+        drop(placeholder); // `stop()` must skip `crate::output::mpv_stopped()` without a child.
     }
 
     #[test]

@@ -250,7 +250,7 @@ pub(super) fn run(
                 ipc.command(json!(["get_property", "audio-pts"]))?
                     .as_f64()
                     .filter(|time| time.is_finite())
-                    .map(|time| time * 1000.0)
+                    .map(|time| time * 1000.0 - crate::output::queued_ms())
             } else {
                 None
             };

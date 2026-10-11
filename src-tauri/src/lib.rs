@@ -28,6 +28,7 @@ pub fn run() {
             let library_directory = app.path().app_data_dir()?;
             let state = commands::AppState::from_library_directory(library_directory)?;
             app.manage(state);
+            output::install(app.handle().clone(), output::platform_route());
             if let Some(state) = app.try_state::<commands::AppState>() {
                 state.start_dirty_refresh(app.handle().clone());
                 state.start_transport_monitor(app.handle().clone());
