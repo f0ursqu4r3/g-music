@@ -100,4 +100,29 @@ describe('OutputMenu', () => {
     expect(document.querySelector('[data-output-airplay]')?.textContent).toContain('Master Bedroom')
     wrapper.unmount()
   })
+
+  it('loads the active output on mount when a subscriber is active', async () => {
+    const api = client({ ...local, airplayReceivers: ['Master Bedroom'] })
+    const wrapper = mount(OutputMenu, {
+      props: { client: api, subscribe: async () => () => {} },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    expect(api.getState).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-output-menu] button').attributes('aria-label')).toBe(
+      'Audio output: Master Bedroom',
+    )
+    wrapper.unmount()
+  })
+
+  it('stays inert on mount without a subscriber', async () => {
+    const api = client()
+    const wrapper = mount(OutputMenu, {
+      props: { client: api, subscribe: null },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    expect(api.getState).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { isTauri } from '@tauri-apps/api/core'
 import { Airplay, Check, Speaker } from 'lucide-vue-next'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -23,11 +24,16 @@ const props = withDefaults(
   { size: 'icon-sm', buttonClass: '' },
 )
 
-const output =
-  props.client === undefined
-    ? useOutput()
-    : useOutput(props.client, props.subscribe === undefined ? null : props.subscribe)
+// Outside Tauri the default is no subscriber, so the menu stays inert until it opens.
+const subscriber: OutputSubscriber | null | undefined =
+  props.client === undefined ? (isTauri() ? undefined : null) : (props.subscribe ?? null)
+const output = props.client === undefined ? useOutput() : useOutput(props.client, subscriber)
 const trigger = ref<InstanceType<typeof Button>>()
+
+// A window opened while AirPlay or a non-default device is active must show it at once.
+onMounted(() => {
+  if (subscriber !== null) void output.refresh()
+})
 
 function onOpenChange(open: boolean): void {
   if (open) void output.refresh()
