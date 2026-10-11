@@ -1684,6 +1684,9 @@ fn output_state_from(state: &AppState) -> Result<crate::output::OutputState, Com
 pub async fn get_output_state(app: AppHandle) -> Result<crate::output::OutputState, CommandError> {
     blocking(app, move |state, _app| {
         let _serial = state.transport.lock().map_err(|_| unavailable())?;
+        if state.shutting_down.load(Ordering::Acquire) {
+            return Err(unavailable());
+        }
         output_state_from(state)
     })
     .await
