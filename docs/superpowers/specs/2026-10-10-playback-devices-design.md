@@ -185,9 +185,14 @@ In AirPlay mode, report `time-pos − queued`, where `queued` is the last enqueu
 - `OutputMenu.vue`, `useOutput.ts`, and command palette tests: rendering, check marks, AirPlay item visibility by platform, and event updates.
 - `window-capabilities.test.ts`: new commands are allowed only where the button appears.
 
-### First implementation task
+### Process tap evidence
 
-Before other work, run a throwaway probe that taps a local mpv process: confirm the permission prompt, PCM capture, local mute while tapped, and restored sound after the tap is destroyed. If any check fails, stop and revise this spec.
+A throwaway probe ran on 2026-10-11 against a local mpv 0.41.0 playing a 440 Hz tone. It used `initStereoMixdownOfProcesses:` with `CATapMutedWhenTapped` and `privateTap = YES`, and a private aggregate device with `kAudioAggregateDeviceTapAutoStartKey` and drift compensation.
+
+- The tap format was 48 kHz, 2 channels, float32 (`flags=0x9`).
+- The IOProc received about 48,000 frames per second with the expected peak level (0.042 measured, 0.043 expected).
+- The listener heard the tone, then silence while tapped, then the tone again after the tap was destroyed.
+- No permission prompt appeared, because macOS attributed the probe to an app that already had capture permission. Smoke test step 8 covers the G Music prompt.
 
 ### Manual native smoke test
 
