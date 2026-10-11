@@ -2,11 +2,12 @@
 
 pub(crate) mod devices;
 
-// Wired to macOS in Task 7.
-#[allow(dead_code)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) mod clock;
 pub(crate) mod controller;
-#[allow(dead_code)]
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) mod ring;
 
 pub(crate) use controller::OutputState;
@@ -29,7 +30,8 @@ struct Shared {
 static SHARED: OnceLock<Shared> = OnceLock::new();
 const TICK: Duration = Duration::from_millis(250);
 
-/// A route for systems without AirPlay, and for tests.
+/// A route for systems without AirPlay, and for tests. macOS builds use it only in tests.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) struct NoAirPlay;
 
 impl AirPlayRoute for NoAirPlay {
@@ -57,9 +59,19 @@ impl AirPlayRoute for NoAirPlay {
     }
 }
 
-/// macOS returns the AirPlay route in Task 6. Other systems have no AirPlay.
-pub(crate) fn platform_route() -> Box<dyn AirPlayRoute> {
-    Box::new(NoAirPlay)
+/// macOS returns the AirPlay route. Other systems have no AirPlay.
+///
+/// On macOS, call this from the main thread (Tauri `setup`).
+pub(crate) fn platform_route(app: &AppHandle) -> Box<dyn AirPlayRoute> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::MacAirPlayRoute::new(app.clone())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Box::new(NoAirPlay)
+    }
 }
 
 /// Installs the process-global output controller and starts its tick thread.
@@ -178,8 +190,6 @@ pub(crate) fn leave_airplay() {
     apply(with_controller(|c| c.leave_airplay()).unwrap_or_default());
 }
 
-// Called by the picker command in Task 5.
-#[allow(dead_code)]
 pub(crate) fn open_picker(anchor: PickerAnchor) -> Result<(), RouteError> {
     with_controller(|c| c.open_picker(&anchor))
         .unwrap_or_else(|| Err(RouteError::Unavailable("AirPlay is unavailable.".into())))

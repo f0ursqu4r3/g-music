@@ -29,8 +29,8 @@ pub(crate) struct PickerAnchor {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RouteError {
-    // Returned by the macOS route in Task 6.
-    #[allow(dead_code)]
+    // Only the macOS route returns this.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     PermissionDenied(String),
     Unavailable(String),
 }

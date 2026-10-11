@@ -1717,6 +1717,27 @@ pub async fn select_output_device(
     .await
 }
 
+#[tauri::command]
+pub async fn open_airplay_picker(
+    window: tauri::WebviewWindow,
+    mut anchor: crate::output::controller::PickerAnchor,
+) -> Result<(), CommandError> {
+    anchor.window_label = window.label().to_string();
+    tauri::async_runtime::spawn_blocking(move || crate::output::open_picker(anchor))
+        .await
+        .map_err(|_| unavailable())?
+        .map_err(|error| match error {
+            crate::output::controller::RouteError::PermissionDenied(message) => CommandError {
+                code: "airplay_permission_denied",
+                message,
+            },
+            crate::output::controller::RouteError::Unavailable(message) => CommandError {
+                code: "airplay_unavailable",
+                message,
+            },
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};

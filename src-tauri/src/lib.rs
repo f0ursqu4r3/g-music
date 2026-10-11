@@ -28,7 +28,7 @@ pub fn run() {
             let library_directory = app.path().app_data_dir()?;
             let state = commands::AppState::from_library_directory(library_directory)?;
             app.manage(state);
-            output::install(app.handle().clone(), output::platform_route());
+            output::install(app.handle().clone(), output::platform_route(app.handle()));
             if let Some(state) = app.try_state::<commands::AppState>() {
                 state.start_dirty_refresh(app.handle().clone());
                 state.start_transport_monitor(app.handle().clone());
@@ -106,6 +106,7 @@ pub fn run() {
                     commands::set_volume,
                     commands::get_output_state,
                     commands::select_output_device,
+                    commands::open_airplay_picker,
                     commands::move_queue_item,
                     commands::remove_queue_item,
                     commands::resolve_youtube_artwork,
