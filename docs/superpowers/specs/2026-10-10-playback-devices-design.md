@@ -88,14 +88,14 @@ G Music state alone decides the mode: `Local { device_id }` or `AirPlay { receiv
 
 ### Rust units (`src-tauri/src/output/`)
 
-| Unit | Purpose | Depends on |
-|---|---|---|
-| `mod.rs`: `OutputState`, `OutputController` | Owns the mode. Applies changes, emits `output-changed`, and saves the local device ID. | mpv IPC, `AirPlayRoute` |
-| `airplay_clock.rs` | Pure math: position correction, queue depth, and the drift check. No platform code. | — |
-| `devices.rs` | Parses mpv `audio-device-list` into `OutputDevice { id, name }`. Removes `auto` and the duplicate `avfoundation/*` entries on macOS. Observes the property for hot-plug changes. | mpv IPC |
-| `airplay.rs` (macOS) | Private-API layer. Creates the shared audio context, renderer, and synchronizer. Opens the picker. Handles auto-flush notifications. Reports route changes. Implements `AirPlayRoute` together with `process_tap.rs`. | `objc2`, `objc2-av-foundation`, `objc2-av-kit`, `objc2-core-media` |
-| `process_tap.rs` (macOS) | Creates a muted Core Audio process tap on the mpv PID, wraps it in a private aggregate device, and delivers float32 PCM from an IOProc to the renderer through a bounded ring buffer. Destroys the tap and aggregate device on stop, which restores local sound. | `objc2-core-audio` |
-| `AirPlayRoute` trait | Interface between `OutputController` and the native layer. A fake implementation serves tests. A no-op implementation on Linux reports "unavailable". | — |
+| Unit                                        | Purpose                                                                                                                                                                                                                                                          | Depends on                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `mod.rs`: `OutputState`, `OutputController` | Owns the mode. Applies changes, emits `output-changed`, and saves the local device ID.                                                                                                                                                                           | mpv IPC, `AirPlayRoute`                                            |
+| `airplay_clock.rs`                          | Pure math: position correction, queue depth, and the drift check. No platform code.                                                                                                                                                                              | —                                                                  |
+| `devices.rs`                                | Parses mpv `audio-device-list` into `OutputDevice { id, name }`. Removes `auto` and the duplicate `avfoundation/*` entries on macOS. Observes the property for hot-plug changes.                                                                                 | mpv IPC                                                            |
+| `airplay.rs` (macOS)                        | Private-API layer. Creates the shared audio context, renderer, and synchronizer. Opens the picker. Handles auto-flush notifications. Reports route changes. Implements `AirPlayRoute` together with `process_tap.rs`.                                            | `objc2`, `objc2-av-foundation`, `objc2-av-kit`, `objc2-core-media` |
+| `process_tap.rs` (macOS)                    | Creates a muted Core Audio process tap on the mpv PID, wraps it in a private aggregate device, and delivers float32 PCM from an IOProc to the renderer through a bounded ring buffer. Destroys the tap and aggregate device on stop, which restores local sound. | `objc2-core-audio`                                                 |
+| `AirPlayRoute` trait                        | Interface between `OutputController` and the native layer. A fake implementation serves tests. A no-op implementation on Linux reports "unavailable".                                                                                                            | —                                                                  |
 
 Use typed `objc2` bindings where they exist, as `media_session.rs` does. Use `msg_send!` only for the private selectors. Run all AppKit and AVKit calls on the main thread.
 
@@ -145,16 +145,16 @@ When the listener selects a local device in the G Music menu:
 
 ### Events in AirPlay mode
 
-| Event | Action |
-|---|---|
-| Pause or play | Set mpv `pause` and the synchronizer rate together. Queued audio is held, so resume is immediate. |
-| Seek | Seek in mpv and flush the renderer. Discard tapped PCM until mpv sends `playback-restart`. Restart timestamps at the synchronizer's current time. |
-| Clock drift | Every second, compare the queue depth with the depth measured 3 s after start. When the difference passes 250 ms, set rate 0, flush, and restart from the next tapped buffer. |
-| mpv restarts | Destroy the tap, create a new tap on the new PID, flush, and restart the renderer. |
-| Auto-flush notification | Set rate 0, flush, re-enqueue from the current time, and restore the previous rate. |
-| Volume | The G Music slider sets mpv volume, as in Local mode. Changes reach the receiver after the AirPlay delay. The system popover slider sets receiver volume. |
-| Route lost or renderer failed | Follow [Disconnect](#disconnect). |
-| Quit | Stop the renderer and destroy the tap. |
+| Event                         | Action                                                                                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pause or play                 | Set mpv `pause` and the synchronizer rate together. Queued audio is held, so resume is immediate.                                                                             |
+| Seek                          | Seek in mpv and flush the renderer. Discard tapped PCM until mpv sends `playback-restart`. Restart timestamps at the synchronizer's current time.                             |
+| Clock drift                   | Every second, compare the queue depth with the depth measured 3 s after start. When the difference passes 250 ms, set rate 0, flush, and restart from the next tapped buffer. |
+| mpv restarts                  | Destroy the tap, create a new tap on the new PID, flush, and restart the renderer.                                                                                            |
+| Auto-flush notification       | Set rate 0, flush, re-enqueue from the current time, and restore the previous rate.                                                                                           |
+| Volume                        | The G Music slider sets mpv volume, as in Local mode. Changes reach the receiver after the AirPlay delay. The system popover slider sets receiver volume.                     |
+| Route lost or renderer failed | Follow [Disconnect](#disconnect).                                                                                                                                             |
+| Quit                          | Stop the renderer and destroy the tap.                                                                                                                                        |
 
 ### Position
 

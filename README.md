@@ -111,9 +111,9 @@ device returns.
 On macOS 14.2 or later, choose **AirPlay…** to open the system AirPlay menu and
 select a speaker, including HomePod. The first time, macOS asks for permission
 to record system audio. G Music captures only its own player audio and sends it
-to the speaker. AirPlay adds about 2 seconds of delay. The progress bar and the
-visualizer follow the speaker. Track titles change about 2 seconds before the
-new track reaches the speaker.
+to the speaker. AirPlay adds about 2 seconds of delay. The progress bar follows
+the speaker. The visualizer uses the same delay. Track titles change about 2
+seconds before the new track reaches the speaker.
 
 Select AirPlay again after each launch. If the speaker disconnects, playback
 pauses and returns to the local output. Choosing this Mac in the AirPlay menu
