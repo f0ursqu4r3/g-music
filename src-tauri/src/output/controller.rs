@@ -1,7 +1,7 @@
 //! Output mode state machine. Platform code lives behind `AirPlayRoute`.
 
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::devices::OutputDevice;
 
@@ -62,13 +62,17 @@ pub(crate) enum OutputEffect {
     Notice(String),
 }
 
+/// How long after `open_picker` a route change counts as the listener's choice.
+const PICKER_WINDOW: Duration = Duration::from_secs(60);
+
 pub(crate) struct OutputController {
     route: Box<dyn AirPlayRoute>,
     state: OutputState,
     mpv_pid: Option<u32>,
     playing: bool,
-    /// Set when the picker opens. A route change while set is the listener's choice.
-    picker_open: bool,
+    /// Set when the picker opens. A route change within `PICKER_WINDOW` of it is the
+    /// listener's choice. Later changes come from elsewhere (power-off, Control Center).
+    picker_opened_at: Option<Instant>,
     /// AirPlay was chosen but mpv was not running yet (or mpv restarted).
     pending_start: bool,
     /// Receiver names to show once the pending start succeeds.
@@ -88,7 +92,7 @@ impl OutputController {
             },
             mpv_pid: None,
             playing: false,
-            picker_open: false,
+            picker_opened_at: None,
             pending_start: false,
             pending_receivers: Vec::new(),
             route_running: false,
@@ -120,7 +124,7 @@ impl OutputController {
             ));
         }
         self.route.open_picker(anchor)?;
-        self.picker_open = true;
+        self.picker_opened_at = Some(Instant::now());
         Ok(())
     }
 
@@ -165,14 +169,17 @@ impl OutputController {
         self.pending_start = false;
     }
 
-    pub(crate) fn tick(&mut self, _now: Instant) -> Vec<OutputEffect> {
+    pub(crate) fn tick(&mut self, now: Instant) -> Vec<OutputEffect> {
         if !self.route.available() {
             return Vec::new();
         }
         let poll = self.route.poll();
+        let picker_recent = self
+            .picker_opened_at
+            .is_some_and(|t| now.saturating_duration_since(t) <= PICKER_WINDOW);
         if !self.in_airplay() {
-            if self.picker_open && !poll.receivers.is_empty() {
-                self.picker_open = false;
+            if picker_recent && !poll.receivers.is_empty() {
+                self.picker_opened_at = None;
                 if self.mpv_pid.is_none() {
                     self.pending_start = true;
                     self.pending_receivers = poll.receivers;
@@ -180,11 +187,16 @@ impl OutputController {
                 }
                 return self.start_route(poll.receivers);
             }
+            if picker_recent && poll.receivers.is_empty() {
+                // The listener chose This Mac, which cancels a start that waits for mpv.
+                self.pending_start = false;
+                self.pending_receivers.clear();
+            }
             return Vec::new();
         }
         if poll.failed || poll.receivers.is_empty() {
-            let chosen = self.picker_open && !poll.failed;
-            self.picker_open = false;
+            let chosen = picker_recent && !poll.failed;
+            self.picker_opened_at = None;
             self.stop_route();
             let mut effects = Vec::new();
             if !chosen {
@@ -195,6 +207,7 @@ impl OutputController {
             return effects;
         }
         if self.state.airplay_receivers.as_ref() != Some(&poll.receivers) {
+            self.picker_opened_at = None;
             self.state.airplay_receivers = Some(poll.receivers);
             return vec![OutputEffect::StateChanged(self.state())];
         }
@@ -205,7 +218,7 @@ impl OutputController {
         if !self.in_airplay() && !self.pending_start {
             return Vec::new();
         }
-        self.picker_open = false;
+        self.picker_opened_at = None;
         self.stop_route();
         vec![OutputEffect::StateChanged(self.state())]
     }
@@ -525,5 +538,74 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    fn is_disconnect(effects: &[OutputEffect]) -> bool {
+        effects
+            .iter()
+            .any(|e| matches!(e, OutputEffect::PausePlayback))
+            && effects.iter().any(
+                |e| matches!(e, OutputEffect::Notice(m) if m == "AirPlay speaker disconnected"),
+            )
+    }
+
+    #[test]
+    fn dismissed_picker_then_disconnect_pauses() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(Instant::now());
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers.clear();
+        let effects = c.tick(Instant::now() + Duration::from_secs(61));
+        assert!(is_disconnect(&effects));
+    }
+
+    #[test]
+    fn receiver_switch_then_disconnect_pauses() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(Instant::now());
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Family Room".into()];
+        c.tick(Instant::now());
+        log.lock().unwrap().receivers.clear();
+        let effects = c.tick(Instant::now());
+        assert!(is_disconnect(&effects));
+    }
+
+    #[test]
+    fn stale_picker_does_not_enter_airplay_later() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        assert!(c.tick(Instant::now()).is_empty());
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        assert!(c.tick(Instant::now() + Duration::from_secs(61)).is_empty());
+        assert_eq!(c.state().airplay_receivers, None);
+    }
+
+    #[test]
+    fn this_mac_choice_cancels_pending_start() {
+        let (mut c, log) = controller();
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Family Room".into()];
+        assert!(c.tick(Instant::now()).is_empty());
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers.clear();
+        assert!(c.tick(Instant::now()).is_empty());
+        let effects = c.mpv_started(7);
+        assert!(state_change(&effects).is_none());
+        assert!(
+            !log.lock()
+                .unwrap()
+                .calls
+                .iter()
+                .any(|call| call.starts_with("start:"))
+        );
+        assert_eq!(c.state().airplay_receivers, None);
     }
 }
