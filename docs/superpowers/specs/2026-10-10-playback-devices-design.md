@@ -1,6 +1,6 @@
 # Playback devices and AirPlay output
 
-Status: Approved. Revised on 2026-10-11: the AirPlay audio path uses a Core Audio process tap instead of an mpv PCM FIFO.
+Status: Implemented on 2026-10-11. Manual check passed for AirPlay play, pause, seek, position, speaker change, local return through the G Music menu, and choosing this Mac in the AirPlay menu. Not yet checked by hand: audio movement between local outputs, speaker power-off, visualizer sync, 30-minute drift, and the permission prompt on a fresh account.
 
 ## Outcome
 
@@ -77,6 +77,8 @@ When the AirPlay route disappears unexpectedly or the renderer fails:
 1. Pause playback.
 2. Return to Local mode with the saved device.
 3. Show the notice "AirPlay speaker disconnected".
+
+The system AirPlay menu stays open after a choice, so the listener can choose several times in one session. A route change within 60 seconds of opening the menu counts as the listener's choice: choosing this Mac returns to Local mode without a pause or notice. A route loss later than that, or a renderer failure at any time, follows the steps above.
 
 ## Architecture
 

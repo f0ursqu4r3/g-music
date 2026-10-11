@@ -100,6 +100,26 @@ cd src-tauri
 cargo test visualizer::integration_tests --lib -- --ignored
 ```
 
+## Audio output
+
+Select the speaker button beside the volume control in the Artwork window, mini
+player, queue, or library footer. Choose a local output: built-in speakers, a
+display, a USB DAC, Bluetooth, or HDMI. G Music remembers the choice. If the
+device is not connected at launch, G Music uses the system default until the
+device returns.
+
+On macOS 14.2 or later, choose **AirPlay…** to open the system AirPlay menu and
+select a speaker, including HomePod. The first time, macOS asks for permission
+to record system audio. G Music captures only its own player audio and sends it
+to the speaker. AirPlay adds about 2 seconds of delay. The progress bar and the
+visualizer follow the speaker. Track titles change about 2 seconds before the
+new track reaches the speaker.
+
+Select AirPlay again after each launch. If the speaker disconnects, playback
+pauses and returns to the local output. Choosing this Mac in the AirPlay menu
+returns to the local output without pausing. The command palette also lists
+**Output:** entries and **AirPlay…**.
+
 ## Artwork cache
 
 Artwork persists in the application data directory under `artwork/`. The

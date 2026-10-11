@@ -171,6 +171,17 @@ Browser tests with a stubbed Tauri bridge verify Vue rendering and command
 routing only. They do not prove WKWebView behavior, macOS vibrancy, VoiceOver,
 media-key handling, authenticated playback, or audio-device recovery.
 
+### Audio output and AirPlay
+
+- [ ] Switch between two local outputs during playback.
+- [ ] Select an AirPlay receiver and confirm audio, pause, resume, seek, and position.
+- [ ] Change the receiver in the popover during playback and confirm audio continues.
+- [ ] Power off the receiver and confirm pause, the notice, and return to the local output.
+- [ ] Select a local output and confirm the receiver goes silent.
+- [ ] Confirm the visualizer stays in sync in AirPlay mode.
+- [ ] Play to AirPlay for 30 minutes and confirm no audible drift between the UI position and the receiver.
+- [ ] On a fresh user account, confirm the audio capture permission prompt and the denial message.
+
 ## Library recovery
 
 The active macOS database is:
