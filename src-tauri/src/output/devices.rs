@@ -24,12 +24,18 @@ pub(crate) fn parse_device_list(value: &Value) -> Vec<OutputDevice> {
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .unwrap_or(id);
-        devices.push(OutputDevice { id: id.into(), name: name.into() });
+        devices.push(OutputDevice {
+            id: id.into(),
+            name: name.into(),
+        });
     }
     devices
 }
 
-pub(crate) fn resolve_startup_device(saved: Option<&str>, devices: &[OutputDevice]) -> Option<String> {
+pub(crate) fn resolve_startup_device(
+    saved: Option<&str>,
+    devices: &[OutputDevice],
+) -> Option<String> {
     saved
         .filter(|id| devices.iter().any(|device| device.id == *id))
         .map(str::to_owned)
@@ -51,8 +57,14 @@ mod tests {
         assert_eq!(
             parse_device_list(&list),
             vec![
-                OutputDevice { id: "coreaudio/BuiltInSpeakerDevice".into(), name: "MacBook Pro Speakers".into() },
-                OutputDevice { id: "coreaudio/3669D23D".into(), name: "MPG321UX OLED".into() },
+                OutputDevice {
+                    id: "coreaudio/BuiltInSpeakerDevice".into(),
+                    name: "MacBook Pro Speakers".into()
+                },
+                OutputDevice {
+                    id: "coreaudio/3669D23D".into(),
+                    name: "MPG321UX OLED".into()
+                },
             ]
         );
     }
@@ -67,8 +79,14 @@ mod tests {
         assert_eq!(
             parse_device_list(&list),
             vec![
-                OutputDevice { id: "pipewire".into(), name: "Default (pipewire)".into() },
-                OutputDevice { id: "pulse/alsa_output.usb-DAC".into(), name: "pulse/alsa_output.usb-DAC".into() },
+                OutputDevice {
+                    id: "pipewire".into(),
+                    name: "Default (pipewire)".into()
+                },
+                OutputDevice {
+                    id: "pulse/alsa_output.usb-DAC".into(),
+                    name: "pulse/alsa_output.usb-DAC".into()
+                },
             ]
         );
     }
@@ -81,9 +99,18 @@ mod tests {
 
     #[test]
     fn resolves_saved_device_only_when_present() {
-        let devices = vec![OutputDevice { id: "coreaudio/A".into(), name: "A".into() }];
-        assert_eq!(resolve_startup_device(Some("coreaudio/A"), &devices), Some("coreaudio/A".into()));
-        assert_eq!(resolve_startup_device(Some("coreaudio/Gone"), &devices), None);
+        let devices = vec![OutputDevice {
+            id: "coreaudio/A".into(),
+            name: "A".into(),
+        }];
+        assert_eq!(
+            resolve_startup_device(Some("coreaudio/A"), &devices),
+            Some("coreaudio/A".into())
+        );
+        assert_eq!(
+            resolve_startup_device(Some("coreaudio/Gone"), &devices),
+            None
+        );
         assert_eq!(resolve_startup_device(None, &devices), None);
     }
 }
