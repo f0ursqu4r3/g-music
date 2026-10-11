@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isTauri } from '@tauri-apps/api/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type {
@@ -22,6 +23,7 @@ import {
   type CommandResult,
 } from '@/lib/command-palette'
 import { ordinaryPlaylist } from '@/lib/smart-playlists'
+import { useOutput } from '@/composables/useOutput'
 import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue'
 import LibraryAlbumGrid from './library/LibraryAlbumGrid.vue'
 import LibraryArtistGrid from './library/LibraryArtistGrid.vue'
@@ -117,6 +119,10 @@ const emit = defineEmits<{
 const smartEditorOpen = ref(false)
 const smartEditorTarget = ref<Playlist>()
 const paletteOpen = ref(false)
+const output = useOutput()
+watch(paletteOpen, (open) => {
+  if (open && isTauri()) void output.refresh()
+})
 function openPalette(): void {
   if (
     hasOpenOverlay() ||
@@ -179,6 +185,25 @@ async function runPaletteAction(result: CommandResult, mode: CommandMode): Promi
       if (!props.openWindowAction) throw new Error('Window actions are unavailable.')
       await props.openWindowAction(result.id as 'import' | 'queue' | 'settings' | 'visualizer')
     }
+  } else if (result.kind === 'output') {
+    if (result.id === 'output:airplay') {
+      paletteOpen.value = false
+      // Let Reka return focus before the native picker opens.
+      await nextTick()
+      const root = document.querySelector('main') ?? document.body
+      const rect = root.getBoundingClientRect()
+      await output.openAirPlayPicker({
+        getBoundingClientRect: () => ({
+          left: rect.left + rect.width / 2 - 14,
+          top: rect.top + rect.height / 2 - 14,
+          width: 28,
+          height: 28,
+        }),
+      } as HTMLElement)
+    } else {
+      await output.selectDevice(result.id.slice('output:'.length))
+    }
+    if (output.errorMessage.value) throw new Error(output.errorMessage.value)
   } else {
     if (!props.runPaletteTracks) throw new Error('Playback is unavailable.')
     await props.runPaletteTracks(result.trackIds, mode)
@@ -1328,6 +1353,7 @@ onBeforeUnmount(finishTrackDrag)
       :tracks="allTracks"
       :playlists="playlists"
       :selected-ids="selectedTracks.map((track) => track.id)"
+      :output="output.state.value"
       :is-updating="props.isUpdating"
       :run-action="runPaletteAction"
       @close="paletteOpen = false"

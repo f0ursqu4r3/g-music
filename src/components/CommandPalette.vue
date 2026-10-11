@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { MediaItem, Playlist } from '@/api'
+import type { MediaItem, OutputState, Playlist } from '@/api'
 import { searchCommands, type CommandMode, type CommandResult } from '@/lib/command-palette'
 import LibraryDialog from './library/LibraryDialog.vue'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ const props = defineProps<{
   tracks: MediaItem[]
   playlists: Playlist[]
   selectedIds?: string[]
+  output?: OutputState
   isUpdating?: boolean
   runAction: (result: CommandResult, mode: CommandMode) => Promise<unknown>
 }>()
@@ -18,7 +19,7 @@ const activeIndex = ref(0)
 const busy = ref(false)
 const error = ref('')
 const results = computed(() =>
-  searchCommands(query.value, props.tracks, props.playlists, props.selectedIds),
+  searchCommands(query.value, props.tracks, props.playlists, props.selectedIds, props.output),
 )
 const blocked = computed(() => busy.value || !!props.isUpdating)
 const labels = { play: 'Play', next: 'Play next', queue: 'Add to queue' }
@@ -34,13 +35,13 @@ watch(results, () => {
   activeIndex.value = Math.min(activeIndex.value, Math.max(0, results.value.length - 1))
 })
 function actionLabel(result: CommandResult): string {
-  return result.kind === 'action' || result.kind === 'selection'
+  return result.kind === 'action' || result.kind === 'selection' || result.kind === 'output'
     ? result.title
     : `${labels[mode.value]}: ${result.title}`
 }
 async function run(result: CommandResult): Promise<void> {
   if (blocked.value) return
-  if (!['action', 'selection'].includes(result.kind) && !result.trackIds.length) {
+  if (!['action', 'selection', 'output'].includes(result.kind) && !result.trackIds.length) {
     error.value = 'This collection has no available tracks.'
     return
   }

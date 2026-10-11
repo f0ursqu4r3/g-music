@@ -1,4 +1,4 @@
-import type { MediaItem, Playlist } from '@/api'
+import type { MediaItem, OutputState, Playlist } from '@/api'
 import { ordinaryPlaylist } from './smart-playlists'
 export const COMMAND_RESULT_LIMIT = 40
 export type CommandMode = 'play' | 'next' | 'queue'
@@ -6,7 +6,7 @@ export interface CommandResult {
   id: string
   title: string
   detail: string
-  kind: 'track' | 'album' | 'artist' | 'playlist' | 'action' | 'selection'
+  kind: 'track' | 'album' | 'artist' | 'playlist' | 'action' | 'selection' | 'output'
   trackIds: string[]
   playlistId?: string
 }
@@ -23,6 +23,7 @@ export function searchCommands(
   tracks: MediaItem[],
   playlists: Playlist[],
   selectedIds: string[] = [],
+  output?: OutputState,
 ): CommandResult[] {
   const results: CommandResult[] = []
   const albums = new Map<string, CommandResult>()
@@ -85,12 +86,35 @@ export function searchCommands(
     detail: 'Action',
     trackIds: [],
   }))
+  const outputs: CommandResult[] = output
+    ? [
+        ...output.devices.map((device) => ({
+          id: `output:${device.id}`,
+          title: `Output: ${device.name}`,
+          detail: 'Audio output',
+          kind: 'output' as const,
+          trackIds: [],
+        })),
+        ...(output.airplayAvailable
+          ? [
+              {
+                id: 'output:airplay',
+                title: 'AirPlay…',
+                detail: 'Audio output',
+                kind: 'output' as const,
+                trackIds: [],
+              },
+            ]
+          : []),
+      ]
+    : []
   const normalized = query.trim().toLocaleLowerCase()
   // Keep actions discoverable in an empty query, even in a large library.
   const candidates = normalized
-    ? [...results, ...actions]
+    ? [...results, ...actions, ...outputs]
     : [
         ...actions,
+        ...outputs,
         ...results.filter((r) => r.kind === 'selection'),
         ...results.filter((r) => r.kind !== 'selection'),
       ]
