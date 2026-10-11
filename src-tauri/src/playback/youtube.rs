@@ -3086,6 +3086,7 @@ impl MpvPlayer {
     }
 
     fn stop_checked(&mut self) -> Result<(), YouTubePlaybackError> {
+        let had_child = self.child.is_some();
         if let Some(child) = self.child.as_mut() {
             if child
                 .try_wait()
@@ -3101,6 +3102,11 @@ impl MpvPlayer {
                 .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
         }
         self.child = None;
+        // Report the exit after the child is reaped so a restart cannot play locally.
+        // Placeholder players have no child and never report an exit.
+        if had_child {
+            crate::output::mpv_stopped();
+        }
         self.visualizer = None;
         if let Some(mut watchdog) = self.watchdog.take() {
             let _ = watchdog.kill();
@@ -3121,12 +3127,13 @@ impl MpvPlayer {
         }
         if self.child.is_some() {
             tracing::info!("stopping mpv process");
-            crate::output::mpv_stopped();
             let _ = self.send(json!(["quit"]));
         }
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
+            // Report the exit after the child is reaped so a restart cannot play locally.
+            crate::output::mpv_stopped();
         }
         self.visualizer = None;
         let _ = fs::remove_file(&self.socket_path);
@@ -3853,6 +3860,29 @@ mod tests {
         drop(player);
         let after_drop = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
         assert_eq!(after_drop, after, "a stopped player must not report twice");
+    }
+
+    #[test]
+    fn halt_after_error_with_a_running_child_reports_one_mpv_exit() {
+        let mut provider = YouTubePlaybackProvider::with_entries(Vec::new(), None);
+        provider.player.child = Some(Command::new("sleep").arg("30").spawn().unwrap());
+        let before = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        provider.halt_after_error().unwrap();
+        let after = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        assert_eq!(after, before + 1);
+        assert!(provider.player.child.is_none());
+        drop(provider);
+        let after_drop = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        assert_eq!(after_drop, after, "a stopped player must not report twice");
+    }
+
+    #[test]
+    fn halt_after_error_on_a_placeholder_player_reports_no_mpv_exit() {
+        let mut provider = YouTubePlaybackProvider::with_entries(Vec::new(), None);
+        let before = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        provider.halt_after_error().unwrap();
+        let after = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        assert_eq!(after, before);
     }
 
     #[test]

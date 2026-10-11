@@ -245,7 +245,14 @@ impl OutputController {
     }
 
     pub(crate) fn mpv_started(&mut self, pid: u32) -> Vec<OutputEffect> {
-        self.mpv_pid = Some(pid);
+        let previous_pid = self.mpv_pid.replace(pid);
+        if self.route_running && previous_pid != Some(pid) {
+            // mpv restarted without a reported exit. Move the tap to the new process.
+            self.route.stop();
+            self.route_running = false;
+            let receivers = self.state.airplay_receivers.clone().unwrap_or_default();
+            return self.start_route(receivers);
+        }
         if self.pending_start {
             let receivers = std::mem::take(&mut self.pending_receivers);
             return self.start_route(receivers);
@@ -500,6 +507,41 @@ mod tests {
             c.state().airplay_receivers,
             Some(vec!["Master Bedroom".into()])
         );
+    }
+
+    #[test]
+    fn mpv_started_with_a_new_pid_restarts_the_route_without_a_stop_report() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(Instant::now());
+        log.lock().unwrap().calls.clear();
+        let effects = c.mpv_started(43);
+        assert_eq!(
+            log.lock().unwrap().calls,
+            vec!["stop".to_string(), "start:43:false".to_string()]
+        );
+        assert_eq!(
+            state_change(&effects).unwrap().airplay_receivers,
+            Some(vec!["Master Bedroom".into()])
+        );
+        assert_eq!(
+            c.state().airplay_receivers,
+            Some(vec!["Master Bedroom".into()])
+        );
+    }
+
+    #[test]
+    fn mpv_started_with_the_same_pid_does_not_restart_the_route() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(Instant::now());
+        log.lock().unwrap().calls.clear();
+        assert!(c.mpv_started(42).is_empty());
+        assert!(log.lock().unwrap().calls.is_empty());
     }
 
     #[test]
