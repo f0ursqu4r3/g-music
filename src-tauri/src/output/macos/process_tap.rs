@@ -113,8 +113,9 @@ fn tap_format(tap_id: AudioObjectID) -> Option<AudioStreamBasicDescription> {
 }
 
 fn is_supported_format(format: &AudioStreamBasicDescription) -> bool {
+    // The feeder and the format description take any rate.
     let rate = format.mSampleRate;
-    (rate == 48_000.0 || rate == 44_100.0)
+    (rate.is_finite() && rate > 0.0)
         && format.mFormatID == kAudioFormatLinearPCM
         && format.mFormatFlags & kAudioFormatFlagIsFloat != 0
         && format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
@@ -356,11 +357,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_only_interleaved_float32_stereo_at_48_or_44_1_khz() {
+    fn accepts_interleaved_float32_stereo_at_any_positive_rate() {
         let float = kAudioFormatFlagIsFloat;
         assert!(is_supported_format(&format(48_000.0, float, 2, 32)));
         assert!(is_supported_format(&format(44_100.0, float, 2, 32)));
-        assert!(!is_supported_format(&format(96_000.0, float, 2, 32)));
+        assert!(is_supported_format(&format(96_000.0, float, 2, 32)));
+        assert!(!is_supported_format(&format(0.0, float, 2, 32)));
+        assert!(!is_supported_format(&format(-48_000.0, float, 2, 32)));
+        assert!(!is_supported_format(&format(f64::NAN, float, 2, 32)));
         assert!(!is_supported_format(&format(48_000.0, 0, 2, 32)));
         assert!(!is_supported_format(&format(48_000.0, float, 1, 32)));
         assert!(!is_supported_format(&format(48_000.0, float, 2, 16)));

@@ -83,7 +83,7 @@ pub(crate) fn install(app: AppHandle, route: Box<dyn AirPlayRoute>) {
     if SHARED.set(shared).is_err() {
         return;
     }
-    thread::Builder::new()
+    let spawned = thread::Builder::new()
         .name("gmusic-output".into())
         .spawn(|| {
             loop {
@@ -91,8 +91,10 @@ pub(crate) fn install(app: AppHandle, route: Box<dyn AirPlayRoute>) {
                 let effects = with_controller(|c| c.tick(Instant::now())).unwrap_or_default();
                 apply(effects);
             }
-        })
-        .ok();
+        });
+    if let Err(error) = spawned {
+        tracing::warn!(%error, "the audio output tick thread did not start");
+    }
 }
 
 fn with_controller<T>(operation: impl FnOnce(&mut OutputController) -> T) -> Option<T> {
