@@ -84,6 +84,9 @@ pub(crate) struct OutputController {
     route_running: bool,
     /// The previous poll, kept so route changes can be logged.
     last_poll: Option<RoutePoll>,
+    /// The receivers of the last failed start. `tick` does not retry while the poll still
+    /// equals them. A changed poll or a new `open_picker` clears it.
+    failed_receivers: Option<Vec<String>>,
 }
 
 impl OutputController {
@@ -102,6 +105,7 @@ impl OutputController {
             pending_receivers: Vec::new(),
             route_running: false,
             last_poll: None,
+            failed_receivers: None,
         }
     }
 
@@ -133,6 +137,7 @@ impl OutputController {
         tracing::debug!(ok = result.is_ok(), "AirPlay picker requested");
         result?;
         self.picker_opened_at = Some(Instant::now());
+        self.failed_receivers = None;
         Ok(())
     }
 
@@ -144,12 +149,14 @@ impl OutputController {
         };
         match self.route.start(pid, self.playing) {
             Ok(()) => {
+                self.failed_receivers = None;
                 self.pending_start = false;
                 self.route_running = true;
                 self.state.airplay_receivers = Some(receivers);
                 vec![OutputEffect::StateChanged(self.state())]
             }
             Err(error) => {
+                self.failed_receivers = Some(receivers);
                 self.pending_start = false;
                 self.route_running = false;
                 self.state.airplay_receivers = None;
@@ -195,8 +202,19 @@ impl OutputController {
             );
             self.last_poll = Some(poll.clone());
         }
+        if self
+            .failed_receivers
+            .as_ref()
+            .is_some_and(|failed| *failed != poll.receivers)
+        {
+            self.failed_receivers = None;
+        }
         if !self.in_airplay() {
             if picker_recent && !poll.receivers.is_empty() {
+                if self.failed_receivers.is_some() {
+                    // The start for these receivers failed. Wait for another choice.
+                    return Vec::new();
+                }
                 if self.mpv_pid.is_none() {
                     self.pending_start = true;
                     self.pending_receivers = poll.receivers;
@@ -433,6 +451,55 @@ mod tests {
             }
         )));
         assert_eq!(c.state().airplay_receivers, None);
+    }
+
+    fn error_count(effects: &[OutputEffect]) -> usize {
+        effects
+            .iter()
+            .filter(|e| matches!(e, OutputEffect::Error { .. }))
+            .count()
+    }
+
+    #[test]
+    fn a_failed_start_is_not_retried_until_the_picker_opens_again() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        log.lock().unwrap().start_error = Some(RouteError::Unavailable("no renderer".into()));
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        let now = Instant::now();
+        let first = c.tick(now);
+        let second = c.tick(now + Duration::from_millis(250));
+        assert_eq!(error_count(&first), 1);
+        assert!(second.is_empty());
+        assert_eq!(start_count(&log), 1);
+        assert_eq!(c.state().airplay_receivers, None);
+
+        c.open_picker(&anchor()).unwrap();
+        let third = c.tick(now + Duration::from_millis(500));
+        assert_eq!(start_count(&log), 2);
+        assert_eq!(
+            state_change(&third).unwrap().airplay_receivers,
+            Some(vec!["Master Bedroom".into()])
+        );
+    }
+
+    #[test]
+    fn a_changed_poll_clears_the_failed_start() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        log.lock().unwrap().start_error = Some(RouteError::Unavailable("no renderer".into()));
+        c.open_picker(&anchor()).unwrap();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        let now = Instant::now();
+        c.tick(now);
+        log.lock().unwrap().receivers = vec!["Family Room".into()];
+        c.tick(now + Duration::from_millis(250));
+        assert_eq!(start_count(&log), 2);
+        assert_eq!(
+            c.state().airplay_receivers,
+            Some(vec!["Family Room".into()])
+        );
     }
 
     #[test]
