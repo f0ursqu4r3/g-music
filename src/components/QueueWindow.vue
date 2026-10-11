@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/context-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDuration } from '@/lib/time'
+import OutputMenu from './OutputMenu.vue'
 import YouTubeArtwork from './YouTubeArtwork.vue'
 
 interface Props {
@@ -640,6 +641,7 @@ watch(
         >
           <SkipForward aria-hidden="true" />
         </Button>
+        <OutputMenu />
       </nav>
     </footer>
   </main>

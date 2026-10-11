@@ -29,6 +29,7 @@ import {
 import { Slider } from '@/components/ui/slider'
 import { formatDuration } from '@/lib/time'
 import AutoScrollText from './AutoScrollText.vue'
+import OutputMenu from './OutputMenu.vue'
 import YouTubeArtwork from './YouTubeArtwork.vue'
 
 interface Props {
@@ -411,7 +412,7 @@ onUnmounted(() => {
         </nav>
 
         <div class="mt-2 flex items-center justify-between gap-3">
-          <div class="flex w-28 min-w-0 items-center gap-2">
+          <div class="flex w-36 min-w-0 items-center gap-2">
             <Button
               :aria-label="muteLabel"
               :title="muteLabel"
@@ -435,6 +436,7 @@ onUnmounted(() => {
               :disabled="isUpdating"
               @update:model-value="emitVolume"
             />
+            <OutputMenu :button-class="actionClass" />
           </div>
           <div class="flex items-center gap-1">
             <Button

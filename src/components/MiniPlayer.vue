@@ -22,6 +22,7 @@ import type { PlaybackSnapshot } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { formatDuration } from '@/lib/time'
+import OutputMenu from './OutputMenu.vue'
 import YouTubeArtwork from './YouTubeArtwork.vue'
 
 interface Props {
@@ -220,7 +221,7 @@ function emitVolume(values: number[] | undefined): void {
         </nav>
 
         <div
-          class="grid w-24 grid-cols-[14px_minmax(0,1fr)_18px] items-center gap-1.5 text-(--muted-text) max-[390px]:hidden"
+          class="grid w-30 grid-cols-[14px_minmax(0,1fr)_18px_20px] items-center gap-1.5 text-(--muted-text) max-[390px]:hidden"
         >
           <Button
             :aria-label="snapshot.volumePercent === 0 ? 'Unmute volume' : 'Mute volume'"
@@ -247,6 +248,10 @@ function emitVolume(values: number[] | undefined): void {
           >
             {{ snapshot.volumePercent }}
           </span>
+          <OutputMenu
+            size="icon-xs"
+            button-class="size-5 text-(--muted-text) hover:bg-(--surface-muted) hover:text-(--text) [&_svg]:size-3.5"
+          />
         </div>
       </div>
 

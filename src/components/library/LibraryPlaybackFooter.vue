@@ -24,6 +24,7 @@ import type { MediaItem, PlaybackTransport } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { formatDuration } from '@/lib/time'
+import OutputMenu from '../OutputMenu.vue'
 import YouTubeArtwork from '../YouTubeArtwork.vue'
 
 const props = defineProps<{
@@ -229,7 +230,7 @@ function emitSeek(values: number[]): void {
       </div>
 
       <div
-        class="flex w-36 shrink-0 items-center gap-2 text-(--muted-text) [&>svg]:size-4"
+        class="flex w-44 shrink-0 items-center gap-2 text-(--muted-text) [&>svg]:size-4"
         data-playback-control="volume"
       >
         <Button
@@ -250,6 +251,7 @@ function emitSeek(values: number[]): void {
           :disabled="props.isUpdating"
           @update:model-value="emitVolume"
         />
+        <OutputMenu />
       </div>
 
       <Button
