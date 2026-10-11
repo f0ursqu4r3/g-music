@@ -172,6 +172,26 @@ export interface CommandError {
   message: string
 }
 
+export interface OutputDevice {
+  id: string
+  name: string
+}
+
+export interface OutputState {
+  devices: OutputDevice[]
+  selectedDeviceId: string | null
+  airplayAvailable: boolean
+  airplayReceivers: string[] | null
+}
+
+/** CSS pixels from the top-left corner of the window content. */
+export interface PickerAnchor {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface YouTubeAuthStatus {
   connected: boolean
 }
@@ -321,6 +341,14 @@ export const followingApi = {
     invoke<FollowingSnapshot>('unfollow_artist', { channelId }),
   check: (channelId?: string): Promise<FollowingSnapshot> =>
     invoke<FollowingSnapshot>('check_following', { channelId: channelId ?? null }),
+}
+
+export const outputApi = {
+  getState: (): Promise<OutputState> => invoke<OutputState>('get_output_state'),
+  selectDevice: (id: string): Promise<OutputState> =>
+    invoke<OutputState>('select_output_device', { id }),
+  openAirPlayPicker: (anchor: PickerAnchor): Promise<void> =>
+    invoke<void>('open_airplay_picker', { anchor }),
 }
 
 export const windowApi = {

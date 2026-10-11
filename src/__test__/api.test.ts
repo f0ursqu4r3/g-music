@@ -8,6 +8,7 @@ import {
   type LibrarySnapshot,
   type PlaybackSnapshot,
   type Playlist,
+  outputApi,
   windowApi,
   youtubeAuthApi,
 } from '../api'
@@ -210,6 +211,38 @@ describe('youtubeAuthApi', () => {
       ['save_youtube_session'],
       ['disconnect_youtube'],
     ])
+  })
+})
+
+describe('outputApi', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+  })
+
+  it('reads the output state with no arguments', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    await outputApi.getState()
+
+    expect(invoke).toHaveBeenCalledWith('get_output_state')
+  })
+
+  it('selects an output device by its stable id', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    await outputApi.selectDevice('coreaudio/DAC')
+
+    expect(invoke).toHaveBeenCalledWith('select_output_device', { id: 'coreaudio/DAC' })
+  })
+
+  it('opens the AirPlay picker at the anchor rectangle', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
+    await outputApi.openAirPlayPicker({ x: 1, y: 2, width: 3, height: 4 })
+
+    expect(invoke).toHaveBeenCalledWith('open_airplay_picker', {
+      anchor: { x: 1, y: 2, width: 3, height: 4 },
+    })
   })
 })
 
