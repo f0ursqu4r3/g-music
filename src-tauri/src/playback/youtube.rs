@@ -1082,7 +1082,7 @@ impl YouTubePlaybackProvider {
                     YouTubePlaybackError::Player("the restored track is not in the queue".into())
                 })?;
                 let position_ms = self.snapshot.position_ms;
-                self.select_queue_index(index)?;
+                self.select_queue_index(index, false)?;
                 if position_ms > 0 {
                     self.player.seek(position_ms)?;
                     self.snapshot.position_ms = position_ms;
@@ -1121,7 +1121,7 @@ impl YouTubePlaybackProvider {
         let Some(current_index) = self.current_index() else {
             return Ok(());
         };
-        self.advance_from(current_index)
+        self.advance_from(current_index, true)
     }
 
     pub fn previous_track(&mut self) -> Result<(), YouTubePlaybackError> {
@@ -1146,14 +1146,14 @@ impl YouTubePlaybackProvider {
                 .ok_or_else(|| YouTubePlaybackError::TrackNotFound {
                     id: previous_id.clone(),
                 })?;
-            return self.select_queue_index(previous_index);
+            return self.select_queue_index(previous_index, true);
         }
         let previous_index = if current_index == 0 {
             self.snapshot.queue.len() - 1
         } else {
             current_index - 1
         };
-        self.select_queue_index(previous_index)
+        self.select_queue_index(previous_index, true)
     }
 
     pub fn play_track(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
@@ -1168,7 +1168,7 @@ impl YouTubePlaybackProvider {
         if self.snapshot.shuffle_enabled {
             self.reset_shuffle_order(Some(id));
         }
-        self.select_queue_index(index)?;
+        self.select_queue_index(index, true)?;
         self.player.set_paused(false)?;
         self.snapshot.status = PlaybackStatus::Playing;
         if !was_playing {
@@ -1363,16 +1363,22 @@ impl YouTubePlaybackProvider {
         let Some(current_index) = self.current_index() else {
             return Ok(());
         };
-        self.advance_from(current_index)
+        // The track ended on its own: the queued tail plays out instead of being dropped.
+        self.advance_from(current_index, false)
     }
 
-    fn advance_from(&mut self, current_index: usize) -> Result<(), YouTubePlaybackError> {
+    /// `drop_queued_audio` is true when the listener asked for the change.
+    fn advance_from(
+        &mut self,
+        current_index: usize,
+        drop_queued_audio: bool,
+    ) -> Result<(), YouTubePlaybackError> {
         let queue_len = self.snapshot.queue.len();
         if queue_len == 0 {
             return Ok(());
         }
         if self.snapshot.repeat_mode == RepeatMode::One {
-            return self.select_queue_index(current_index);
+            return self.select_queue_index(current_index, drop_queued_audio);
         }
         if self.snapshot.shuffle_enabled {
             self.reconcile_shuffle_order();
@@ -1395,13 +1401,13 @@ impl YouTubePlaybackProvider {
                 .ok_or_else(|| YouTubePlaybackError::TrackNotFound {
                     id: next_id.clone(),
                 })?;
-            return self.select_queue_index(next_index);
+            return self.select_queue_index(next_index, drop_queued_audio);
         }
         if current_index + 1 < queue_len {
-            return self.select_queue_index(current_index + 1);
+            return self.select_queue_index(current_index + 1, drop_queued_audio);
         }
         if self.snapshot.repeat_mode == RepeatMode::All {
-            return self.select_queue_index(0);
+            return self.select_queue_index(0, drop_queued_audio);
         }
 
         self.finish_queue()
@@ -1457,7 +1463,13 @@ impl YouTubePlaybackProvider {
         Ok(self.library_snapshot())
     }
 
-    fn select_queue_index(&mut self, index: usize) -> Result<(), YouTubePlaybackError> {
+    /// `drop_queued_audio` flushes the output module's queue before the load, so the old
+    /// track's tail does not play after a listener-requested change.
+    fn select_queue_index(
+        &mut self,
+        index: usize,
+        drop_queued_audio: bool,
+    ) -> Result<(), YouTubePlaybackError> {
         let was_playing = self.snapshot.status == PlaybackStatus::Playing;
         let item = self
             .snapshot
@@ -1474,6 +1486,9 @@ impl YouTubePlaybackProvider {
                 id: item.id.clone(),
             })?;
 
+        if drop_queued_audio {
+            crate::output::seeked();
+        }
         if let Err(error) = self.player.load(
             &source_url,
             self.snapshot.volume_percent,
@@ -2716,7 +2731,9 @@ impl MpvPlayer {
         for attempt in 0..2 {
             let result = (|| {
                 self.ensure_started(volume_percent)?;
-                self.set_paused(true)?;
+                // The output module keeps its state: the old track's queued tail must
+                // not freeze, and the caller sets the real pause state after the load.
+                self.pause_player_only(true)?;
                 self.send(json!(["loadfile", source_url, "replace"]))?;
                 self.wait_until_loaded()
             })();
@@ -2729,8 +2746,13 @@ impl MpvPlayer {
         unreachable!()
     }
 
-    fn set_paused(&mut self, paused: bool) -> Result<(), YouTubePlaybackError> {
+    fn pause_player_only(&mut self, paused: bool) -> Result<(), YouTubePlaybackError> {
         self.send(json!(["set_property", "pause", paused]))?;
+        Ok(())
+    }
+
+    fn set_paused(&mut self, paused: bool) -> Result<(), YouTubePlaybackError> {
+        self.pause_player_only(paused)?;
         crate::output::set_playing(!paused);
         Ok(())
     }
@@ -4581,6 +4603,79 @@ mod tests {
         assert_eq!(provider.entries[1].item.play_count, 1);
     }
 
+    fn two_track_provider() -> YouTubePlaybackProvider {
+        let entries = parse_import_metadata(
+            r#"{"entries":[{"id":"M7lc1UVf-VE","title":"A"},{"id":"BaW_jenozKc","title":"B"}]}"#,
+        )
+        .unwrap();
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider
+            .replace_queue(&["M7lc1UVf-VE".into(), "BaW_jenozKc".into()])
+            .unwrap();
+        provider.snapshot.current_item = Some(provider.snapshot.queue[0].clone());
+        provider.snapshot.status = PlaybackStatus::Playing;
+        provider.player.test_commands = Some(Default::default());
+        provider
+    }
+
+    fn seeked_calls() -> usize {
+        crate::output::SEEKED_CALLS.with(|calls| calls.get())
+    }
+
+    fn paused_calls() -> usize {
+        crate::output::PAUSED_CALLS.with(|calls| calls.get())
+    }
+
+    #[test]
+    fn load_pauses_mpv_without_pausing_the_output() {
+        let mut provider = two_track_provider();
+        let commands = provider.player.test_commands.clone().unwrap();
+        let before = paused_calls();
+        provider
+            .player
+            .load("https://www.youtube.com/watch?v=M7lc1UVf-VE", 72, None)
+            .unwrap();
+        assert_eq!(
+            paused_calls(),
+            before,
+            "load must not reach set_playing(false)"
+        );
+        assert!(
+            commands
+                .lock()
+                .unwrap()
+                .contains(&json!(["set_property", "pause", true]))
+        );
+    }
+
+    #[test]
+    fn user_track_changes_flush_the_output_once() {
+        let mut provider = two_track_provider();
+        let before = seeked_calls();
+        provider.next_track().unwrap();
+        assert_eq!(seeked_calls(), before + 1, "next");
+
+        let before = seeked_calls();
+        provider.previous_track().unwrap();
+        assert_eq!(seeked_calls(), before + 1, "previous");
+
+        let before = seeked_calls();
+        provider.play_track("BaW_jenozKc").unwrap();
+        assert_eq!(seeked_calls(), before + 1, "play_track");
+    }
+
+    #[test]
+    fn auto_advance_after_end_does_not_flush_the_output() {
+        let mut provider = two_track_provider();
+        let before = seeked_calls();
+        provider.advance_after_end().unwrap();
+        assert_eq!(seeked_calls(), before);
+        assert_eq!(
+            provider.snapshot.current_item.as_ref().unwrap().id,
+            "BaW_jenozKc"
+        );
+    }
+
     #[test]
     fn hardening_shutdown_does_not_advance_at_eof() {
         let entries = parse_import_metadata(
@@ -4613,7 +4708,7 @@ mod tests {
         provider.snapshot.status = PlaybackStatus::Playing;
         provider.player.test_commands = Some(Default::default());
         provider.player.test_failure = Some(serde_json::json!(["set_property", "loop-file", "no"]));
-        assert!(provider.select_queue_index(0).is_err());
+        assert!(provider.select_queue_index(0, false).is_err());
         assert!(!provider.player.is_running());
         assert_eq!(provider.snapshot.status, PlaybackStatus::Paused);
         assert_eq!(
@@ -5041,7 +5136,7 @@ mod tests {
         provider.snapshot.position_ms = 90_000;
 
         provider
-            .advance_from(1)
+            .advance_from(1, true)
             .expect("the final queue track can finish");
 
         assert!(provider.snapshot.queue.is_empty());

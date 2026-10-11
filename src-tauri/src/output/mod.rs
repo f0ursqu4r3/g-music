@@ -155,11 +155,25 @@ pub(crate) fn mpv_stopped() {
     with_controller(|c| c.mpv_stopped());
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Counts `set_playing(false)` calls on this thread.
+    pub(crate) static PAUSED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Counts `seeked` calls on this thread.
+    pub(crate) static SEEKED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn set_playing(playing: bool) {
+    #[cfg(test)]
+    if !playing {
+        PAUSED_CALLS.with(|calls| calls.set(calls.get() + 1));
+    }
     with_controller(|c| c.set_playing(playing));
 }
 
 pub(crate) fn seeked() {
+    #[cfg(test)]
+    SEEKED_CALLS.with(|calls| calls.set(calls.get() + 1));
     with_controller(|c| c.seeked());
 }
 
