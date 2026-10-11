@@ -79,17 +79,24 @@ export function useOutput(
   }
 
   let stop: (() => void) | undefined
+  let disposed = false
   const ready = subscribe
     ? subscribe((next) => {
-        state.value = next
+        if (!disposed) state.value = next
       }).then(
         (unlisten) => {
-          stop = unlisten
+          // The scope may have ended while listen() was pending. Release the listener now.
+          if (disposed) unlisten()
+          else stop = unlisten
         },
         () => undefined,
       )
     : Promise.resolve()
-  if (getCurrentScope()) onScopeDispose(() => stop?.())
+  if (getCurrentScope())
+    onScopeDispose(() => {
+      disposed = true
+      stop?.()
+    })
 
   return {
     state,

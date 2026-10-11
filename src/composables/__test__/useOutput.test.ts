@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { effectScope } from 'vue'
 
 import type { OutputState } from '@/api'
 import { useOutput } from '../useOutput'
@@ -88,5 +89,33 @@ describe('useOutput', () => {
     await output.ready
     handler?.({ ...local, airplayReceivers: ['Master Bedroom'] })
     expect(output.isAirPlay.value).toBe(true)
+  })
+
+  it('releases the listener when the scope ends before subscribing completes', async () => {
+    const unlisten = vi.fn()
+    let resolveSubscribe!: (value: () => void) => void
+    const subscribe = vi.fn(
+      () => new Promise<() => void>((resolve) => (resolveSubscribe = resolve)),
+    )
+    const scope = effectScope()
+    const output = scope.run(() => useOutput(client(), subscribe))!
+    scope.stop()
+    resolveSubscribe(unlisten)
+    await output.ready
+    expect(unlisten).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores output-changed events that arrive after the scope ends', async () => {
+    let handler: ((state: OutputState) => void) | undefined
+    const subscribe = vi.fn((next: (state: OutputState) => void) => {
+      handler = next
+      return Promise.resolve(() => {})
+    })
+    const scope = effectScope()
+    const output = scope.run(() => useOutput(client(), subscribe))!
+    await output.ready
+    scope.stop()
+    handler?.({ ...local, airplayReceivers: ['Master Bedroom'] })
+    expect(output.isAirPlay.value).toBe(false)
   })
 })
