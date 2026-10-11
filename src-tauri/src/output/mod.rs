@@ -1,18 +1,16 @@
 //! Audio output selection: local devices through mpv and AirPlay on macOS.
 
-use serde::Serialize;
-
 pub(crate) mod devices;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct OutputState {
-    pub(crate) devices: Vec<devices::OutputDevice>,
-    pub(crate) selected_device_id: Option<String>,
-    pub(crate) airplay_available: bool,
-    /// `Some` means AirPlay mode. The names come from the active route.
-    pub(crate) airplay_receivers: Option<Vec<String>>,
-}
+// Wired to mpv and macOS in Tasks 4 and 7.
+#[allow(dead_code)]
+pub(crate) mod clock;
+#[allow(dead_code)]
+pub(crate) mod controller;
+#[allow(dead_code)]
+pub(crate) mod ring;
+
+pub(crate) use controller::OutputState;
 
 /// Merges the latest local device list into the shared output state.
 pub(crate) fn local_state(
