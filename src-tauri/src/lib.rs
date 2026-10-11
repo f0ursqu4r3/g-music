@@ -7,6 +7,7 @@ mod following;
 mod following_commands;
 mod following_fetch;
 mod media_session;
+mod output;
 mod persistence;
 pub mod playback;
 mod process;
