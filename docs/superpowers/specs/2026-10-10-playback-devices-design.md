@@ -1,6 +1,6 @@
 # Playback devices and AirPlay output
 
-Status: Design approved in conversation. Written spec awaits review.
+Status: Approved. Revised on 2026-10-11: the AirPlay audio path uses a Core Audio process tap instead of an mpv PCM FIFO.
 
 ## Outcome
 
@@ -33,7 +33,17 @@ A throwaway Objective-C probe ran on macOS 26.6.2 (25G83) on 2026-10-10. The lis
 
 These APIs are private. G Music ships with a Developer ID signature and notarization, not through the App Store. A future macOS release can still remove or change them. Resolve every private class and selector at runtime, and hide AirPlay when any check fails.
 
-The [airlift](https://github.com/jgarms/airlift) project (MIT) uses the same context, picker, and renderer approach.
+The [airlift](https://github.com/jgarms/airlift) project (MIT) uses the same context, picker, and renderer approach. It captures app audio with a Core Audio process tap.
+
+### Rejected: mpv PCM output through a FIFO
+
+A second probe on 2026-10-11 with mpv 0.41.0 tested `set_property ao pcm` during playback, with `ao-pcm-file` set to a FIFO and a reader paced at real time.
+
+- The runtime switch works. `current-ao` changes to `pcm`, the FIFO receives float32 stereo 48 kHz PCM, and switching back works.
+- `ao=pcm` writes from the mpv core thread. FIFO back-pressure blocks IPC: `set_property pause true` took 2.96 to 3.24 s, and `seek` plus the next `get_property` took about 1.7 s. `--audio-buffer=0.05` did not help.
+- `time-pos` ran about 1.4 s ahead of the consumed audio.
+
+The existing UI sends IPC on every pause and seek, so this path would freeze controls. Do not use it.
 
 ## User experience
 
@@ -79,20 +89,22 @@ G Music state alone decides the mode: `Local { device_id }` or `AirPlay { receiv
 | Unit | Purpose | Depends on |
 |---|---|---|
 | `mod.rs`: `OutputState`, `OutputController` | Owns the mode. Applies changes, emits `output-changed`, and saves the local device ID. | mpv IPC, `AirPlayRoute` |
+| `airplay_clock.rs` | Pure math: position correction, queue depth, and the drift check. No platform code. | — |
 | `devices.rs` | Parses mpv `audio-device-list` into `OutputDevice { id, name }`. Removes `auto` and the duplicate `avfoundation/*` entries on macOS. Observes the property for hot-plug changes. | mpv IPC |
-| `airplay.rs` (macOS) | Private-API layer. Creates the shared audio context, renderer, and synchronizer. Opens the picker. Handles auto-flush notifications. Reports route changes. Implements `AirPlayRoute`. | `objc2`, `objc2-av-foundation`, `objc2-av-kit`, `objc2-core-media` |
-| `pcm_pipe.rs` | Creates a FIFO in the app runtime directory. Reads float32 stereo 48 kHz PCM on a worker thread and sends buffers to the renderer. Discards stale data after a seek. | `libc` |
+| `airplay.rs` (macOS) | Private-API layer. Creates the shared audio context, renderer, and synchronizer. Opens the picker. Handles auto-flush notifications. Reports route changes. Implements `AirPlayRoute` together with `process_tap.rs`. | `objc2`, `objc2-av-foundation`, `objc2-av-kit`, `objc2-core-media` |
+| `process_tap.rs` (macOS) | Creates a muted Core Audio process tap on the mpv PID, wraps it in a private aggregate device, and delivers float32 PCM from an IOProc to the renderer through a bounded ring buffer. Destroys the tap and aggregate device on stop, which restores local sound. | `objc2-core-audio` |
 | `AirPlayRoute` trait | Interface between `OutputController` and the native layer. A fake implementation serves tests. A no-op implementation on Linux reports "unavailable". | — |
 
 Use typed `objc2` bindings where they exist, as `media_session.rs` does. Use `msg_send!` only for the private selectors. Run all AppKit and AVKit calls on the main thread.
 
 ### Changes to existing code
 
-- `playback/youtube.rs`: replace `--audio-device=auto` with the saved device. Add IPC helpers that set `ao`, `audio-device`, and the PCM options at runtime. In AirPlay mode, report the position from the renderer clock. See [Position](#position).
+- `playback/youtube.rs`: replace `--audio-device=auto` with the saved device. Add an IPC helper that sets `audio-device` at runtime. Expose the mpv PID and a restart notification, so the tap follows a new mpv process. In AirPlay mode, correct the reported position. See [Position](#position). mpv output options do not change between modes.
 - `commands.rs`, `lib.rs`, `src/api.ts`: add `list_output_devices`, `select_output_device`, `open_airplay_picker`, and `get_output_state`, and the `output-changed` event.
 - `persistence.rs`: add `output_device_id: Option<String>` to `SavedPlaybackState` with `#[serde(default)]`.
 - Visualizer: in AirPlay mode, add the queued audio duration to the synchronization delay.
 - `capabilities/*.json`: allow the new commands and event in every window that shows the output button.
+- Bundle Info.plist: add `NSAudioCaptureUsageDescription` with the text "G Music captures its own audio to play it on AirPlay speakers."
 
 ### Frontend units
 
@@ -113,21 +125,20 @@ Use typed `objc2` bindings where they exist, as `media_session.rs` does. Use `ms
 1. The UI calls `open_airplay_picker` with the window label and the button rectangle in CSS pixels.
 2. On the main thread, Rust adds a hidden `AVRoutePickerView` to that window's content view and opens the popover at the rectangle. Create the shared context once per app run.
 3. When the popover closes with a non-local route, Rust:
-   1. starts the FIFO reader;
-   2. sets `ao-pcm-file`, `ao-pcm-waveheader=no`, `audio-format=float`, `audio-samplerate=48000`, and `audio-channels=stereo` on mpv, then sets `ao=pcm`;
-   3. starts the renderer at the current `time-pos`, at rate 1 when playing and rate 0 when paused;
-   4. emits `output-changed`.
+   1. creates the muted process tap on the mpv PID and starts its IOProc;
+   2. starts the renderer, at rate 1 when playing and rate 0 when paused;
+   3. emits `output-changed`.
 4. When the popover closes with the local Mac route, G Music stays in or returns to Local mode with the saved device.
 
-Pipe back-pressure from the renderer paces mpv, because `ao=pcm` writes as fast as the FIFO accepts.
+mpv keeps playing to the saved local device at real-time speed. The tap mutes that device for mpv only. Other apps still play locally.
 
 ### Leave AirPlay mode
 
 When the listener selects a local device in the G Music menu:
 
 1. Set the synchronizer rate to 0 and flush the renderer.
-2. Set `ao=coreaudio` and `audio-device` on mpv. AirPlay mode exists only on macOS.
-3. Stop the FIFO reader.
+2. Destroy the process tap and its aggregate device. mpv sound returns to the local device.
+3. Set `audio-device` on mpv when the selected device differs from the current one.
 4. Save the device and emit `output-changed`.
 
 ### Events in AirPlay mode
@@ -135,15 +146,17 @@ When the listener selects a local device in the G Music menu:
 | Event | Action |
 |---|---|
 | Pause or play | Set mpv `pause` and the synchronizer rate together. Queued audio is held, so resume is immediate. |
-| Seek | Seek in mpv and flush the renderer. Discard FIFO data until mpv sends `playback-restart`. Restart timestamps at the new position. |
+| Seek | Seek in mpv and flush the renderer. Discard tapped PCM until mpv sends `playback-restart`. Restart timestamps at the synchronizer's current time. |
+| Clock drift | Every second, compare the queue depth with the depth measured 3 s after start. When the difference passes 250 ms, set rate 0, flush, and restart from the next tapped buffer. |
+| mpv restarts | Destroy the tap, create a new tap on the new PID, flush, and restart the renderer. |
 | Auto-flush notification | Set rate 0, flush, re-enqueue from the current time, and restore the previous rate. |
 | Volume | The G Music slider sets mpv volume, as in Local mode. Changes reach the receiver after the AirPlay delay. The system popover slider sets receiver volume. |
 | Route lost or renderer failed | Follow [Disconnect](#disconnect). |
-| Quit | Stop the renderer and remove the FIFO. |
+| Quit | Stop the renderer and destroy the tap. |
 
 ### Position
 
-In AirPlay mode, report `time-pos − queued`, where `queued` is the last enqueued timestamp minus the synchronizer time. Clamp the result at zero. The UI then matches the audio at the receiver. The visualizer uses the same `queued` value as extra delay.
+In AirPlay mode, report `time-pos − queued`, where `queued` is the last enqueued timestamp minus the synchronizer time. Clamp the result at zero. mpv runs at real time in both modes, so this matches the audio at the receiver. The visualizer uses the same `queued` value as extra delay.
 
 ## Known limitations
 
@@ -154,10 +167,11 @@ In AirPlay mode, report `time-pos − queued`, where `queued` is the last enqueu
 ## Error handling
 
 - A private class or selector is missing: hide **AirPlay…**, log one diagnostic line, and keep local output working.
-- mpv rejects the runtime `ao` change: restart mpv with the PCM arguments and reload the current track at the saved position. Use the same fallback when leaving AirPlay mode.
+- macOS is older than 14.2: hide **AirPlay…**.
+- The listener denies the audio capture permission, or tap creation fails: stay in Local mode and emit `playback-error` with code `airplay_permission_denied`. The message tells the listener to allow G Music under System Settings → Privacy & Security → Screen & System Audio Recording.
 - The saved local device is missing at launch or disappears during playback: use `auto`, keep the saved ID, and update the menu.
 - `set_property audio-device` fails: keep the previous device and emit `playback-error` with code `output_device_unavailable`.
-- The FIFO cannot be created or read: stay in Local mode and emit `playback-error` with code `airplay_unavailable`.
+- The renderer or the aggregate device cannot start: stay in Local mode and emit `playback-error` with code `airplay_unavailable`.
 - Commands from a window without the capability are rejected by Tauri, as for other commands.
 
 ## Testing
@@ -165,16 +179,15 @@ In AirPlay mode, report `time-pos − queued`, where `queued` is the last enqueu
 ### Automated
 
 - `devices.rs`: parse real `audio-device-list` samples from macOS and Linux, filter `auto` and duplicates, and detect hot-plug changes.
-- `OutputController` with the fake `AirPlayRoute` and the existing fake mpv socket: local selection, entering and leaving AirPlay, pause, seek, auto-flush restart, disconnect, the restart fallback, and persistence.
-- Position math: queued duration, clamping, and seek reset.
-- `pcm_pipe.rs`: FIFO creation, reads with back-pressure, discard after seek, and cleanup on drop.
+- `OutputController` with the fake `AirPlayRoute` and the existing fake mpv socket: local selection, entering and leaving AirPlay, pause, seek, disconnect, permission denial, mpv restart, and persistence.
+- `airplay_clock.rs`: queued duration, clamping, seek reset, and the drift threshold.
 - `persistence.rs`: old saved state without `output_device_id` still loads.
 - `OutputMenu.vue`, `useOutput.ts`, and command palette tests: rendering, check marks, AirPlay item visibility by platform, and event updates.
 - `window-capabilities.test.ts`: new commands are allowed only where the button appears.
 
 ### First implementation task
 
-Before other work, confirm that mpv accepts `set_property ao pcm` during playback and writes to the FIFO. If it does not, use the restart fallback as the main path and update this spec.
+Before other work, run a throwaway probe that taps a local mpv process: confirm the permission prompt, PCM capture, local mute while tapped, and restored sound after the tap is destroyed. If any check fails, stop and revise this spec.
 
 ### Manual native smoke test
 
@@ -186,9 +199,11 @@ Add these steps to `docs/release-readiness.md`:
 4. Power off the receiver and confirm pause, the notice, and return to the local output.
 5. Select a local output and confirm the receiver goes silent.
 6. Confirm the visualizer stays in sync in AirPlay mode.
+7. Play to AirPlay for 30 minutes and confirm no audible drift between the UI position and the receiver.
+8. On a fresh user account, confirm the audio capture permission prompt and the denial message.
 
 ## References
 
 - [AVRoutePickerView documentation](https://developer.apple.com/documentation/avkit/avroutepickerview)
 - [airlift](https://github.com/jgarms/airlift)
-- [mpv audio output options](https://mpv.io/manual/stable/#audio-output-drivers)
+- [Core Audio taps for capturing process audio](https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps)
