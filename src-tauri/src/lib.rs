@@ -103,6 +103,8 @@ pub fn run() {
                     commands::add_to_queue,
                     commands::seek,
                     commands::set_volume,
+                    commands::get_output_state,
+                    commands::select_output_device,
                     commands::move_queue_item,
                     commands::remove_queue_item,
                     commands::resolve_youtube_artwork,

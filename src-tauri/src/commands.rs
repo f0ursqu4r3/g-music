@@ -1672,6 +1672,48 @@ pub async fn set_volume(app: AppHandle, volume_percent: u8) -> Result<(), Comman
     })
     .await
 }
+
+fn output_state_from(state: &AppState) -> Result<crate::output::OutputState, CommandError> {
+    let (devices, selected_device_id) = with_playback(state, "list_output_devices", |playback| {
+        playback.output_devices()
+    })?;
+    Ok(crate::output::local_state(devices, selected_device_id))
+}
+
+#[tauri::command]
+pub async fn get_output_state(app: AppHandle) -> Result<crate::output::OutputState, CommandError> {
+    blocking(app, move |state, _app| {
+        let _serial = state.transport.lock().map_err(|_| unavailable())?;
+        output_state_from(state)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn select_output_device(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::output::OutputState, CommandError> {
+    blocking(app, move |state, app| {
+        let _serial = state.transport.lock().map_err(|_| unavailable())?;
+        if state.shutting_down.load(Ordering::Acquire) {
+            return Err(unavailable());
+        }
+        crate::output::leave_airplay();
+        with_playback(state, "select_output_device", |playback| {
+            playback.select_output_device(&id)
+        })
+        .map_err(|error| CommandError {
+            code: "output_device_unavailable",
+            message: error.message,
+        })?;
+        let output = output_state_from(state)?;
+        let _ = app.emit("output-changed", &output);
+        Ok(output)
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};

@@ -199,6 +199,7 @@ pub struct YouTubePlaybackProvider {
     pending_plays: Vec<(String, u64)>,
     transport_prepared: bool,
     session_generation: u64,
+    output_device_id: Option<String>,
 }
 
 impl YouTubePlaybackProvider {
@@ -387,6 +388,7 @@ impl YouTubePlaybackProvider {
             pending_plays: Vec::new(),
             transport_prepared: false,
             session_generation: 0,
+            output_device_id: None,
         }
     }
 
@@ -948,6 +950,7 @@ impl YouTubePlaybackProvider {
         prepared.transport_prepared = true;
         prepared.snapshot = self.snapshot.clone();
         prepared.shuffle_order = self.shuffle_order.clone();
+        prepared.output_device_id = self.output_device_id.clone();
         prepared
     }
 
@@ -1291,6 +1294,36 @@ impl YouTubePlaybackProvider {
         }
         self.snapshot.volume_percent = volume_percent;
         tracing::debug!(volume_percent, "playback volume changed");
+        Ok(())
+    }
+
+    pub(crate) fn output_devices(
+        &mut self,
+    ) -> Result<(Vec<crate::output::devices::OutputDevice>, Option<String>), YouTubePlaybackError>
+    {
+        self.player.ensure_started(self.snapshot.volume_percent)?;
+        let list = self
+            .player
+            .send(json!(["get_property", "audio-device-list"]))?;
+        Ok((
+            crate::output::devices::parse_device_list(&list),
+            self.output_device_id.clone(),
+        ))
+    }
+
+    pub(crate) fn select_output_device(&mut self, id: &str) -> Result<(), YouTubePlaybackError> {
+        let (devices, _) = self.output_devices()?;
+        if !devices.iter().any(|device| device.id == id) {
+            return Err(YouTubePlaybackError::Player(format!(
+                "the audio output is unavailable: {id}"
+            )));
+        }
+        self.player
+            .send(json!(["set_property", "audio-device", id]))?;
+        self.player.preferred_audio_device = Some(id.into());
+        self.output_device_id = Some(id.into());
+        self.persist_playback_state()?;
+        tracing::info!(device = id, "audio output selected");
         Ok(())
     }
 
@@ -1651,6 +1684,7 @@ impl YouTubePlaybackProvider {
                 .map(|item| item.id.clone())
                 .collect(),
             shuffle_order: self.shuffle_order.clone(),
+            output_device_id: self.output_device_id.clone(),
         }
     }
 
@@ -1678,6 +1712,8 @@ impl YouTubePlaybackProvider {
         self.snapshot.repeat_mode = state.repeat_mode;
         self.shuffle_order = state.shuffle_order;
         self.reconcile_shuffle_order();
+        self.player.preferred_audio_device = state.output_device_id.clone();
+        self.output_device_id = state.output_device_id;
     }
 }
 
@@ -2570,10 +2606,13 @@ struct MpvPlayer {
     session_cookie_path: Option<PathBuf>,
     socket_path: PathBuf,
     watchdog: Option<Child>,
+    preferred_audio_device: Option<String>,
     #[cfg(test)]
     test_commands: Option<std::sync::Arc<std::sync::Mutex<Vec<Value>>>>,
     #[cfg(test)]
     test_failure: Option<Value>,
+    #[cfg(test)]
+    test_responses: std::collections::HashMap<String, Value>,
 }
 
 impl MpvPlayer {
@@ -2590,10 +2629,33 @@ impl MpvPlayer {
                 NEXT_PLAYER.fetch_add(1, Ordering::Relaxed)
             )),
             watchdog: None,
+            preferred_audio_device: None,
             #[cfg(test)]
             test_commands: None,
             #[cfg(test)]
             test_failure: None,
+            #[cfg(test)]
+            test_responses: std::collections::HashMap::new(),
+        }
+    }
+
+    /// mpv starts on `auto`. A saved device that is gone stays saved and is not applied.
+    fn apply_preferred_audio_device(&mut self) {
+        let Some(preferred) = self.preferred_audio_device.clone() else {
+            return;
+        };
+        let result = (|| {
+            let list = self.send(json!(["get_property", "audio-device-list"]))?;
+            let devices = crate::output::devices::parse_device_list(&list);
+            if let Some(id) =
+                crate::output::devices::resolve_startup_device(Some(&preferred), &devices)
+            {
+                self.send(json!(["set_property", "audio-device", id]))?;
+            }
+            Ok::<(), YouTubePlaybackError>(())
+        })();
+        if let Err(error) = result {
+            tracing::warn!(%error, "could not apply the saved audio output");
         }
     }
 
@@ -2782,6 +2844,7 @@ impl MpvPlayer {
                 if let Some(visualizer) = &mut self.visualizer {
                     visualizer.start(&self.socket_path, &mpv);
                 }
+                self.apply_preferred_audio_device();
                 return Ok(());
             }
             if let Some(status) = self
@@ -2807,6 +2870,9 @@ impl MpvPlayer {
             commands.lock().unwrap().push(command.clone());
             if self.test_failure.as_ref() == Some(&command) {
                 return Err(YouTubePlaybackError::Player("injected IPC failure".into()));
+            }
+            if let Some(response) = self.test_responses.get(&command.to_string()) {
+                return Ok(response.clone());
             }
             if command == json!(["get_property", "path"]) {
                 return Ok(Value::String("fixture".into()));
@@ -3159,6 +3225,124 @@ mod tests {
     use crate::playback::{
         EditableTrackMetadata, PlaybackSnapshot, PlaybackStatus, Playlist, RepeatMode,
     };
+    use serde_json::{Value, json};
+
+    fn device_list_fixture() -> Value {
+        json!([
+            {"name": "auto", "description": "Autoselect device"},
+            {"name": "coreaudio/BuiltInSpeakerDevice", "description": "MacBook Pro Speakers"},
+            {"name": "coreaudio/DAC", "description": "USB DAC"}
+        ])
+    }
+
+    fn provider_with_device_list() -> (
+        YouTubePlaybackProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<Value>>>,
+    ) {
+        let mut provider = YouTubePlaybackProvider::with_entries(Vec::new(), None);
+        let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        provider.player.test_commands = Some(commands.clone());
+        provider.player.test_responses.insert(
+            json!(["get_property", "audio-device-list"]).to_string(),
+            device_list_fixture(),
+        );
+        (provider, commands)
+    }
+
+    #[test]
+    fn lists_output_devices_with_saved_selection() {
+        let (mut provider, _) = provider_with_device_list();
+        provider.output_device_id = Some("coreaudio/DAC".into());
+        let (devices, selected) = provider.output_devices().unwrap();
+        assert_eq!(devices.len(), 2);
+        assert_eq!(devices[1].name, "USB DAC");
+        assert_eq!(selected.as_deref(), Some("coreaudio/DAC"));
+    }
+
+    #[test]
+    fn selecting_a_device_sets_mpv_and_saved_state() {
+        let (mut provider, commands) = provider_with_device_list();
+        provider.select_output_device("coreaudio/DAC").unwrap();
+        assert!(commands.lock().unwrap().contains(&json!([
+            "set_property",
+            "audio-device",
+            "coreaudio/DAC"
+        ])));
+        assert_eq!(
+            provider.saved_playback_state().output_device_id.as_deref(),
+            Some("coreaudio/DAC")
+        );
+    }
+
+    #[test]
+    fn selecting_a_missing_device_fails_and_keeps_previous() {
+        let (mut provider, commands) = provider_with_device_list();
+        provider.output_device_id = Some("coreaudio/BuiltInSpeakerDevice".into());
+        assert!(provider.select_output_device("coreaudio/Gone").is_err());
+        assert_eq!(
+            provider.output_device_id.as_deref(),
+            Some("coreaudio/BuiltInSpeakerDevice")
+        );
+        assert!(
+            !commands
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.get(1) == Some(&json!("audio-device")))
+        );
+    }
+
+    #[test]
+    fn prepared_transport_keeps_the_saved_output_device() {
+        let (mut provider, _) = provider_with_device_list();
+        provider.output_device_id = Some("coreaudio/DAC".into());
+        let prepared = provider.prepare_transport();
+        assert_eq!(
+            prepared.saved_playback_state().output_device_id.as_deref(),
+            Some("coreaudio/DAC")
+        );
+    }
+
+    #[test]
+    fn restored_state_sets_preferred_mpv_device() {
+        let mut provider = YouTubePlaybackProvider::with_entries(Vec::new(), None);
+        provider.restore_playback_state(crate::persistence::SavedPlaybackState {
+            current_item_id: None,
+            position_ms: 0,
+            volume_percent: 50,
+            shuffle_enabled: false,
+            repeat_mode: RepeatMode::Off,
+            queue_ids: Vec::new(),
+            shuffle_order: Vec::new(),
+            output_device_id: Some("coreaudio/DAC".into()),
+        });
+        assert_eq!(
+            provider.player.preferred_audio_device.as_deref(),
+            Some("coreaudio/DAC")
+        );
+    }
+
+    #[test]
+    fn preferred_device_applies_only_when_present() {
+        let (mut provider, commands) = provider_with_device_list();
+        provider.player.preferred_audio_device = Some("coreaudio/Gone".into());
+        provider.player.apply_preferred_audio_device();
+        assert!(
+            !commands
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.get(1) == Some(&json!("audio-device")))
+        );
+
+        provider.player.preferred_audio_device = Some("coreaudio/DAC".into());
+        provider.player.apply_preferred_audio_device();
+        assert!(commands.lock().unwrap().contains(&json!([
+            "set_property",
+            "audio-device",
+            "coreaudio/DAC"
+        ])));
+    }
 
     #[test]
     fn cancellation_still_reaps_a_provider_that_closed_stdout() {

@@ -31,6 +31,8 @@ pub(crate) struct SavedPlaybackState {
     pub(crate) queue_ids: Vec<String>,
     #[serde(default)]
     pub(crate) shuffle_order: Vec<String>,
+    #[serde(default)]
+    pub(crate) output_device_id: Option<String>,
 }
 
 fn default_volume_percent() -> u8 {
@@ -1079,6 +1081,7 @@ mod tests {
                 repeat_mode: RepeatMode::Off,
                 queue_ids: vec![entries[1_127].item.id.clone()],
                 shuffle_order: Vec::new(),
+                output_device_id: None,
             },
         )
         .expect("the playback position is saved");
@@ -1191,6 +1194,7 @@ mod tests {
                 repeat_mode: RepeatMode::Off,
                 queue_ids: vec![entries[1].item.id.clone()],
                 shuffle_order: vec!["SECRET-SESSION-MARKER-39f3e41a".into()],
+                output_device_id: None,
             },
         )
         .expect("playback state is saved");
@@ -1291,6 +1295,7 @@ mod tests {
             repeat_mode: RepeatMode::Off,
             queue_ids: vec![entries[0].item.id.clone()],
             shuffle_order: Vec::new(),
+            output_device_id: None,
         };
         save_library(&fixture.path, &entries, &[]).expect("the initial library is saved");
         save_playback_state(&fixture.path, &initial_state)
@@ -1315,6 +1320,7 @@ mod tests {
             repeat_mode: RepeatMode::Off,
             queue_ids: vec![entries[0].item.id.clone()],
             shuffle_order: Vec::new(),
+            output_device_id: None,
         };
 
         let result =
@@ -1335,5 +1341,26 @@ mod tests {
         assert_eq!(loaded_state.current_item_id, initial_state.current_item_id);
         assert_eq!(loaded_state.position_ms, initial_state.position_ms);
         assert_eq!(loaded_state.queue_ids, initial_state.queue_ids);
+    }
+}
+
+#[cfg(test)]
+mod output_device_tests {
+    use super::SavedPlaybackState;
+
+    #[test]
+    fn old_saved_state_without_output_device_still_loads() {
+        let state: SavedPlaybackState = serde_json::from_str(r#"{"volumePercent":40}"#).unwrap();
+        assert_eq!(state.output_device_id, None);
+        assert_eq!(state.volume_percent, 40);
+    }
+
+    #[test]
+    fn output_device_round_trips() {
+        let state: SavedPlaybackState =
+            serde_json::from_str(r#"{"outputDeviceId":"coreaudio/A"}"#).unwrap();
+        assert_eq!(state.output_device_id.as_deref(), Some("coreaudio/A"));
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains(r#""outputDeviceId":"coreaudio/A""#));
     }
 }
