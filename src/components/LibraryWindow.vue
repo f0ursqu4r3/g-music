@@ -24,6 +24,7 @@ import {
 } from '@/lib/command-palette'
 import { ordinaryPlaylist } from '@/lib/smart-playlists'
 import { useOutput } from '@/composables/useOutput'
+import { reportAirPlayPickerError } from '@/lib/airplay-picker'
 import MetadataRefreshDrawer from './MetadataRefreshDrawer.vue'
 import LibraryAlbumGrid from './library/LibraryAlbumGrid.vue'
 import LibraryArtistGrid from './library/LibraryArtistGrid.vue'
@@ -200,6 +201,9 @@ async function runPaletteAction(result: CommandResult, mode: CommandMode): Promi
           height: 28,
         }),
       } as HTMLElement)
+      // The palette is already closed, so show a picker failure as a toast.
+      reportAirPlayPickerError(output.errorMessage.value)
+      return
     } else {
       await output.selectDevice(result.id.slice('output:'.length))
     }
