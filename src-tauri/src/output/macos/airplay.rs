@@ -62,6 +62,8 @@ pub(super) struct Av {
     context_id: Retained<NSString>,
     renderer: Retained<AnyObject>,
     synchronizer: Retained<AnyObject>,
+    /// Last renderer status that was logged as failed, so the log fires once per transition.
+    failed_logged: AtomicBool,
 }
 
 // SAFETY: The `Retained` handles are never replaced after creation. The controller
@@ -118,6 +120,7 @@ impl Av {
                 context_id,
                 renderer,
                 synchronizer,
+                failed_logged: AtomicBool::new(false),
             })
         }
     }
@@ -163,7 +166,19 @@ impl Av {
     fn renderer_failed(&self) -> bool {
         // SAFETY: `status` returns an NSInteger.
         let status: isize = unsafe { msg_send![&*self.renderer, status] };
-        status == RENDERER_FAILED
+        let failed = status == RENDERER_FAILED;
+        if failed != self.failed_logged.swap(failed, Ordering::AcqRel) && failed {
+            // SAFETY: `error` returns an NSError or nil, and `localizedDescription` an NSString.
+            let error: Option<String> = unsafe {
+                let error: Option<Retained<AnyObject>> = msg_send![&*self.renderer, error];
+                error.and_then(|error| {
+                    let text: Option<Retained<NSString>> = msg_send![&*error, localizedDescription];
+                    text.map(|text| text.to_string())
+                })
+            };
+            tracing::debug!(status, error = ?error, "AirPlay renderer failed");
+        }
+        failed
     }
 
     fn receiver_names(&self) -> Vec<String> {
@@ -512,6 +527,8 @@ fn run_feeder(
     // Reserved once so `pop_into` never reallocates while it holds the ring lock.
     let mut chunk: Vec<f32> = Vec::with_capacity(CHUNK_SAMPLES);
     let mut last_stats = Instant::now();
+    // True when the pending resync request came from the drift monitor, not a seek.
+    let mut drift_resync = false;
 
     while !stop.load(Ordering::Acquire) {
         thread::sleep(FEED_INTERVAL);
@@ -519,6 +536,15 @@ fn run_feeder(
         let flush = shared.flush_requested.swap(false, Ordering::AcqRel);
         let resync = shared.resync_requested.swap(false, Ordering::AcqRel);
         if flush || resync {
+            let reason = if flush {
+                "auto-flush"
+            } else if drift_resync {
+                "drift"
+            } else {
+                "seek"
+            };
+            tracing::debug!(reason, "AirPlay renderer restarted");
+            drift_resync = false;
             let _guard = shared.rate_lock.lock().unwrap_or_else(|e| e.into_inner());
             shared.waiting_for_prime.store(true, Ordering::Release);
             av.set_rate(0.0);
@@ -568,6 +594,7 @@ fn run_feeder(
                 .store(queued.to_bits(), Ordering::Release);
             let primed = !shared.waiting_for_prime.load(Ordering::Acquire);
             if primed && state.drift.observe(now_s(), queued) {
+                drift_resync = true;
                 shared.resync_requested.store(true, Ordering::Release);
             }
         }

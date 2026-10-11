@@ -81,6 +81,8 @@ pub(crate) struct OutputController {
     pending_receivers: Vec<String>,
     /// The route runs (tap and renderer active).
     route_running: bool,
+    /// The previous poll, kept so route changes can be logged.
+    last_poll: Option<RoutePoll>,
 }
 
 impl OutputController {
@@ -98,6 +100,7 @@ impl OutputController {
             pending_start: false,
             pending_receivers: Vec::new(),
             route_running: false,
+            last_poll: None,
         }
     }
 
@@ -125,7 +128,9 @@ impl OutputController {
                 "AirPlay is unavailable on this Mac.".into(),
             ));
         }
-        self.route.open_picker(anchor)?;
+        let result = self.route.open_picker(anchor);
+        tracing::debug!(ok = result.is_ok(), "AirPlay picker requested");
+        result?;
         self.picker_opened_at = Some(Instant::now());
         Ok(())
     }
@@ -179,6 +184,16 @@ impl OutputController {
         let picker_recent = self
             .picker_opened_at
             .is_some_and(|t| now.saturating_duration_since(t) <= PICKER_WINDOW);
+        if self.last_poll.as_ref() != Some(&poll) {
+            tracing::debug!(
+                receivers = ?poll.receivers,
+                failed = poll.failed,
+                picker_recent,
+                in_airplay = self.in_airplay(),
+                "AirPlay route changed"
+            );
+            self.last_poll = Some(poll.clone());
+        }
         if !self.in_airplay() {
             if picker_recent && !poll.receivers.is_empty() {
                 self.picker_opened_at = None;
@@ -198,6 +213,12 @@ impl OutputController {
         }
         if poll.failed || poll.receivers.is_empty() {
             let chosen = picker_recent && !poll.failed;
+            tracing::debug!(
+                chosen,
+                failed = poll.failed,
+                picker_recent,
+                "AirPlay route left"
+            );
             self.picker_opened_at = None;
             self.stop_route();
             let mut effects = Vec::new();
