@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useOutput, type OutputClient, type OutputSubscriber } from '@/composables/useOutput'
+import { reportAirPlayPickerError } from '@/lib/airplay-picker'
 
 const props = withDefaults(
   defineProps<{
@@ -48,7 +49,10 @@ async function chooseAirPlay(): Promise<void> {
   const element = triggerElement()
   // Let the menu close first, so the popover is not dismissed with it.
   await new Promise((resolve) => setTimeout(resolve, 0))
-  if (element) await output.openAirPlayPicker(element)
+  if (!element) return
+  await output.openAirPlayPicker(element)
+  // The menu is closed, so its inline error is gone. Show the failure as a toast.
+  reportAirPlayPickerError(output.errorMessage.value)
 }
 </script>
 

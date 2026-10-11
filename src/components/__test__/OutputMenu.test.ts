@@ -1,8 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { OutputState } from '@/api'
 import OutputMenu from '../OutputMenu.vue'
+
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('vue-sonner', () => ({ toast: { error: toastError } }))
 
 const local: OutputState = {
   devices: [
@@ -29,6 +32,8 @@ async function open(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('OutputMenu', () => {
+  beforeEach(() => toastError.mockClear())
+
   it('loads devices when opened and marks the selected one', async () => {
     const api = client()
     const wrapper = mount(OutputMenu, {
@@ -73,6 +78,23 @@ describe('OutputMenu', () => {
     airplay.click()
     await flushPromises()
     expect(api.openAirPlayPicker).toHaveBeenCalled()
+    expect(toastError).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('shows a picker failure as a toast after the menu closes', async () => {
+    const api = client()
+    api.openAirPlayPicker.mockRejectedValue(new Error('AirPlay is unavailable on this Mac.'))
+    const wrapper = mount(OutputMenu, {
+      props: { client: api, subscribe: null },
+      attachTo: document.body,
+    })
+    await open(wrapper)
+    ;(document.querySelector('[data-output-airplay]') as HTMLElement).click()
+    await vi.waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('AirPlay is unavailable on this Mac.'),
+    )
+    expect(toastError).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
