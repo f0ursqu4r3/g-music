@@ -131,7 +131,15 @@ pub(crate) fn mpv_started(pid: u32) {
     apply(with_controller(|c| c.mpv_started(pid)).unwrap_or_default());
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Counts `mpv_stopped` calls on this thread so tests can pin where the hook fires.
+    pub(crate) static MPV_STOPPED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn mpv_stopped() {
+    #[cfg(test)]
+    MPV_STOPPED_CALLS.with(|calls| calls.set(calls.get() + 1));
     with_controller(|c| c.mpv_stopped());
 }
 

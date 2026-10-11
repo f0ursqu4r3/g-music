@@ -3830,9 +3830,29 @@ mod tests {
 
     #[test]
     fn placeholder_player_drop_does_not_report_an_mpv_exit() {
+        let before = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
         let placeholder = MpvPlayer::new();
         assert!(placeholder.child.is_none());
-        drop(placeholder); // `stop()` must skip `crate::output::mpv_stopped()` without a child.
+        drop(placeholder);
+        let after = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        assert_eq!(
+            after, before,
+            "dropping a placeholder must not reach mpv_stopped"
+        );
+    }
+
+    #[test]
+    fn stopping_a_running_player_reports_one_mpv_exit() {
+        let mut player = MpvPlayer::new();
+        player.child = Some(Command::new("sleep").arg("30").spawn().unwrap());
+        let before = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        player.stop();
+        let after = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        assert_eq!(after, before + 1);
+        assert!(player.child.is_none());
+        drop(player);
+        let after_drop = crate::output::MPV_STOPPED_CALLS.with(|calls| calls.get());
+        assert_eq!(after_drop, after, "a stopped player must not report twice");
     }
 
     #[test]
