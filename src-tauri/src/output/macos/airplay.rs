@@ -64,11 +64,16 @@ pub(super) struct Av {
     synchronizer: Retained<AnyObject>,
 }
 
-// SAFETY: AVFoundation renderer, synchronizer, and context calls are serialized by the
-// controller mutex and the single feeder thread. The probe used the same objects from
-// a background queue. The picker view stays on the main thread (it is not in this type).
+// SAFETY: The `Retained` handles are never replaced after creation. The controller
+// thread calls `status`, `outputDevices`, and `setRate:` while the feeder thread
+// enqueues and flushes, so these calls are not serialized. The code relies on AVFoundation
+// tolerating cross-thread calls on these objects: the probe read the renderer `status`
+// on the main thread while it enqueued from a dispatch queue. Synchronizer rate changes
+// are serialized by `Shared::rate_lock`. The picker view stays on the main thread (it is
+// not in this type).
 unsafe impl Send for Av {}
-// SAFETY: See the `Send` impl. Shared access is limited to those serialized calls.
+// SAFETY: See the `Send` impl. All shared access goes through `&self` methods that only
+// send messages to the objects.
 unsafe impl Sync for Av {}
 
 impl Av {
@@ -274,9 +279,16 @@ impl Engine {
         &self.av
     }
 
-    /// Starts the feeder for a new tap.
-    pub(super) fn start(&mut self, ring: Arc<SampleRing>, sample_rate: f64, playing: bool) {
+    /// Starts the feeder for a new tap. Fails before any thread starts when the audio
+    /// format cannot be created or the thread cannot spawn.
+    pub(super) fn start(
+        &mut self,
+        ring: Arc<SampleRing>,
+        sample_rate: f64,
+        playing: bool,
+    ) -> Result<(), RouteError> {
         self.stop_feeder();
+        let format = prepare_format(sample_rate)?;
         self.shared.playing.store(playing, Ordering::Release);
         self.shared.waiting_for_prime.store(true, Ordering::Release);
         self.shared.flush_requested.store(false, Ordering::Release);
@@ -285,13 +297,14 @@ impl Engine {
         let av = self.av.clone();
         let shared = self.shared.clone();
         let stop_flag = stop.clone();
-        let spawned = thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("gmusic-airplay-feeder".into())
-            .spawn(move || run_feeder(&av, &shared, &ring, &stop_flag, sample_rate));
-        match spawned {
-            Ok(handle) => self.feeder = Some(Feeder { stop, handle }),
-            Err(error) => tracing::warn!(%error, "AirPlay feeder thread did not start"),
-        }
+            .spawn(move || run_feeder(&av, &shared, &ring, &stop_flag, &format, sample_rate))
+            .map_err(|error| {
+                RouteError::Unavailable(format!("The AirPlay feeder did not start: {error}"))
+            })?;
+        self.feeder = Some(Feeder { stop, handle });
+        Ok(())
     }
 
     fn stop_feeder(&mut self) {
@@ -404,6 +417,19 @@ fn make_format(sample_rate: f64) -> Option<CFRetained<CMFormatDescription>> {
     NonNull::new(out.cast_mut()).map(|pointer| unsafe { CFRetained::from_raw(pointer) })
 }
 
+/// The format description handed to the feeder thread.
+struct SendFormat(CFRetained<CMFormatDescription>);
+
+// SAFETY: A `CMFormatDescription` is an immutable Core Foundation object. Core Media
+// documents such objects as safe to use from any thread, and this one is only read.
+unsafe impl Send for SendFormat {}
+
+fn prepare_format(sample_rate: f64) -> Result<SendFormat, RouteError> {
+    make_format(sample_rate).map(SendFormat).ok_or_else(|| {
+        RouteError::Unavailable("The AirPlay audio format could not be created.".into())
+    })
+}
+
 fn make_sample_buffer(
     format: &CMFormatDescription,
     samples: &[f32],
@@ -466,11 +492,15 @@ struct FeederState {
     drift: DriftMonitor,
 }
 
-fn run_feeder(av: &Av, shared: &Shared, ring: &SampleRing, stop: &AtomicBool, rate: f64) {
-    let Some(format) = make_format(rate) else {
-        tracing::warn!("AirPlay audio format could not be created");
-        return;
-    };
+fn run_feeder(
+    av: &Av,
+    shared: &Shared,
+    ring: &SampleRing,
+    stop: &AtomicBool,
+    format: &SendFormat,
+    rate: f64,
+) {
+    let format = &*format.0;
     let epoch = Instant::now();
     let now_s = || epoch.elapsed().as_secs_f64();
     let start_pts = frames_at(av.current_time(), rate);
@@ -505,7 +535,7 @@ fn run_feeder(av: &Av, shared: &Shared, ring: &SampleRing, stop: &AtomicBool, ra
             if chunk.len() < CHUNK_SAMPLES {
                 break;
             }
-            if let Some(buffer) = make_sample_buffer(&format, &chunk, time_of(state.next_pts, rate))
+            if let Some(buffer) = make_sample_buffer(format, &chunk, time_of(state.next_pts, rate))
             {
                 av.enqueue(&buffer);
             }
@@ -559,9 +589,7 @@ pub(super) fn open_picker(
     let window = app
         .get_webview_window(&anchor.window_label)
         .ok_or_else(|| unavailable("The window for the AirPlay picker was not found.".into()))?;
-    window
-        .ns_window()
-        .map_err(|error| unavailable(format!("The window has no native handle: {error}")))?;
+    // `ns_window()` waits on the main thread, so it runs inside the dispatched closure.
     let av = av.clone();
     let anchor = anchor.clone();
     app.run_on_main_thread(move || {
@@ -691,5 +719,25 @@ fn find_button(view: &AnyObject) -> Option<Retained<AnyObject>> {
             children.push(child);
         }
         children.iter().find_map(|child| find_button(child))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepare_format_accepts_the_tap_rates() {
+        assert!(prepare_format(48_000.0).is_ok());
+        assert!(prepare_format(44_100.0).is_ok());
+    }
+
+    #[test]
+    fn prepare_format_failure_is_a_route_error() {
+        // Core Media rejects a zero sample rate. `Engine::start` returns this error
+        // before it starts a thread, and `MacAirPlayRoute::start` then drops the tap.
+        // Running those two needs a live tap, so they are not covered here.
+        let error = prepare_format(0.0).err();
+        assert!(matches!(error, Some(RouteError::Unavailable(_))));
     }
 }

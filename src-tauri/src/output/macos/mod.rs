@@ -82,7 +82,13 @@ impl AirPlayRoute for MacAirPlayRoute {
                 return Err(error);
             }
         };
-        engine.start(self.ring.clone(), tap.sample_rate(), playing);
+        if let Err(error) = engine.start(self.ring.clone(), tap.sample_rate(), playing) {
+            // Dropping the tap restores local sound.
+            drop(tap);
+            self.ring.set_open(false);
+            self.ring.clear();
+            return Err(error);
+        }
         self.tap = Some(tap);
         Ok(())
     }
