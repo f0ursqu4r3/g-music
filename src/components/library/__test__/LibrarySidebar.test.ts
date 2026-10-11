@@ -24,6 +24,18 @@ const playlists: Playlist[] = [
 ]
 
 describe('LibrarySidebar', () => {
+  it('opens the Following collection from the sidebar', async () => {
+    const wrapper = mount(LibrarySidebar, {
+      props: { activeCollection: 'following', playlists },
+    })
+    const following = wrapper.get('[data-collection="following"]')
+    expect(following.text()).toBe('Following')
+    expect(following.attributes('aria-current')).toBe('page')
+    await wrapper.get('[data-collection="artists"]').trigger('click')
+    await following.trigger('click')
+    expect(wrapper.emitted('selectCollection')).toEqual([['artists'], ['following']])
+  })
+
   it('shows a fixed playlist add action in the Playlist heading', async () => {
     const wrapper = mount(LibrarySidebar, {
       props: {

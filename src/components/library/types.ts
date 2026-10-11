@@ -3,7 +3,7 @@ import type { MediaItem } from '@/api'
 export const LIBRARY_TRACK_IDS_MIME_TYPE = 'application/x-gmusic-track-ids'
 export const LIBRARY_TRACK_IDS_TEXT_PREFIX = 'gmusic-track-ids:'
 
-export type LibraryCollection = 'tracks' | 'albums' | 'artists'
+export type LibraryCollection = 'tracks' | 'albums' | 'artists' | 'following'
 export type LibraryDisplayMode = 'grid' | 'list'
 export type LibrarySortOption =
   | 'album-asc'
@@ -29,7 +29,14 @@ export interface LibraryAlbum {
   videoId: string
 }
 
+export interface ArtistChannel {
+  channelId: string
+  name: string
+  trackCount: number
+}
+
 export interface LibraryArtist {
+  channels: ArtistChannel[]
   detail: string
   durationMs: number
   name: string

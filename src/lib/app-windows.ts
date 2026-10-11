@@ -7,7 +7,7 @@ export const PALETTE_ACK_EVENT = 'command-palette-ready'
 // This finite native command delegates to the same window specs as the menu.
 // See src-tauri/src/windows.rs: show_app_window and show_surface.
 export async function showAppWindow(
-  view: 'library' | 'queue' | 'settings' | 'import',
+  view: 'library' | 'queue' | 'settings' | 'import' | 'visualizer',
 ): Promise<void> {
   if (view === 'import') return windowApi.showImport()
   return windowApi.showApp(view)

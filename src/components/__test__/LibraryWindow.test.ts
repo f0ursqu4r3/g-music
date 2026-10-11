@@ -1694,7 +1694,7 @@ describe('LibraryWindow', () => {
       props: { isUpdating: false, snapshot },
     })
 
-    expect(wrapper.findAll('[data-collection]')).toHaveLength(3)
+    expect(wrapper.findAll('[data-collection]')).toHaveLength(4)
     expect(wrapper.get('[data-library-sidebar]').text()).toContain('Library')
   })
 

@@ -2565,6 +2565,7 @@ struct PlayerState {
 
 struct MpvPlayer {
     child: Option<Child>,
+    visualizer: Option<crate::visualizer::Tap>,
     request_id: u64,
     session_cookie_path: Option<PathBuf>,
     socket_path: PathBuf,
@@ -2580,6 +2581,7 @@ impl MpvPlayer {
         static NEXT_PLAYER: AtomicU64 = AtomicU64::new(1);
         Self {
             child: None,
+            visualizer: None,
             request_id: 0,
             session_cookie_path: None,
             socket_path: env::temp_dir().join(format!(
@@ -2639,6 +2641,7 @@ impl MpvPlayer {
         volume_percent: u8,
         cookie_path: Option<&Path>,
     ) -> Result<(), YouTubePlaybackError> {
+        crate::visualizer::invalidate();
         if self.session_cookie_path.as_deref() != cookie_path {
             tracing::info!(
                 authenticated = cookie_path.is_some(),
@@ -2679,6 +2682,7 @@ impl MpvPlayer {
     }
 
     fn seek(&mut self, position_ms: u64) -> Result<(), YouTubePlaybackError> {
+        crate::visualizer::invalidate();
         self.send(json!([
             "set_property",
             "time-pos",
@@ -2755,6 +2759,7 @@ impl MpvPlayer {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
+        let visualizer = crate::visualizer::Tap::prepare(&mut command);
         let child =
             command
                 .spawn()
@@ -2764,6 +2769,7 @@ impl MpvPlayer {
                 })?;
         tracing::info!(pid = child.id(), "mpv process started");
         self.child = Some(child);
+        self.visualizer = visualizer;
 
         let deadline = Instant::now() + IPC_TIMEOUT;
         while Instant::now() < deadline {
@@ -2773,6 +2779,9 @@ impl MpvPlayer {
                     YouTubePlaybackError::Player("mpv exited before opening its IPC socket".into())
                 })?;
                 self.watchdog = Some(spawn_parent_exit_watchdog(std::process::id(), child_pid)?);
+                if let Some(visualizer) = &mut self.visualizer {
+                    visualizer.start(&self.socket_path, &mpv);
+                }
                 return Ok(());
             }
             if let Some(status) = self
@@ -3021,6 +3030,7 @@ impl MpvPlayer {
                 .map_err(|error| YouTubePlaybackError::Player(error.to_string()))?;
         }
         self.child = None;
+        self.visualizer = None;
         if let Some(mut watchdog) = self.watchdog.take() {
             let _ = watchdog.kill();
             let _ = watchdog.wait();
@@ -3046,6 +3056,7 @@ impl MpvPlayer {
             let _ = child.kill();
             let _ = child.wait();
         }
+        self.visualizer = None;
         let _ = fs::remove_file(&self.socket_path);
     }
 }
@@ -3118,7 +3129,7 @@ pub(crate) fn find_executable(
         .unwrap_or_else(|| PathBuf::from(fallback))
 }
 
-fn playback_path() -> String {
+pub(crate) fn playback_path() -> String {
     let inherited = env::var("PATH").unwrap_or_default();
     format!("/opt/homebrew/bin:/usr/local/bin:{inherited}")
 }
@@ -5528,3 +5539,7 @@ mod tests {
 #[cfg(test)]
 #[path = "smart_provider_tests.rs"]
 mod smart_tests;
+
+#[cfg(test)]
+#[path = "import_dedup_tests.rs"]
+mod import_dedup_tests;

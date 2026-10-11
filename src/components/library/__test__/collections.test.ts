@@ -39,6 +39,7 @@ describe('library collection builders', () => {
     expect(buildLibraryArtists(tracks)).toEqual([
       {
         albumCount: 2,
+        channels: [],
         detail: '3 songs',
         durationMs: 540_000,
         name: 'Alpha',
@@ -47,6 +48,7 @@ describe('library collection builders', () => {
       },
       {
         albumCount: 0,
+        channels: [],
         detail: '1 song',
         durationMs: 90_000,
         name: 'Beta',

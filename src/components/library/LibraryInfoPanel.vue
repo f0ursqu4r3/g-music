@@ -6,6 +6,8 @@ import type { MediaItem } from '@/api'
 import { formatDuration } from '@/lib/time'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { LibraryAlbum, LibraryArtist } from './types'
+import { isChannelId } from '@/lib/following'
+import FollowChannelButtons from './FollowChannelButtons.vue'
 import YouTubeArtwork from '../YouTubeArtwork.vue'
 
 const props = withDefaults(
@@ -15,6 +17,8 @@ const props = withDefaults(
     selectedTracks?: MediaItem[]
     selectedAlbum: LibraryAlbum | null
     selectedArtist: LibraryArtist | null
+    followedChannelIds?: string[]
+    followPendingIds?: string[]
   }>(),
   {
     selectedTracks: () => [],
@@ -25,6 +29,8 @@ const emit = defineEmits<{
   editTrack: [track: MediaItem]
   editAlbum: [album: LibraryAlbum]
   editArtist: [artist: LibraryArtist]
+  followChannel: [channel: { channelId: string; name: string }]
+  unfollowChannel: [channelId: string]
   playNext: [tracks: MediaItem[]]
   addToQueue: [tracks: MediaItem[]]
 }>()
@@ -45,6 +51,26 @@ const hasMultipleTracks = computed(() => props.selectedTracks.length > 1)
 const selectedTracksDurationMs = computed(() =>
   props.selectedTracks.reduce((total, track) => total + track.durationMs, 0),
 )
+// Follow the explicit channel of the selected track, never the artist name.
+const trackChannels = computed(() => {
+  const track = props.selectedTrack
+  return track && isChannelId(track.channelId)
+    ? [
+        {
+          channelId: track.channelId,
+          name: track.channel?.trim() || track.uploader?.trim() || track.artist,
+        },
+      ]
+    : []
+})
+const artistChannelChoices = computed(() => {
+  const artist = props.selectedArtist
+  if (!artist) return []
+  return artist.channels.map((channel) => ({
+    channelId: channel.channelId,
+    name: artist.channels.length > 1 ? channel.name : artist.name,
+  }))
+})
 const trackDetails = computed<TrackDetail[]>(() => {
   const track = props.selectedTrack
   if (!track) {
@@ -190,6 +216,14 @@ watch(
           <p class="mt-1 text-sm text-(--muted-text)">
             {{ props.selectedTrack.artist }}
           </p>
+          <FollowChannelButtons
+            v-if="trackChannels.length"
+            :channels="trackChannels"
+            :followed-channel-ids="props.followedChannelIds"
+            :pending-ids="props.followPendingIds"
+            @follow="emit('followChannel', $event)"
+            @unfollow="emit('unfollowChannel', $event)"
+          />
           <div class="mt-5 grid grid-cols-2 gap-2">
             <button
               class="inline-flex items-center justify-center gap-1.5 rounded-md bg-(--text) px-2.5 py-1.5 text-xs font-medium text-(--accent-ink) hover:bg-(--text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
@@ -399,8 +433,15 @@ watch(
               </dd>
             </div>
           </dl>
+          <FollowChannelButtons
+            :channels="artistChannelChoices"
+            :followed-channel-ids="props.followedChannelIds"
+            :pending-ids="props.followPendingIds"
+            @follow="emit('followChannel', $event)"
+            @unfollow="emit('unfollowChannel', $event)"
+          />
           <button
-            class="mt-8 inline-flex items-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
+            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-(--line-strong) px-2.5 py-1.5 text-xs font-medium text-(--text) hover:bg-(--surface-muted) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none [&>svg]:size-3.5"
             :aria-label="`Edit artist ${props.selectedArtist.name}`"
             type="button"
             @click="emit('editArtist', props.selectedArtist)"

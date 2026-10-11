@@ -10,6 +10,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::following::FollowingService;
 use crate::playback::{
     DirtyTrack, EditableTrackMetadata, LibrarySnapshot, PlaybackSnapshot, PlaybackStatus,
     PlaybackTransport, Playlist, YouTubePlaybackError, YouTubePlaybackProvider,
@@ -26,6 +27,7 @@ pub struct AppState {
     transport: Arc<Mutex<()>>,
     shutting_down: Arc<AtomicBool>,
     pause_epoch: AtomicU64,
+    following: Option<Arc<FollowingService>>,
 }
 
 impl Default for AppState {
@@ -39,6 +41,7 @@ impl Default for AppState {
             transport: Arc::new(Mutex::new(())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             pause_epoch: AtomicU64::new(0),
+            following: None,
         }
     }
 }
@@ -47,6 +50,11 @@ impl AppState {
     pub fn from_library_directory(
         directory: std::path::PathBuf,
     ) -> Result<Self, YouTubePlaybackError> {
+        let shutting_down = Arc::new(AtomicBool::new(false));
+        let following = Arc::new(FollowingService::new(
+            directory.join("library.sqlite3"),
+            shutting_down.clone(),
+        ));
         Ok(Self {
             active_import: Arc::new(Mutex::new(None)),
             import_progress: Mutex::new(None),
@@ -56,8 +64,9 @@ impl AppState {
                 directory,
             )?)),
             transport: Arc::new(Mutex::new(())),
-            shutting_down: Arc::new(AtomicBool::new(false)),
+            shutting_down,
             pause_epoch: AtomicU64::new(0),
+            following: Some(following),
         })
     }
 
@@ -80,6 +89,10 @@ impl AppState {
             }
         };
         schedule_metadata_refreshes(&app, &self.playback, &self.metadata_refreshes, tracks);
+    }
+
+    pub(crate) fn following(&self) -> Option<Arc<FollowingService>> {
+        self.following.clone()
     }
 
     pub fn begin_shutdown(&self) -> bool {
@@ -109,6 +122,10 @@ impl AppState {
                 .metadata_refreshes
                 .lock()
                 .is_ok_and(|refreshes| refreshes.running)
+            || self
+                .following
+                .as_ref()
+                .is_some_and(|service| service.is_running())
         {
             if std::time::Instant::now() >= deadline {
                 tracing::error!("background workers did not finish within the shutdown deadline");
@@ -1955,6 +1972,38 @@ mod tests {
             .expect_err("playlists cannot reference missing tracks");
         assert_eq!(error.code, "youtube_playback_failed");
     }
+}
+
+#[tauri::command]
+pub async fn inspect_following<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<crate::following::FollowingSnapshot, CommandError> {
+    crate::following_commands::inspect(app).await
+}
+
+#[tauri::command]
+pub async fn follow_artist<R: Runtime>(
+    app: AppHandle<R>,
+    channel_id: String,
+    name: String,
+) -> Result<crate::following::FollowingSnapshot, CommandError> {
+    crate::following_commands::follow(app, channel_id, name).await
+}
+
+#[tauri::command]
+pub async fn unfollow_artist<R: Runtime>(
+    app: AppHandle<R>,
+    channel_id: String,
+) -> Result<crate::following::FollowingSnapshot, CommandError> {
+    crate::following_commands::unfollow(app, channel_id).await
+}
+
+#[tauri::command]
+pub async fn check_following<R: Runtime>(
+    app: AppHandle<R>,
+    channel_id: Option<String>,
+) -> Result<crate::following::FollowingSnapshot, CommandError> {
+    crate::following_commands::check(app, channel_id).await
 }
 
 #[cfg(test)]

@@ -193,6 +193,17 @@ describe('application landmarks', () => {
     expect(wrapper.get('main').attributes('aria-label')).toBe('Music library')
   })
 
+  it('opens the browser visualizer without native startup calls', async () => {
+    window.history.replaceState({}, '', '/?view=visualizer')
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    expect(wrapper.find('.visualizer-window').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Live audio requires the desktop app')
+    expect(eventMocks.listen).not.toHaveBeenCalled()
+    expect(playbackMocks.refresh).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('Music could not load')
+  })
+
   it('passes library and transport state separately to the library window', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()

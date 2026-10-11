@@ -1,8 +1,10 @@
 import type { MediaItem } from '@/api'
+import { artistChannels } from '@/lib/following'
 import type { LibraryArtist } from './types'
 
 interface ArtistAccumulator {
   albums: Set<string>
+  tracks: MediaItem[]
   durationMs: number
   name: string
   trackCount: number
@@ -15,6 +17,7 @@ export function buildLibraryArtists(tracks: Iterable<MediaItem>): LibraryArtist[
   for (const track of tracks) {
     const artist = artists.get(track.artist) ?? {
       albums: new Set<string>(),
+      tracks: [],
       durationMs: 0,
       name: track.artist,
       trackCount: 0,
@@ -24,6 +27,7 @@ export function buildLibraryArtists(tracks: Iterable<MediaItem>): LibraryArtist[
 
     artist.durationMs += track.durationMs
     artist.trackCount += 1
+    artist.tracks.push(track)
     if (album) {
       artist.albums.add(album)
     }
@@ -32,6 +36,7 @@ export function buildLibraryArtists(tracks: Iterable<MediaItem>): LibraryArtist[
 
   return [...artists.values()].map((artist) => ({
     albumCount: artist.albums.size,
+    channels: artistChannels(artist.tracks),
     detail: `${artist.trackCount} ${artist.trackCount === 1 ? 'song' : 'songs'}`,
     durationMs: artist.durationMs,
     name: artist.name,

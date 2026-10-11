@@ -19,6 +19,7 @@ describe('desktop window capabilities', () => {
       'mini-player',
       'settings',
       'import',
+      'visualizer',
     ])
   })
 

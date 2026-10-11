@@ -20,17 +20,59 @@ const props = defineProps<{
   groups: ArtistGroup[]
   displayMode: LibraryDisplayMode
   selectedArtistName: string | undefined
+  followedChannelIds?: string[]
+  followPendingIds?: string[]
   gridItemSize: number
   sortBy: LibrarySortOption
 }>()
 
 const emit = defineEmits<{
   editArtist: [artist: LibraryArtist]
+  followChannel: [channel: { channelId: string; name: string }]
+  unfollowChannel: [channelId: string]
   playArtist: [artist: LibraryArtist]
   selectArtist: [artist: LibraryArtist]
   openArtist: [artist: LibraryArtist]
   setSort: [option: LibrarySortOption]
 }>()
+
+interface FollowAction {
+  key: string
+  label: string
+  disabled: boolean
+  run: () => void
+}
+
+// An artist name is not an identity. Each action targets one validated channel ID.
+function followActions(artist: LibraryArtist): FollowAction[] {
+  if (artist.channels.length === 0) {
+    return [
+      {
+        key: 'unavailable',
+        label: 'Follow unavailable: refresh metadata to find the channel',
+        disabled: true,
+        run: () => {},
+      },
+    ]
+  }
+  const several = artist.channels.length > 1
+  return artist.channels.map((channel) => {
+    const followed = props.followedChannelIds?.includes(channel.channelId) ?? false
+    const verb = followed ? 'Unfollow' : 'Follow'
+    return {
+      key: channel.channelId,
+      label: several ? `${verb} channel ${channel.name}` : `${verb} artist`,
+      disabled: props.followPendingIds?.includes(channel.channelId) ?? false,
+      run: () =>
+        followed
+          ? emit('unfollowChannel', channel.channelId)
+          : emit('followChannel', {
+              channelId: channel.channelId,
+              name: several ? channel.name : artist.name,
+            }),
+    }
+  })
+}
 
 function sortDirection(column: ArtistSortColumn): 'ascending' | 'descending' | 'none' {
   if (!props.sortBy.startsWith(`${column}-`)) {
@@ -215,6 +257,15 @@ function toggleSort(column: ArtistSortColumn): void {
                   Open tracks
                 </ContextMenuItem>
                 <ContextMenuSeparator />
+                <ContextMenuItem
+                  v-for="action in followActions(artist)"
+                  :key="action.key"
+                  :disabled="action.disabled"
+                  @select="action.run()"
+                >
+                  {{ action.label }}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
                 <ContextMenuItem @select="emit('editArtist', artist)">
                   Edit metadata
                 </ContextMenuItem>
@@ -267,6 +318,15 @@ function toggleSort(column: ArtistSortColumn): void {
           <ContextMenuContent data-artist-context-menu>
             <ContextMenuItem @select="emit('playArtist', artist)"> Play artist </ContextMenuItem>
             <ContextMenuItem @select="emit('openArtist', artist)"> Open tracks </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              v-for="action in followActions(artist)"
+              :key="action.key"
+              :disabled="action.disabled"
+              @select="action.run()"
+            >
+              {{ action.label }}
+            </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem @select="emit('editArtist', artist)"> Edit metadata </ContextMenuItem>
           </ContextMenuContent>

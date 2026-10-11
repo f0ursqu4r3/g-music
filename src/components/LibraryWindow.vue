@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type {
+  FollowingSnapshot,
   ImportProgress,
   MediaItem,
   MetadataRefreshSnapshot,
@@ -33,6 +34,7 @@ import LibraryTrackGrid from './library/LibraryTrackGrid.vue'
 import LibraryTrackList from './library/LibraryTrackList.vue'
 import PlaylistEditor from './library/PlaylistEditor.vue'
 import LibraryDialog from './library/LibraryDialog.vue'
+import LibraryFollowing from './library/LibraryFollowing.vue'
 import { buildLibraryArtists, groupItems } from './library/collections'
 import type {
   AlbumGroup,
@@ -71,9 +73,15 @@ interface Props {
   previewSmartPlaylist?: (definition: SmartPlaylistDefinition) => Promise<SmartPlaylistPreview>
   freezeSmartPlaylist?: (id: string) => Promise<unknown>
   runPaletteTracks?: (ids: string[], mode: CommandMode) => Promise<unknown>
-  openWindowAction?: (view: 'import' | 'queue' | 'settings') => Promise<unknown>
+  openWindowAction?: (view: 'import' | 'queue' | 'settings' | 'visualizer') => Promise<unknown>
   paletteRequest?: number
   resetMetadata?: (ids: string[]) => Promise<unknown>
+  following?: FollowingSnapshot
+  followPendingIds?: string[]
+  isCheckingFollowing?: boolean
+  followingError?: string
+  followingLoadFailed?: boolean
+  isLoadingFollowing?: boolean
 }
 
 const props = defineProps<Props>()
@@ -99,6 +107,11 @@ const emit = defineEmits<{
   updateTracksMetadata: [updates: TrackMetadataUpdate[]]
   retryMetadataRefreshes: []
   cancelImport: [runId: number]
+  followArtist: [channel: { channelId: string; name: string }]
+  unfollowArtist: [channelId: string]
+  checkFollowing: [channelId?: string]
+  retryFollowing: []
+  importUrls: [urls: string[]]
 }>()
 
 const smartEditorOpen = ref(false)
@@ -164,7 +177,7 @@ async function runPaletteAction(result: CommandResult, mode: CommandMode): Promi
       else newSmartPlaylist()
     } else {
       if (!props.openWindowAction) throw new Error('Window actions are unavailable.')
-      await props.openWindowAction(result.id as 'import' | 'queue' | 'settings')
+      await props.openWindowAction(result.id as 'import' | 'queue' | 'settings' | 'visualizer')
     }
   } else {
     if (!props.runPaletteTracks) throw new Error('Playback is unavailable.')
@@ -293,6 +306,9 @@ const searchedTracks = computed(() =>
     : playlistTracks.value,
 )
 const playlists = computed(() => props.playlists ?? [])
+const followedArtists = computed(() => props.following?.artists ?? [])
+const followedChannelIds = computed(() => followedArtists.value.map((artist) => artist.channelId))
+const libraryTrackIds = computed(() => allTracks.value.map((track) => track.id))
 const activePlaylist = computed(
   () => playlists.value.find((playlist) => playlist.id === activePlaylistId.value) ?? null,
 )
@@ -413,6 +429,7 @@ const collectionTitle = computed(() => {
   const titles: Record<LibraryCollection, string> = {
     albums: 'Albums',
     artists: 'Artists',
+    following: 'Following',
     tracks: 'Tracks',
   }
 
@@ -422,6 +439,7 @@ const collectionSummary = computed(() => {
   const summaries: Record<LibraryCollection, string> = {
     albums: `${libraryAlbums.value.length} ${libraryAlbums.value.length === 1 ? 'album' : 'albums'}`,
     artists: `${libraryArtists.value.length} ${libraryArtists.value.length === 1 ? 'artist' : 'artists'}`,
+    following: `${followedArtists.value.length} followed`,
     tracks: trackCollectionSummary(libraryTracks.value),
   }
 
@@ -1144,6 +1162,7 @@ onBeforeUnmount(finishTrackDrag)
       <div
         v-if="
           searchQuery.trim() &&
+          activeCollection !== 'following' &&
           !(activeCollection === 'tracks' ? libraryTracks.length : searchedTracks.length)
         "
         data-search-empty
@@ -1221,8 +1240,28 @@ onBeforeUnmount(finishTrackDrag)
         @set-sort="setSort"
         :sort-by="sortBy"
       />
+      <LibraryFollowing
+        v-else-if="activeCollection === 'following'"
+        :artists="followedArtists"
+        :error-message="props.followingError"
+        :is-checking="props.isCheckingFollowing ?? false"
+        :is-importing="props.isImporting"
+        :is-loading="props.isLoadingFollowing"
+        :load-failed="props.followingLoadFailed"
+        :library-track-ids="libraryTrackIds"
+        :pending-channel-ids="props.followPendingIds ?? []"
+        @add-to-library="emit('importUrls', $event)"
+        @check="emit('checkFollowing')"
+        @check-artist="emit('checkFollowing', $event)"
+        @retry-load="emit('retryFollowing')"
+        @unfollow="emit('unfollowArtist', $event)"
+      />
       <LibraryArtistGrid
         v-else
+        :followed-channel-ids="followedChannelIds"
+        :follow-pending-ids="props.followPendingIds"
+        @follow-channel="emit('followArtist', $event)"
+        @unfollow-channel="emit('unfollowArtist', $event)"
         :display-mode="displayMode"
         :grid-item-size="gridItemSize"
         :groups="groupedArtists"
@@ -1237,6 +1276,10 @@ onBeforeUnmount(finishTrackDrag)
     </section>
 
     <LibraryInfoPanel
+      :followed-channel-ids="followedChannelIds"
+      :follow-pending-ids="props.followPendingIds"
+      @follow-channel="emit('followArtist', $event)"
+      @unfollow-channel="emit('unfollowArtist', $event)"
       :is-open="detailsSidebarOpen"
       :selected-album="selectedAlbum"
       :selected-artist="selectedArtist"

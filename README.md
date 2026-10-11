@@ -47,6 +47,59 @@ to adjust sound. Open queue and Open library show their native windows. Drag the
 artwork to move the window, or right-click it for favorite and window actions.
 Tab reaches playback controls only in an active window. Playback shortcuts stay the same.
 
+## Visualizer window
+
+Open **Window → Visualizer**, press **Command-5** on macOS (**Control-5** on
+Linux), or choose **Open Visualizer** in the command palette. Play a track to
+start the live display.
+
+Choose from **20 procedural visualizers** in the preview gallery. Use the arrows
+beside the preset name to switch quickly. The collection includes Spectrum,
+Flow, Aurora, Plasma, Solar flare, Eclipse, Hyperdrive, Starfield, Supernova,
+Prism, Kaleidoscope, Mandala, Neon highway, Double helix, Orbit, Silk, Vortex,
+Fireflies, Signal peaks, and Liquid chrome.
+
+Every preset responds to sixteen frequency bands from the audio
+decoded by the existing `mpv` player. Timestamped measurements follow the audio
+playback clock. Track changes and seeks clear previous measurements. Audio
+analysis uses bounded memory and nonblocking pipes; it does not open a second
+YouTube stream or save audio files.
+
+**4K** quality is enabled by default. A 16:9 window renders at **3840 × 2160**,
+including on a lower-resolution screen. Other window shapes preserve their
+aspect ratio within those dimensions. Every effect uses procedural geometry;
+the display does not upscale a low-resolution texture. **Display** quality uses
+the window's screen resolution, capped at 4K, to reduce GPU work.
+
+The window provides fullscreen, intensity, 30/60 fps, and **Sync** controls.
+Positive Sync values delay the visual response. Settings persist locally.
+Each preset has its own palette. Several presets blend in track artwork colors,
+with a theme fallback. Reduced-motion settings freeze ambient movement.
+Minimizing or closing the window
+stops rendering and releases audio analysis. **Retry audio** reconnects failed
+analysis without replacing the listening queue.
+
+The visualizer requires WebGL2 and an `mpv` build with the required FFmpeg audio
+filters. The app checks filter support before enabling analysis. Browser preview
+at `?view=visualizer` offers an explicitly labeled simulated demo; live audio
+requires the desktop app.
+
+Automated checks cover pause, resume after a long pause, forward/backward and
+same-position seeks, filter reinstallation, reader backpressure, and unchanged
+PCM output. Browser checks render all twenty presets at 3840 × 2160 and cover
+audio response, silence, reduced motion, gallery navigation, and graphics-context
+recovery. These checks use software rendering; native GPU frame rates remain
+unmeasured.
+Physical speaker-to-screen latency and Linux hardware have not been measured.
+Wireless outputs can require a Sync adjustment.
+
+Run the silent native integration checks with an installed `mpv`:
+
+```sh
+cd src-tauri
+cargo test visualizer::integration_tests --lib -- --ignored
+```
+
 ## Artwork cache
 
 Artwork persists in the application data directory under `artwork/`. The

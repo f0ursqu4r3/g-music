@@ -11,6 +11,7 @@ pub use smart::{
     SmartSortField,
 };
 pub(crate) use youtube::find_executable as dependency_executable;
+pub(crate) use youtube::playback_path;
 pub(crate) use youtube::{
     DirtyTrack, QueueEntry, ResolvedYouTubeImport, import_cancellable, resolve_youtube_imports,
     search_youtube,

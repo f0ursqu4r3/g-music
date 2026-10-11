@@ -142,6 +142,31 @@ export interface MetadataRefreshSnapshot {
   totalTracks: number
 }
 
+export interface FollowUpload {
+  videoId: string
+  title: string
+  durationMs: number | null
+  url: string
+  discoveredAtMs: number
+  /** True only for uploads first seen after the follow baseline. */
+  isNew: boolean
+}
+
+export interface FollowedArtist {
+  channelId: string
+  name: string
+  followedAtMs: number
+  baselineEstablished: boolean
+  lastCheckedAtMs: number | null
+  lastError: string | null
+  checking: boolean
+  uploads: FollowUpload[]
+}
+
+export interface FollowingSnapshot {
+  artists: FollowedArtist[]
+}
+
 export interface CommandError {
   code: string
   message: string
@@ -288,8 +313,18 @@ export const artworkApi = {
   },
 }
 
+export const followingApi = {
+  inspect: (): Promise<FollowingSnapshot> => invoke<FollowingSnapshot>('inspect_following'),
+  follow: (channelId: string, name: string): Promise<FollowingSnapshot> =>
+    invoke<FollowingSnapshot>('follow_artist', { channelId, name }),
+  unfollow: (channelId: string): Promise<FollowingSnapshot> =>
+    invoke<FollowingSnapshot>('unfollow_artist', { channelId }),
+  check: (channelId?: string): Promise<FollowingSnapshot> =>
+    invoke<FollowingSnapshot>('check_following', { channelId: channelId ?? null }),
+}
+
 export const windowApi = {
-  showApp: (surface: 'library' | 'queue' | 'settings' | 'import'): Promise<void> =>
+  showApp: (surface: 'library' | 'queue' | 'settings' | 'import' | 'visualizer'): Promise<void> =>
     invoke<void>('show_app_window', { surface }),
   showImport: (): Promise<void> => invoke<void>('show_import_window'),
 }

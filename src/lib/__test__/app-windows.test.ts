@@ -29,11 +29,13 @@ it('uses the finite native window command and the existing Import command', asyn
   await showAppWindow('queue')
   await showAppWindow('settings')
   await showAppWindow('import')
+  await showAppWindow('visualizer')
   expect(vi.mocked(invoke).mock.calls).toEqual([
     ['show_app_window', { surface: 'library' }],
     ['show_app_window', { surface: 'queue' }],
     ['show_app_window', { surface: 'settings' }],
     ['show_import_window'],
+    ['show_app_window', { surface: 'visualizer' }],
   ])
 })
 it('subscribes before showing Library and retries a cold window until acknowledgement', async () => {

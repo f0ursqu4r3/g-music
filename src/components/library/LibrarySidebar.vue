@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { Clock3, Disc3, Heart, ListMusic, Mic2, Pencil, Plus, ListFilter } from 'lucide-vue-next'
+import {
+  Clock3,
+  Disc3,
+  Heart,
+  ListMusic,
+  Mic2,
+  Pencil,
+  Plus,
+  ListFilter,
+  UserRoundCheck,
+} from 'lucide-vue-next'
 import { ReorderGroup, ReorderItem } from 'motion-v'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
@@ -282,6 +292,7 @@ onBeforeUnmount(() => {
               ['tracks', ListMusic, 'Tracks'],
               ['albums', Disc3, 'Albums'],
               ['artists', Mic2, 'Artists'],
+              ['following', UserRoundCheck, 'Following'],
             ] as const"
             :key="collection[0]"
             :aria-current="

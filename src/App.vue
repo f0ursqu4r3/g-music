@@ -30,6 +30,7 @@ import { trackWindowCursor } from '@/lib/window-cursor'
 import { playerDimensions } from '@/presentation'
 
 import { Toaster } from '@/components/ui/sonner'
+import { useFollowing } from '@/composables/useFollowing'
 import { usePlayback } from '@/composables/usePlayback'
 
 const ArtworkWindow = defineAsyncComponent(() => import('@/components/ArtworkWindow.vue'))
@@ -38,9 +39,12 @@ const LibraryWindow = defineAsyncComponent(() => import('@/components/LibraryWin
 const MiniWindow = defineAsyncComponent(() => import('@/components/MiniWindow.vue'))
 const QueueWindow = defineAsyncComponent(() => import('@/components/QueueWindow.vue'))
 const SettingsWindow = defineAsyncComponent(() => import('@/components/SettingsWindow.vue'))
+const VisualizerWindow = defineAsyncComponent(() => import('@/components/VisualizerWindow.vue'))
 
 const playback = usePlayback()
+const following = useFollowing()
 const view = resolveMockWindowView(window.location.search)
+const isVisualizerPreview = view === 'visualizer' && !isTauri()
 const paletteRequest = ref(0)
 let smartRefreshInterval: number | undefined
 let paletteHandoffPending = false
@@ -67,9 +71,11 @@ const isReconnectingYouTube = ref(false)
 const youtubeReconnectError = ref('')
 
 const isViewLoaded = computed(() =>
-  view === 'library'
-    ? Boolean(playback.library.value && playback.transport.value)
-    : Boolean(playback.snapshot.value),
+  isVisualizerPreview
+    ? true
+    : view === 'library'
+      ? Boolean(playback.library.value && playback.transport.value)
+      : Boolean(playback.snapshot.value),
 )
 const playbackSnapshot = computed<PlaybackSnapshot>(
   () =>
@@ -154,6 +160,32 @@ watch(
         windowError.value = ''
         playback.errorMessage.value = ''
       },
+    })
+  },
+  { flush: 'post' },
+)
+
+// Follow errors can come from the Artists view or info panel, so show them in every view.
+const followingToastId = 'following-error'
+watch(
+  () => (view === 'library' ? following.errorMessage.value : ''),
+  (message) => {
+    if (!message) {
+      toast.dismiss(followingToastId)
+      return
+    }
+    toast.error(message, {
+      id: followingToastId,
+      duration: Infinity,
+      action: {
+        label: 'Retry',
+        onClick: (event) => {
+          // Sonner otherwise removes the toast before an async retry can fail.
+          event.preventDefault()
+          void following.retry()
+        },
+      },
+      onDismiss: () => following.clearError(),
     })
   },
   { flush: 'post' },
@@ -412,6 +444,7 @@ async function retrySubscriptions(): Promise<void> {
 
 onMounted(async () => {
   isMounted = true
+  if (isVisualizerPreview) return
   if (view === 'artwork' && isTauri()) {
     stopWindowCursor = trackWindowCursor((inside) => {
       isCursorWithinWindow.value = inside
@@ -423,6 +456,13 @@ onMounted(async () => {
     subscribe<PlaybackTransport>('playback-transport-updated', (payload) =>
       playback.applyTransportEvent(payload),
     ),
+    ...(view === 'library'
+      ? [
+          subscribe('following-updated', () => {
+            void following.refresh()
+          }),
+        ]
+      : []),
     subscribe('library-updated', () => {
       void playback.refresh()
     }),
@@ -450,9 +490,15 @@ onMounted(async () => {
               if (
                 !payload ||
                 typeof payload.requestId !== 'string' ||
-                !['main', 'artwork', 'queue', 'mini-player', 'settings', 'import'].includes(
-                  payload.sourceLabel,
-                )
+                ![
+                  'main',
+                  'artwork',
+                  'queue',
+                  'mini-player',
+                  'settings',
+                  'import',
+                  'visualizer',
+                ].includes(payload.sourceLabel)
               )
                 return
               if (!paletteAlreadyOpen) paletteRequest.value++
@@ -470,6 +516,7 @@ onMounted(async () => {
   if (!isMounted) return
   await initializePlayback()
   if (!isMounted) return
+  if (view === 'library') void following.refresh()
   startupAttempted.value = true
   if (view !== 'settings')
     playbackSyncInterval = window.setInterval(() => {
@@ -542,6 +589,17 @@ onUnmounted(() => {
       :import-progress="playback.importProgress.value"
       :is-importing="playback.isImporting.value"
       :is-cancelling="playback.isCancelling?.value"
+      :following="following.snapshot.value"
+      :follow-pending-ids="following.pendingChannelIds.value"
+      :is-checking-following="following.isChecking.value"
+      :following-error="following.errorMessage.value"
+      :following-load-failed="!following.isLoaded.value && Boolean(following.errorMessage.value)"
+      :is-loading-following="following.isLoading.value"
+      @follow-artist="({ channelId, name }) => following.follow(channelId, name)"
+      @unfollow-artist="following.unfollow"
+      @retry-following="following.refresh"
+      @check-following="(channelId) => following.check(channelId)"
+      @import-urls="playback.importYouTubeUrls"
       @cancel-import="playback.cancelYouTubeImport"
       @toggle="playback.toggle"
       @previous="playback.previous"
@@ -583,6 +641,14 @@ onUnmounted(() => {
       @cancel-import="playback.cancelYouTubeImport"
       @retry="retryOperation"
       @import-youtube-urls="playback.importYouTubeUrls"
+    />
+
+    <VisualizerWindow
+      v-else-if="view === 'visualizer'"
+      :snapshot="playbackSnapshot"
+      @toggle-play="playback.toggle"
+      @previous="playback.previous"
+      @next="playback.next"
     />
 
     <ArtworkWindow

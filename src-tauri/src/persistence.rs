@@ -624,7 +624,7 @@ pub(crate) fn database_exists(path: &Path) -> bool {
     path.is_file()
 }
 
-fn open(path: &Path) -> Result<Connection, String> {
+pub(crate) fn open(path: &Path) -> Result<Connection, String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(error)?;
     }
@@ -704,6 +704,31 @@ fn open(path: &Path) -> Result<Connection, String> {
             CREATE TABLE IF NOT EXISTS playback_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 state_json TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS followed_artists (
+                subscription INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                followed_at_ms INTEGER NOT NULL,
+                baseline_at_ms INTEGER,
+                last_checked_at_ms INTEGER,
+                last_error TEXT
+            );
+            CREATE TABLE IF NOT EXISTS followed_uploads (
+                subscription INTEGER NOT NULL REFERENCES followed_artists(subscription) ON DELETE CASCADE,
+                video_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                duration_ms INTEGER,
+                is_new INTEGER NOT NULL,
+                discovered_at_ms INTEGER NOT NULL,
+                rank INTEGER NOT NULL,
+                PRIMARY KEY (subscription, video_id)
+            );
+            CREATE TABLE IF NOT EXISTS followed_seen (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscription INTEGER NOT NULL REFERENCES followed_artists(subscription) ON DELETE CASCADE,
+                video_id TEXT NOT NULL,
+                UNIQUE (subscription, video_id)
             );
             ",
         )

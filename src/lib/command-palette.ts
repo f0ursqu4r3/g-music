@@ -16,6 +16,7 @@ export const paletteActions = [
   ['import', 'Import music'],
   ['queue', 'Open Queue'],
   ['settings', 'Open Settings'],
+  ['visualizer', 'Open Visualizer'],
 ] as const
 export function searchCommands(
   query: string,

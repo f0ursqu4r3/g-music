@@ -5,6 +5,7 @@ export const mockWindowViews = [
   'mini',
   'settings',
   'import',
+  'visualizer',
 ] as const
 
 export type MockWindowView = (typeof mockWindowViews)[number]

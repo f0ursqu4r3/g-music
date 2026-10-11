@@ -12,6 +12,7 @@ pub enum WindowSurface {
     Mini,
     Settings,
     Import,
+    Visualizer,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -40,11 +41,27 @@ impl WindowSpec {
             WindowSurface::Mini => (480.0, 144.0),
             WindowSurface::Settings => (520.0, 360.0),
             WindowSurface::Import => (520.0, 360.0),
+            WindowSurface::Visualizer => (480.0, 320.0),
         }
     }
 }
 
 const SURFACES: &[WindowSpec] = &[
+    WindowSpec {
+        kind: WindowSurface::Visualizer,
+        label: "visualizer",
+        title: "Visualizer",
+        route: "?view=visualizer",
+        width: 1000.0,
+        height: 640.0,
+        decorations: true,
+        transparent: true,
+        resizable: true,
+        #[cfg(any(target_os = "macos", test))]
+        overlay_titlebar: true,
+        #[cfg(any(target_os = "macos", test))]
+        hidden_title: true,
+    },
     WindowSpec {
         kind: WindowSurface::Library,
         label: "main",
@@ -174,6 +191,9 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let mini_player = MenuItemBuilder::with_id("window.mini", "Mini Player")
         .accelerator("CmdOrCtrl+4")
         .build(app)?;
+    let visualizer = MenuItemBuilder::with_id("window.visualizer", "Visualizer")
+        .accelerator("CmdOrCtrl+5")
+        .build(app)?;
     let keyboard_shortcuts =
         MenuItemBuilder::with_id("help.keyboard-shortcuts", "Keyboard Shortcuts…")
             .accelerator("CmdOrCtrl+/")
@@ -223,6 +243,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&queue)
         .separator()
         .item(&mini_player)
+        .item(&visualizer)
         .separator()
         .bring_all_to_front()
         .build()?;
@@ -249,6 +270,7 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
         "window.mini" => show_surface(app, WindowSurface::Mini),
         "window.settings" => show_surface(app, WindowSurface::Settings),
         "window.import" => show_surface(app, WindowSurface::Import),
+        "window.visualizer" => show_surface(app, WindowSurface::Visualizer),
         _ => {
             crate::commands::handle_menu_event(app, item_id);
             return;
@@ -330,8 +352,8 @@ pub fn show_import<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 /// Tauri command: show or restore a finite native application window by surface name.
 ///
-/// Accepts one of the six lowercase surface names: `"library"`, `"artwork"`,
-/// `"queue"`, `"mini"`, `"settings"`, `"import"`. Serde rejects any other
+/// Accepts one of the seven lowercase surface names: `"library"`, `"artwork"`,
+/// `"queue"`, `"mini"`, `"settings"`, `"import"`, `"visualizer"`. Serde rejects any other
 /// string before the function body is reached. The command delegates entirely
 /// to `show_surface`, which reuses existing windows rather than constructing
 /// new ones when possible.
@@ -391,13 +413,14 @@ mod tests {
     }
 
     #[test]
-    fn deserializes_all_six_lowercase_surface_names() {
+    fn deserializes_all_lowercase_surface_names() {
         assert_eq!(deser("library").unwrap(), WindowSurface::Library);
         assert_eq!(deser("artwork").unwrap(), WindowSurface::Artwork);
         assert_eq!(deser("queue").unwrap(), WindowSurface::Queue);
         assert_eq!(deser("mini").unwrap(), WindowSurface::Mini);
         assert_eq!(deser("settings").unwrap(), WindowSurface::Settings);
         assert_eq!(deser("import").unwrap(), WindowSurface::Import);
+        assert_eq!(deser("visualizer").unwrap(), WindowSurface::Visualizer);
     }
 
     #[test]
@@ -418,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn all_six_surfaces_have_specs_in_surfaces_table() {
+    fn all_surfaces_have_specs_in_surfaces_table() {
         let surfaces = all_surfaces();
         for variant in [
             WindowSurface::Library,
@@ -427,6 +450,7 @@ mod tests {
             WindowSurface::Mini,
             WindowSurface::Settings,
             WindowSurface::Import,
+            WindowSurface::Visualizer,
         ] {
             assert!(
                 surfaces.iter().any(|s| s.kind == variant),
@@ -468,7 +492,7 @@ mod tests {
     fn desktop_surfaces_use_distinct_window_labels_and_routes() {
         let surfaces = all_surfaces();
 
-        assert_eq!(surfaces.len(), 6);
+        assert_eq!(surfaces.len(), 7);
         assert!(
             surfaces
                 .iter()

@@ -7,6 +7,7 @@ import { flushApp as flushPromises } from './flushApp'
 
 import type {
   ImportProgress,
+  FollowingSnapshot,
   LibrarySnapshot,
   MetadataRefreshSnapshot,
   PlaybackSnapshot,
@@ -60,6 +61,7 @@ let library: LibrarySnapshot
 let metadata: MetadataRefreshSnapshot
 let progress: ImportProgress
 let wrapper: VueWrapper | undefined
+let following: FollowingSnapshot
 const commandOverrides = new Map<string, () => Promise<unknown>>()
 
 async function open(view: string): Promise<VueWrapper> {
@@ -90,6 +92,7 @@ beforeEach(() => {
     repeatMode: 'off',
   }
   library = { tracks: [first, second], playlists: [] }
+  following = { artists: [] }
   metadata = { jobs: [], totalTracks: 0, completedTracks: 0 }
   progress = {
     completedSources: 0,
@@ -112,6 +115,12 @@ beforeEach(() => {
           return metadata
         case 'inspect_import_progress':
           return null
+        case 'inspect_following':
+          return following
+        case 'follow_artist':
+        case 'unfollow_artist':
+        case 'check_following':
+          return following
         case 'inspect_youtube_auth':
           return { connected: false }
         case 'inspect_diagnostics':
@@ -546,5 +555,150 @@ describe('App product workflows through real components and IPC', () => {
     const saves = vi.mocked(invoke).mock.calls.filter(([command]) => command === 'upsert_playlist')
     expect(saves).toEqual([firstSave, firstSave])
     expect(document.querySelector('[role="dialog"][data-state="open"]')).toBeNull()
+  })
+
+  it('loads followed artists without a network check and refreshes on following-updated', async () => {
+    const app = await open('library')
+    const calls = () => vi.mocked(invoke).mock.calls.map(([command]) => command)
+    expect(calls()).toContain('inspect_following')
+    expect(calls()).not.toContain('check_following')
+    following = {
+      artists: [
+        {
+          channelId: 'UCMYSjwig4-XrzqY6Ka28t4g',
+          name: 'Followed Band',
+          followedAtMs: 1,
+          baselineEstablished: true,
+          lastCheckedAtMs: 2,
+          lastError: null,
+          checking: false,
+          uploads: [],
+        },
+      ],
+    }
+    events.get('following-updated')?.({ payload: null })
+    await flushPromises()
+    await app.get('[data-collection="following"]').trigger('click')
+    expect(app.get('[data-followed-artist]').text()).toContain('Followed Band')
+    expect(calls()).not.toContain('check_following')
+  })
+
+  it('does not poll from windows other than the library', async () => {
+    await open('queue')
+    expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).not.toContain(
+      'check_following',
+    )
+  })
+
+  it('checks on request and imports a discovered upload through the existing import command', async () => {
+    following = {
+      artists: [
+        {
+          channelId: 'UCMYSjwig4-XrzqY6Ka28t4g',
+          name: 'Followed Band',
+          followedAtMs: 1,
+          baselineEstablished: true,
+          lastCheckedAtMs: 2,
+          lastError: null,
+          checking: false,
+          uploads: [
+            {
+              videoId: 'newnewnew11',
+              title: 'Fresh Song',
+              durationMs: null,
+              url: 'https://www.youtube.com/watch?v=newnewnew11',
+              discoveredAtMs: 2,
+              isNew: true,
+            },
+          ],
+        },
+      ],
+    }
+    const app = await open('library')
+    await app.get('[data-collection="following"]').trigger('click')
+    await app.get('button[data-check-following]').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('check_following', { channelId: null })
+    await app.get('[aria-label="Add Fresh Song to library"]').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('import_youtube_urls', {
+      urls: ['https://www.youtube.com/watch?v=newnewnew11'],
+    })
+  })
+
+  it('retries a failed initial following load from the Following view', async () => {
+    let attempts = 0
+    commandOverrides.set('inspect_following', async () => {
+      attempts += 1
+      if (attempts === 1)
+        throw { code: 'following_unavailable', message: 'Following is unavailable.' }
+      return {
+        artists: [
+          {
+            channelId: 'UCMYSjwig4-XrzqY6Ka28t4g',
+            name: 'Recovered Band',
+            followedAtMs: 1,
+            baselineEstablished: true,
+            lastCheckedAtMs: 2,
+            lastError: null,
+            checking: false,
+            uploads: [],
+          },
+        ],
+      }
+    })
+    const app = await open('library')
+    await app.get('[data-collection="following"]').trigger('click')
+    expect(app.find('[data-followed-artist]').exists()).toBe(false)
+    await app.get('button[data-retry-following]').trigger('click')
+    await flushPromises()
+    expect(attempts).toBe(2)
+    expect(app.get('[data-followed-artist]').text()).toContain('Recovered Band')
+    expect(app.find('button[data-retry-following]').exists()).toBe(false)
+  })
+
+  it('shows a failed follow from the Artists view in a toast and retries it', async () => {
+    library = {
+      ...library,
+      tracks: [
+        {
+          id: 'fixtureaaaa',
+          title: 'Fixture song',
+          artist: 'Fixture artist',
+          durationMs: 1000,
+          channelId: 'UCMYSjwig4-XrzqY6Ka28t4g',
+          channel: 'Fixture channel',
+        },
+      ],
+    }
+    let attempts = 0
+    commandOverrides.set('follow_artist', async () => {
+      attempts += 1
+      if (attempts === 1)
+        throw { code: 'following_unavailable', message: 'Following is unavailable.' }
+      return { artists: [] }
+    })
+    const app = await open('library')
+    await app.get('[data-collection="artists"]').trigger('click')
+    await app.get('.artist-tile').trigger('contextmenu')
+    await flushPromises()
+    const menu = new DOMWrapper(document.querySelector('[data-artist-context-menu]')!)
+    await menu
+      .findAll('[role="menuitem"]')
+      .find((item) => item.text() === 'Follow artist')!
+      .trigger('click')
+    await flushPromises()
+    const toastText = () => document.querySelector('[data-sonner-toast]')?.textContent ?? ''
+    expect(toastText()).toContain('Following is unavailable.')
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('follow_artist', {
+      channelId: 'UCMYSjwig4-XrzqY6Ka28t4g',
+      name: 'Fixture artist',
+    })
+    ;(document.querySelector('[data-sonner-toast] button[data-action]') as HTMLElement).click()
+    await flushPromises()
+    expect(attempts).toBe(2)
+    await expect
+      .poll(() => document.querySelector('[data-sonner-toast][data-removed="false"]') === null)
+      .toBe(true)
   })
 })

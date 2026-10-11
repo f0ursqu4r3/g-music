@@ -3,10 +3,14 @@ mod artwork;
 mod auth;
 mod commands;
 mod diagnostics;
+mod following;
+mod following_commands;
+mod following_fetch;
 mod media_session;
 mod persistence;
 pub mod playback;
 mod process;
+mod visualizer;
 mod windows;
 
 use tauri::Manager;
@@ -26,6 +30,7 @@ pub fn run() {
             if let Some(state) = app.try_state::<commands::AppState>() {
                 state.start_dirty_refresh(app.handle().clone());
                 state.start_transport_monitor(app.handle().clone());
+                following_commands::start_poller(app.handle().clone());
             }
             if media_session::start(app.handle()).is_err() {
                 tracing::warn!("Native media controls are unavailable.");
@@ -38,6 +43,16 @@ pub fn run() {
 
             Ok(())
         })
+        .register_asynchronous_uri_scheme_protocol(
+            visualizer::video::SCHEME,
+            |context, request, responder| {
+                // Resolution runs yt-dlp and relays network reads. Keep both off the webview thread.
+                let app = context.app_handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    responder.respond(visualizer::video::handle(&app, &request));
+                });
+            },
+        )
         .invoke_handler(|invoke: tauri::ipc::Invoke<tauri::Wry>| {
             if !trusted_command_window(invoke.message.webview_ref().label()) {
                 invoke
@@ -66,6 +81,8 @@ pub fn run() {
                     commands::import_youtube_urls,
                     commands::show_import_window,
                     windows::show_app_window,
+                    visualizer::inspect_visualizer,
+                    visualizer::set_visualizer_active,
                     commands::update_tracks_metadata,
                     commands::toggle_favorite,
                     commands::remove_tracks,
@@ -88,6 +105,10 @@ pub fn run() {
                     commands::move_queue_item,
                     commands::remove_queue_item,
                     commands::resolve_youtube_artwork,
+                    commands::inspect_following,
+                    commands::follow_artist,
+                    commands::unfollow_artist,
+                    commands::check_following,
                 ]);
             handler(invoke)
         })
@@ -126,6 +147,7 @@ fn trusted_command_window(label: &str) -> bool {
         "mini-player",
         "settings",
         "import",
+        "visualizer",
     ]
     .contains(&label)
 }

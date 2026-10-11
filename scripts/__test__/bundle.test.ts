@@ -23,6 +23,7 @@ it('keeps production chunks within budget and loads windows on demand', async ()
     'MiniWindow',
     'QueueWindow',
     'SettingsWindow',
+    'VisualizerWindow',
   ]) {
     expect(
       chunks.some(
