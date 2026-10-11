@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use block2::RcBlock;
 use objc2::rc::{Allocated, Retained};
-use objc2::runtime::{AnyClass, AnyObject, ProtocolObject};
+use objc2::runtime::{AnyClass, AnyObject, ProtocolObject, Sel};
 use objc2::{MainThreadMarker, msg_send, sel};
 use objc2_core_audio_types::{
     AudioStreamBasicDescription, kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked,
@@ -78,18 +78,69 @@ unsafe impl Send for Av {}
 // send messages to the objects.
 unsafe impl Sync for Av {}
 
+/// Returns the first selector that instances of `class` do not respond to.
+fn first_missing_selector(class: &AnyClass, selectors: &[Sel]) -> Option<Sel> {
+    selectors
+        .iter()
+        .copied()
+        .find(|selector| !class.responds_to(*selector))
+}
+
+/// Logs one diagnostic line for the first missing class or selector.
+fn check_selectors(class_name: &str, class: &AnyClass, selectors: &[Sel]) -> bool {
+    match first_missing_selector(class, selectors) {
+        Some(selector) => {
+            tracing::info!(
+                class = class_name,
+                selector = selector.name().to_string_lossy().as_ref(),
+                "AirPlay needs a private selector this system lacks"
+            );
+            false
+        }
+        None => true,
+    }
+}
+
 impl Av {
-    /// True when every class the route needs exists on this system.
+    /// True when every class and private selector the route needs exists on this system.
+    /// The checks run once, so an unknown selector never reaches `msg_send!` (which would
+    /// raise an Objective-C exception and abort).
     pub(super) fn classes_exist() -> bool {
-        [
+        const CLASSES: [&std::ffi::CStr; 5] = [
             c"CATapDescription",
             c"AVOutputContext",
             c"AVSampleBufferAudioRenderer",
             c"AVSampleBufferRenderSynchronizer",
             c"AVRoutePickerView",
-        ]
-        .iter()
-        .all(|name| AnyClass::get(name).is_some())
+        ];
+        for name in CLASSES {
+            if AnyClass::get(name).is_none() {
+                tracing::info!(class = ?name, "AirPlay needs a class this system lacks");
+                return false;
+            }
+        }
+        let checks: [(&str, &std::ffi::CStr, &[Sel]); 4] = [
+            (
+                "AVOutputContext",
+                c"AVOutputContext",
+                &[sel!(contextID), sel!(outputDevices)],
+            ),
+            (
+                "AVSampleBufferAudioRenderer",
+                c"AVSampleBufferAudioRenderer",
+                &[sel!(setOutputContext:)],
+            ),
+            (
+                "AVRoutePickerView",
+                c"AVRoutePickerView",
+                &[sel!(setOutputContextID:)],
+            ),
+            ("AVOutputDevice", c"AVOutputDevice", &[sel!(deviceName)]),
+        ];
+        checks.iter().all(|(label, name, selectors)| {
+            // `AVOutputDevice` is the element class of `outputDevices`.
+            AnyClass::get(name).is_some_and(|class| check_selectors(label, class, selectors))
+        })
     }
 
     /// Creates the output context, renderer, and synchronizer. Call on the main thread.
@@ -259,6 +310,14 @@ struct Shared {
     rate_lock: Mutex<()>,
 }
 
+impl Shared {
+    /// Zeroes the published queue depth, so the position does not jump while the feeder
+    /// waits up to one stats interval to measure the emptied queue.
+    fn clear_queued(&self) {
+        self.queued_bits.store(0f64.to_bits(), Ordering::Release);
+    }
+}
+
 struct Feeder {
     stop: Arc<AtomicBool>,
     handle: JoinHandle<()>,
@@ -339,9 +398,7 @@ impl Engine {
         self.shared.waiting_for_prime.store(true, Ordering::Release);
         self.av.set_rate(0.0);
         self.av.flush();
-        self.shared
-            .queued_bits
-            .store(0f64.to_bits(), Ordering::Release);
+        self.shared.clear_queued();
     }
 
     pub(super) fn set_playing(&self, playing: bool) {
@@ -550,6 +607,7 @@ fn run_feeder(
             av.set_rate(0.0);
             av.flush();
             ring.clear();
+            shared.clear_queued();
             state.next_pts = frames_at(av.current_time(), rate);
             state.prime_start = state.next_pts;
             state.drift.reset(now_s());
@@ -752,6 +810,38 @@ fn find_button(view: &AnyObject) -> Option<Retained<AnyObject>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selector_check_accepts_a_known_selector_and_rejects_an_unknown_one() {
+        let class = AnyClass::get(c"NSString").unwrap();
+        assert!(first_missing_selector(class, &[sel!(length), sel!(UTF8String)]).is_none());
+        assert!(check_selectors("NSString", class, &[sel!(length)]));
+        let missing =
+            first_missing_selector(class, &[sel!(length), sel!(gmusicSelectorThatDoesNotExist)]);
+        assert_eq!(missing, Some(sel!(gmusicSelectorThatDoesNotExist)));
+        assert!(!check_selectors(
+            "NSString",
+            class,
+            &[sel!(gmusicSelectorThatDoesNotExist)]
+        ));
+    }
+
+    #[test]
+    fn clear_queued_zeroes_the_published_queue_depth() {
+        let shared = Shared {
+            flush_requested: AtomicBool::new(false),
+            resync_requested: AtomicBool::new(false),
+            playing: AtomicBool::new(false),
+            waiting_for_prime: AtomicBool::new(true),
+            queued_bits: AtomicU64::new(1_500.0f64.to_bits()),
+            rate_lock: Mutex::new(()),
+        };
+        shared.clear_queued();
+        assert_eq!(
+            f64::from_bits(shared.queued_bits.load(Ordering::Acquire)),
+            0.0
+        );
+    }
 
     #[test]
     fn prepare_format_accepts_the_tap_rates() {
