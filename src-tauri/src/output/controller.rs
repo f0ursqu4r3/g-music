@@ -72,7 +72,8 @@ pub(crate) struct OutputController {
     state: OutputState,
     mpv_pid: Option<u32>,
     playing: bool,
-    /// Set when the picker opens. A route change within `PICKER_WINDOW` of it is the
+    /// Set when the picker opens. The system popover stays open across several picks,
+    /// so only expiry and `leave_airplay` clear it. A route change within `PICKER_WINDOW` is the
     /// listener's choice. Later changes come from elsewhere (power-off, Control Center).
     picker_opened_at: Option<Instant>,
     /// AirPlay was chosen but mpv was not running yet (or mpv restarted).
@@ -196,7 +197,6 @@ impl OutputController {
         }
         if !self.in_airplay() {
             if picker_recent && !poll.receivers.is_empty() {
-                self.picker_opened_at = None;
                 if self.mpv_pid.is_none() {
                     self.pending_start = true;
                     self.pending_receivers = poll.receivers;
@@ -219,7 +219,6 @@ impl OutputController {
                 picker_recent,
                 "AirPlay route left"
             );
-            self.picker_opened_at = None;
             self.stop_route();
             let mut effects = Vec::new();
             if !chosen {
@@ -230,7 +229,6 @@ impl OutputController {
             return effects;
         }
         if self.state.airplay_receivers.as_ref() != Some(&poll.receivers) {
-            self.picker_opened_at = None;
             self.state.airplay_receivers = Some(poll.receivers);
             return vec![OutputEffect::StateChanged(self.state())];
         }
@@ -457,7 +455,7 @@ mod tests {
         log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
         c.tick(Instant::now());
         log.lock().unwrap().receivers.clear();
-        let effects = c.tick(Instant::now() + Duration::from_secs(1));
+        let effects = c.tick(Instant::now() + Duration::from_secs(61));
         assert!(
             effects
                 .iter()
@@ -596,7 +594,7 @@ mod tests {
         log.lock().unwrap().receivers = vec!["Family Room".into()];
         c.tick(Instant::now());
         log.lock().unwrap().receivers.clear();
-        let effects = c.tick(Instant::now());
+        let effects = c.tick(Instant::now() + Duration::from_secs(61));
         assert!(is_disconnect(&effects));
     }
 
@@ -628,6 +626,78 @@ mod tests {
                 .calls
                 .iter()
                 .any(|call| call.starts_with("start:"))
+        );
+        assert_eq!(c.state().airplay_receivers, None);
+    }
+
+    fn start_count(log: &Arc<Mutex<FakeLog>>) -> usize {
+        log.lock()
+            .unwrap()
+            .calls
+            .iter()
+            .filter(|call| call.starts_with("start:"))
+            .count()
+    }
+
+    #[test]
+    fn one_popover_session_pick_speaker_then_this_mac_is_silent() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        let now = Instant::now();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(now);
+        assert!(c.state().airplay_receivers.is_some());
+        log.lock().unwrap().receivers.clear();
+        let effects = c.tick(now + Duration::from_secs(2));
+        assert!(
+            !effects
+                .iter()
+                .any(|e| matches!(e, OutputEffect::PausePlayback | OutputEffect::Notice(_)))
+        );
+        assert_eq!(c.state().airplay_receivers, None);
+        assert!(log.lock().unwrap().calls.contains(&"stop".into()));
+    }
+
+    #[test]
+    fn one_popover_session_this_mac_then_speaker_again_reenters() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        let now = Instant::now();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(now);
+        log.lock().unwrap().receivers.clear();
+        c.tick(now + Duration::from_secs(2));
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(now + Duration::from_secs(4));
+        assert_eq!(
+            c.state().airplay_receivers,
+            Some(vec!["Master Bedroom".into()])
+        );
+        assert_eq!(start_count(&log), 2);
+    }
+
+    #[test]
+    fn one_popover_session_switch_speakers_then_this_mac_is_silent() {
+        let (mut c, log) = controller();
+        c.mpv_started(42);
+        c.open_picker(&anchor()).unwrap();
+        let now = Instant::now();
+        log.lock().unwrap().receivers = vec!["Master Bedroom".into()];
+        c.tick(now);
+        log.lock().unwrap().receivers = vec!["Family Room".into()];
+        let effects = c.tick(now + Duration::from_secs(2));
+        assert_eq!(
+            state_change(&effects).unwrap().airplay_receivers,
+            Some(vec!["Family Room".into()])
+        );
+        log.lock().unwrap().receivers.clear();
+        let effects = c.tick(now + Duration::from_secs(3));
+        assert!(
+            !effects
+                .iter()
+                .any(|e| matches!(e, OutputEffect::PausePlayback | OutputEffect::Notice(_)))
         );
         assert_eq!(c.state().airplay_receivers, None);
     }
