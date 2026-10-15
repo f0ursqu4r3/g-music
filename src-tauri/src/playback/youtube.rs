@@ -1088,6 +1088,7 @@ impl YouTubePlaybackProvider {
                     self.snapshot.position_ms = position_ms;
                 }
             }
+            self.player.reopen_selected_audio_device();
             self.player.set_paused(false)?;
             self.snapshot.status = PlaybackStatus::Playing;
             tracing::info!("playback resumed");
@@ -2674,6 +2675,18 @@ impl MpvPlayer {
         }
     }
 
+    /// mpv binds a selected device by its CoreAudio ID when the output opens. A Bluetooth device
+    /// that disconnects and reconnects gets a new ID, so mpv plays into the old one in silence.
+    /// `auto` follows the system default and needs no reload.
+    fn reopen_selected_audio_device(&mut self) {
+        if self.preferred_audio_device.is_none() {
+            return;
+        }
+        if let Err(error) = self.send(json!(["ao-reload"])) {
+            tracing::warn!(%error, "could not reopen the audio output");
+        }
+    }
+
     fn is_running(&mut self) -> bool {
         #[cfg(test)]
         if self.test_commands.is_some() {
@@ -3377,6 +3390,46 @@ mod tests {
             "audio-device",
             "coreaudio/DAC"
         ])));
+    }
+
+    fn paused_provider_with_commands(
+        preferred_device: Option<&str>,
+    ) -> (
+        YouTubePlaybackProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<Value>>>,
+    ) {
+        let entries =
+            parse_import_metadata(r#"{"id":"M7lc1UVf-VE","title":"Fixture","channel":"Fixture"}"#)
+                .unwrap();
+        let mut provider = YouTubePlaybackProvider::with_entries(entries, None);
+        provider.replace_queue(&["M7lc1UVf-VE".into()]).unwrap();
+        provider.snapshot.current_item = Some(provider.snapshot.queue[0].clone());
+        provider.snapshot.status = PlaybackStatus::Paused;
+        provider.player.preferred_audio_device = preferred_device.map(str::to_owned);
+        let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        provider.player.test_commands = Some(commands.clone());
+        (provider, commands)
+    }
+
+    #[test]
+    fn resume_reopens_a_selected_device_before_unpausing() {
+        let (mut provider, commands) =
+            paused_provider_with_commands(Some("coreaudio/34-0E-22-6D-8C-7F:output"));
+        provider.play().unwrap();
+        let commands = commands.lock().unwrap();
+        let reload = commands.iter().position(|c| *c == json!(["ao-reload"]));
+        let unpause = commands
+            .iter()
+            .position(|c| *c == json!(["set_property", "pause", false]));
+        assert!(reload.is_some(), "commands: {commands:?}");
+        assert!(reload < unpause, "commands: {commands:?}");
+    }
+
+    #[test]
+    fn resume_on_the_system_default_does_not_reopen_the_output() {
+        let (mut provider, commands) = paused_provider_with_commands(None);
+        provider.play().unwrap();
+        assert!(!commands.lock().unwrap().contains(&json!(["ao-reload"])));
     }
 
     #[test]
